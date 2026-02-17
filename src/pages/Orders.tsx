@@ -7,6 +7,7 @@ import { Search } from "lucide-react";
 import { format } from "date-fns";
 import FilterSelect from "@/components/FilterSelect";
 import AddOrderDialog from "@/components/AddOrderDialog";
+import OrderDetailSheet from "@/components/OrderDetailSheet";
 
 interface Order {
   id: string;
@@ -21,8 +22,12 @@ interface Order {
   delivery_type: string;
   order_date: string;
   currency: string;
+  event_id: string;
   events: { match_code: string; home_team: string; away_team: string } | null;
   platforms: { name: string } | null;
+  // computed
+  linkedCost?: number;
+  linkedCount?: number;
 }
 
 const statusColor: Record<string, string> = {
@@ -39,13 +44,46 @@ export default function Orders() {
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [filterEvent, setFilterEvent] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    supabase
+  const load = useCallback(async () => {
+    const { data: ordersData } = await supabase
       .from("orders")
       .select("*, events(match_code, home_team, away_team), platforms(name)")
-      .order("order_date", { ascending: false })
-      .then(({ data }) => setOrders((data as any) || []));
+      .order("order_date", { ascending: false });
+
+    const rawOrders = (ordersData as any) || [];
+
+    // Load all order_lines to compute cost per order
+    const { data: allOrderLines } = await supabase.from("order_lines").select("order_id, inventory_id");
+    const { data: allInventory } = await supabase.from("inventory").select("id, purchase_id");
+    
+    const inventoryIds = (allOrderLines || []).map((ol) => ol.inventory_id);
+    const purchaseIds = [...new Set((allInventory || []).filter((i) => inventoryIds.includes(i.id)).map((i) => i.purchase_id))];
+    
+    const { data: allPurchases } = purchaseIds.length > 0
+      ? await supabase.from("purchases").select("id, unit_cost").in("id", purchaseIds)
+      : { data: [] };
+
+    const purchaseMap = new Map((allPurchases || []).map((p) => [p.id, Number(p.unit_cost)]));
+    const inventoryPurchaseMap = new Map((allInventory || []).map((i) => [i.id, i.purchase_id]));
+
+    // Group order_lines by order
+    const orderLineCosts = new Map<string, { cost: number; count: number }>();
+    for (const ol of allOrderLines || []) {
+      const purchaseId = inventoryPurchaseMap.get(ol.inventory_id);
+      const unitCost = purchaseId ? (purchaseMap.get(purchaseId) || 0) : 0;
+      const existing = orderLineCosts.get(ol.order_id) || { cost: 0, count: 0 };
+      orderLineCosts.set(ol.order_id, { cost: existing.cost + unitCost, count: existing.count + 1 });
+    }
+
+    const enriched = rawOrders.map((o: any) => ({
+      ...o,
+      linkedCost: orderLineCosts.get(o.id)?.cost || 0,
+      linkedCount: orderLineCosts.get(o.id)?.count || 0,
+    }));
+
+    setOrders(enriched);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -71,6 +109,7 @@ export default function Orders() {
   });
 
   const totalRevenue = filtered.reduce((s, o) => s + Number(o.sale_price || 0), 0);
+  const totalProfit = filtered.reduce((s, o) => s + (Number(o.net_received || 0) - (o.linkedCost || 0)), 0);
 
   return (
     <div className="p-6 space-y-6">
@@ -78,7 +117,9 @@ export default function Orders() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
           <p className="text-muted-foreground">
-            {filtered.length} order{filtered.length !== 1 ? "s" : ""} · Revenue: £{totalRevenue.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+            {filtered.length} order{filtered.length !== 1 ? "s" : ""} ·
+            Revenue: £{totalRevenue.toLocaleString("en-GB", { minimumFractionDigits: 2 })} ·
+            Profit: <span className={totalProfit >= 0 ? "text-success" : "text-destructive"}>£{totalProfit.toLocaleString("en-GB", { minimumFractionDigits: 2 })}</span>
           </p>
         </div>
         <AddOrderDialog onCreated={load} />
@@ -112,40 +153,57 @@ export default function Orders() {
               <TableHead>Event</TableHead>
               <TableHead>Category</TableHead>
               <TableHead className="text-right">Qty</TableHead>
-              <TableHead className="text-right">Sale Price</TableHead>
-              <TableHead className="text-right">Fees</TableHead>
-              <TableHead className="text-right">Net</TableHead>
+              <TableHead className="text-right">Sale</TableHead>
+              <TableHead className="text-right">Cost</TableHead>
+              <TableHead className="text-right">Profit</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Delivery</TableHead>
               <TableHead>Date</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((o) => (
-              <TableRow key={o.id}>
-                <TableCell className="font-medium">{o.order_ref || "—"}</TableCell>
-                <TableCell>{o.platforms?.name || "—"}</TableCell>
-                <TableCell>{o.events?.match_code || "—"}</TableCell>
-                <TableCell>{o.category}</TableCell>
-                <TableCell className="text-right">{o.quantity}</TableCell>
-                <TableCell className="text-right">£{Number(o.sale_price).toFixed(2)}</TableCell>
-                <TableCell className="text-right">£{Number(o.fees).toFixed(2)}</TableCell>
-                <TableCell className="text-right font-medium">£{Number(o.net_received).toFixed(2)}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={statusColor[o.status] || ""}>{o.status}</Badge>
-                </TableCell>
-                <TableCell className="text-xs">{o.delivery_type.replace("_", " ")}</TableCell>
-                <TableCell className="text-muted-foreground">{format(new Date(o.order_date), "dd MMM yy")}</TableCell>
-              </TableRow>
-            ))}
+            {filtered.map((o) => {
+              const profit = Number(o.net_received || 0) - (o.linkedCost || 0);
+              return (
+                <TableRow
+                  key={o.id}
+                  className="cursor-pointer"
+                  onClick={() => setSelectedOrderId(o.id)}
+                >
+                  <TableCell className="font-medium">{o.order_ref || "—"}</TableCell>
+                  <TableCell>{o.platforms?.name || "—"}</TableCell>
+                  <TableCell>{o.events?.match_code || "—"}</TableCell>
+                  <TableCell>{o.category}</TableCell>
+                  <TableCell className="text-right">{o.quantity}</TableCell>
+                  <TableCell className="text-right">£{Number(o.sale_price).toFixed(2)}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(o.linkedCount || 0) > 0 ? `£${(o.linkedCost || 0).toFixed(2)}` : 
+                      <span className="text-xs text-warning">No cost</span>
+                    }
+                  </TableCell>
+                  <TableCell className={`text-right font-medium ${(o.linkedCount || 0) > 0 ? (profit >= 0 ? "text-success" : "text-destructive") : "text-muted-foreground"}`}>
+                    {(o.linkedCount || 0) > 0 ? `${profit >= 0 ? "+" : ""}£${profit.toFixed(2)}` : "—"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={statusColor[o.status] || ""}>{o.status}</Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{format(new Date(o.order_date), "dd MMM yy")}</TableCell>
+                </TableRow>
+              );
+            })}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">No orders found</TableCell>
+                <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">No orders found</TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+
+      <OrderDetailSheet
+        orderId={selectedOrderId}
+        onClose={() => setSelectedOrderId(null)}
+        onUpdated={load}
+      />
     </div>
   );
 }
