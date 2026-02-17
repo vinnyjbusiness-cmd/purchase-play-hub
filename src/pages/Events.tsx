@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,7 @@ interface EventWithPL {
 }
 
 export default function Events() {
+  const navigate = useNavigate();
   const [events, setEvents] = useState<EventWithPL[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -113,7 +115,7 @@ export default function Events() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((event) => (
-          <Card key={event.id} className="hover:shadow-md transition-shadow">
+          <Card key={event.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate(`/events/${event.id}`)}>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <Badge variant="secondary" className="text-xs">{event.match_code}</Badge>
