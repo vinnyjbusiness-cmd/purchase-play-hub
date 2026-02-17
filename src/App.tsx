@@ -14,6 +14,7 @@ import Orders from "./pages/Orders";
 import Purchases from "./pages/Purchases";
 import Finance from "./pages/Finance";
 import Reconciliation from "./pages/Reconciliation";
+import EventDetail from "./pages/EventDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -61,6 +62,7 @@ const App = () => (
             >
               <Route path="/" element={<Dashboard />} />
               <Route path="/events" element={<Events />} />
+              <Route path="/events/:id" element={<EventDetail />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/purchases" element={<Purchases />} />
               <Route path="/finance" element={<Finance />} />

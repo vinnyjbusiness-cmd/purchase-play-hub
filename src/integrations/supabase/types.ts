@@ -186,6 +186,7 @@ export type Database = {
           notes: string | null
           order_date: string
           order_ref: string | null
+          payment_received: boolean
           platform_id: string | null
           quantity: number
           sale_price: number
@@ -206,6 +207,7 @@ export type Database = {
           notes?: string | null
           order_date?: string
           order_ref?: string | null
+          payment_received?: boolean
           platform_id?: string | null
           quantity?: number
           sale_price: number
@@ -226,6 +228,7 @@ export type Database = {
           notes?: string | null
           order_date?: string
           order_ref?: string | null
+          payment_received?: boolean
           platform_id?: string | null
           quantity?: number
           sale_price?: number
@@ -359,6 +362,7 @@ export type Database = {
           status: Database["public"]["Enums"]["purchase_status"]
           supplier_id: string
           supplier_order_id: string | null
+          supplier_paid: boolean
           total_cost: number | null
           total_cost_gbp: number | null
           unit_cost: number
@@ -378,6 +382,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["purchase_status"]
           supplier_id: string
           supplier_order_id?: string | null
+          supplier_paid?: boolean
           total_cost?: number | null
           total_cost_gbp?: number | null
           unit_cost: number
@@ -397,6 +402,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["purchase_status"]
           supplier_id?: string
           supplier_order_id?: string | null
+          supplier_paid?: boolean
           total_cost?: number | null
           total_cost_gbp?: number | null
           unit_cost?: number
