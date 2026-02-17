@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search } from "lucide-react";
 import { format } from "date-fns";
+import FilterSelect from "@/components/FilterSelect";
 
 interface LedgerEntry {
   id: string;
@@ -14,6 +15,9 @@ interface LedgerEntry {
   currency: string;
   amount_gbp: number;
   transaction_date: string;
+  event_id: string | null;
+  platform_id: string | null;
+  supplier_id: string | null;
 }
 
 const typeColor: Record<string, string> = {
@@ -29,6 +33,8 @@ const typeColor: Record<string, string> = {
 export default function Finance() {
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState("all");
+  const [filterCurrency, setFilterCurrency] = useState("all");
 
   useEffect(() => {
     supabase
@@ -38,11 +44,14 @@ export default function Finance() {
       .then(({ data }) => setEntries(data || []));
   }, []);
 
-  const filtered = entries.filter(
-    (e) =>
-      e.description.toLowerCase().includes(search.toLowerCase()) ||
-      e.transaction_type.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = entries.filter((e) => {
+    if (filterType !== "all" && e.transaction_type !== filterType) return false;
+    if (filterCurrency !== "all" && e.currency !== filterCurrency) return false;
+    if (search) {
+      return e.description.toLowerCase().includes(search.toLowerCase()) || e.transaction_type.toLowerCase().includes(search.toLowerCase());
+    }
+    return true;
+  });
 
   const totalIn = filtered.filter((e) => e.amount_gbp > 0).reduce((s, e) => s + e.amount_gbp, 0);
   const totalOut = filtered.filter((e) => e.amount_gbp < 0).reduce((s, e) => s + e.amount_gbp, 0);
@@ -51,27 +60,48 @@ export default function Finance() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Finance</h1>
-        <p className="text-muted-foreground">Transaction ledger and financial overview</p>
+        <p className="text-muted-foreground">{filtered.length} transaction{filtered.length !== 1 ? "s" : ""} in ledger</p>
       </div>
 
-      <div className="flex gap-4">
-        <div className="rounded-lg border bg-card p-4 flex-1">
+      <div className="grid grid-cols-3 gap-4">
+        <div className="rounded-lg border bg-card p-4">
           <p className="text-sm text-muted-foreground">Money In</p>
-          <p className="text-xl font-bold text-success">£{totalIn.toFixed(2)}</p>
+          <p className="text-xl font-bold text-success">£{totalIn.toLocaleString("en-GB", { minimumFractionDigits: 2 })}</p>
         </div>
-        <div className="rounded-lg border bg-card p-4 flex-1">
+        <div className="rounded-lg border bg-card p-4">
           <p className="text-sm text-muted-foreground">Money Out</p>
-          <p className="text-xl font-bold text-destructive">£{Math.abs(totalOut).toFixed(2)}</p>
+          <p className="text-xl font-bold text-destructive">£{Math.abs(totalOut).toLocaleString("en-GB", { minimumFractionDigits: 2 })}</p>
         </div>
-        <div className="rounded-lg border bg-card p-4 flex-1">
-          <p className="text-sm text-muted-foreground">Net</p>
-          <p className="text-xl font-bold">£{(totalIn + totalOut).toFixed(2)}</p>
+        <div className="rounded-lg border bg-card p-4">
+          <p className="text-sm text-muted-foreground">Net P&L</p>
+          <p className={`text-xl font-bold ${totalIn + totalOut >= 0 ? "text-success" : "text-destructive"}`}>
+            £{(totalIn + totalOut).toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+          </p>
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search transactions..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Search</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search transactions..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
+          </div>
+        </div>
+        <FilterSelect label="Type" value={filterType} onValueChange={setFilterType} options={[
+          { value: "sale", label: "Sale" },
+          { value: "purchase", label: "Purchase" },
+          { value: "fee", label: "Fee" },
+          { value: "refund", label: "Refund" },
+          { value: "payout", label: "Payout" },
+          { value: "supplier_payment", label: "Supplier Payment" },
+          { value: "adjustment", label: "Adjustment" },
+        ]} />
+        <FilterSelect label="Currency" value={filterCurrency} onValueChange={setFilterCurrency} options={[
+          { value: "GBP", label: "GBP" },
+          { value: "USD", label: "USD" },
+          { value: "EUR", label: "EUR" },
+        ]} />
       </div>
 
       <div className="rounded-lg border">
