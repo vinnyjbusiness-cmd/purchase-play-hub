@@ -28,7 +28,6 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
     category: "Cat 1",
     quantity: "1",
     unit_cost: "",
-    device_type: "",
     notes: "",
   });
 
@@ -52,7 +51,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
       if (isTrade && form.supplier_name.trim()) noteParts.push(`Name: ${form.supplier_name.trim()}`);
       if (isTrade && form.supplier_number.trim()) noteParts.push(`Phone: ${form.supplier_number.trim()}`);
       if (isWebsites && form.supplier_name.trim()) noteParts.push(`Website: ${form.supplier_name.trim()}`);
-      if (form.device_type.trim()) noteParts.push(`Device: ${form.device_type.trim()}`);
+      if (form.notes.trim()) noteParts.push(form.notes.trim());
 
       const { error } = await supabase.from("purchases").insert({
         supplier_id: form.supplier_id,
@@ -78,7 +77,6 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
         category: "Cat 1",
         quantity: "1",
         unit_cost: "",
-        device_type: "",
         notes: "",
       });
       setOpen(false);
@@ -172,7 +170,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Quantity *</Label>
               <Input type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
@@ -180,18 +178,6 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             <div className="space-y-1.5">
               <Label>Cost Per Ticket *</Label>
               <Input type="number" step="0.01" min="0" value={form.unit_cost} onChange={(e) => setForm({ ...form, unit_cost: e.target.value })} placeholder="0.00" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Device Type</Label>
-              <Select value={form.device_type} onValueChange={(v) => setForm({ ...form, device_type: v })}>
-                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mobile">Mobile</SelectItem>
-                  <SelectItem value="desktop">Desktop</SelectItem>
-                  <SelectItem value="tablet">Tablet</SelectItem>
-                  <SelectItem value="physical">Physical</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
           </div>
 

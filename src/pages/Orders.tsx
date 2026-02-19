@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Zap, Copy, Check, Download, CheckCircle2 } from "lucide-react";
+import { Search, Smartphone, Copy, Check, Download, Zap, CheckCircle2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours } from "date-fns";
 import { toast } from "sonner";
@@ -387,7 +387,7 @@ export default function Orders() {
                       <TableHead className="text-[10px] uppercase tracking-wider w-[50px]">Cat</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">Qty</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-right w-[70px]">Sale</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider w-[80px]">Notes</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-center w-[60px]">Device</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-center w-[30px]">📞</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[80px]">Status</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[75px]">Sold</TableHead>
@@ -433,8 +433,23 @@ export default function Orders() {
                           <TableCell className="text-right font-mono py-2">
                             £{Number(o.sale_price).toFixed(0)}
                           </TableCell>
-                          <TableCell className="py-2 text-muted-foreground text-xs max-w-[120px] truncate" title={[o.device_type, o.notes].filter(Boolean).join(" · ") || ""}>
-                            {[o.device_type === 'ios' ? '📱 iOS' : o.device_type === 'android' ? '📱 Android' : null, o.notes].filter(Boolean).join(" · ") || <span className="text-muted-foreground/40">—</span>}
+                          <TableCell className="py-2">
+                            <div className="flex gap-0.5 justify-center">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); updateField(o.id, 'device_type', o.device_type === 'ios' ? null : 'ios'); }}
+                                className={`p-1 rounded transition-colors ${o.device_type === 'ios' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/30 hover:text-muted-foreground'}`}
+                                title="iOS"
+                              >
+                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); updateField(o.id, 'device_type', o.device_type === 'android' ? null : 'android'); }}
+                                className={`p-1 rounded transition-colors ${o.device_type === 'android' ? 'bg-success/10 text-success' : 'text-muted-foreground/30 hover:text-muted-foreground'}`}
+                                title="Android"
+                              >
+                                <Smartphone className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </TableCell>
                           <TableCell className="text-center py-2">
                             <Checkbox
