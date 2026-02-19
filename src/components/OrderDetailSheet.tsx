@@ -9,6 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Trash2, ArrowRight, Package, TrendingUp, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
@@ -45,6 +46,7 @@ interface OrderInfo {
   net_received: number;
   status: string;
   delivery_type: string;
+  delivery_status: string | null;
   currency: string;
   order_date: string;
   notes: string | null;
@@ -182,7 +184,58 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
 
             <Separator />
 
-            {/* P&L breakdown */}
+            {/* Status & Delivery controls */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Order Status</p>
+                <Select
+                  value={order.status}
+                  onValueChange={async (val) => {
+                    const { error } = await supabase.from("orders").update({ status: val as any }).eq("id", order.id);
+                    if (error) { toast.error(error.message); return; }
+                    toast.success("Status updated");
+                    loadOrder();
+                    onUpdated();
+                  }}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="fulfilled">Fulfilled</SelectItem>
+                    <SelectItem value="delivered">Delivered</SelectItem>
+                    <SelectItem value="refunded">Refunded</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Delivery Status</p>
+                <Select
+                  value={order.delivery_status || "pending"}
+                  onValueChange={async (val) => {
+                    const { error } = await supabase.from("orders").update({ delivery_status: val }).eq("id", order.id);
+                    if (error) { toast.error(error.message); return; }
+                    toast.success("Delivery status updated");
+                    loadOrder();
+                    onUpdated();
+                  }}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="awaiting_delivery">Awaiting Delivery</SelectItem>
+                    <SelectItem value="delivered">Delivered</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Separator />
             <div>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 {profit >= 0 ? <TrendingUp className="h-4 w-4 text-success" /> : <TrendingDown className="h-4 w-4 text-destructive" />}
