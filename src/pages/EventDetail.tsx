@@ -7,9 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, CalendarDays, TrendingUp, TrendingDown, DollarSign, CreditCard, Package, ShoppingCart } from "lucide-react";
+import { ArrowLeft, CalendarDays, TrendingUp, TrendingDown, DollarSign, CreditCard, Package, ShoppingCart, BarChart3 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 
 interface EventRow {
   id: string;
@@ -214,13 +216,145 @@ export default function EventDetail() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="sales" className="space-y-4">
+      <Tabs defaultValue="finance" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="finance">Finance</TabsTrigger>
           <TabsTrigger value="sales">Sales ({orders.length})</TabsTrigger>
           <TabsTrigger value="purchases">Purchases ({purchases.length})</TabsTrigger>
           <TabsTrigger value="suppliers">By Supplier</TabsTrigger>
           <TabsTrigger value="platforms">By Platform</TabsTrigger>
         </TabsList>
+
+        {/* Finance Tab */}
+        <TabsContent value="finance" className="space-y-6">
+          {/* Cash Flow Summary */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" /> Cash Flow Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Gross Revenue</span>
+                  <span className="font-medium">£{totalRevenue.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Platform Fees</span>
+                  <span className="font-medium text-destructive">-£{totalFees.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Net Revenue</span>
+                  <span className="font-medium">£{(totalRevenue - totalFees).toFixed(2)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total Purchase Costs</span>
+                  <span className="font-medium text-destructive">-£{totalCosts.toFixed(2)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-base font-bold">
+                  <span>Net Profit</span>
+                  <span className={profit >= 0 ? "text-success" : "text-destructive"}>
+                    {profit >= 0 ? "+" : ""}£{profit.toFixed(2)}
+                  </span>
+                </div>
+                {totalRevenue > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Margin: {((profit / totalRevenue) * 100).toFixed(1)}%
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Money Owed Grid */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {/* Owed TO suppliers */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-destructive flex items-center gap-1.5">
+                  <CreditCard className="h-3.5 w-3.5" /> You Owe (Suppliers)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {Object.values(supplierSummary).map((s) => (
+                  <div key={s.name} className="space-y-1.5">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium">{s.name}</span>
+                      <span className={s.owed > 0 ? "text-destructive font-medium" : "text-success font-medium"}>
+                        {s.owed > 0 ? `£${s.owed.toFixed(2)} owed` : "✓ Paid"}
+                      </span>
+                    </div>
+                    <Progress value={s.total > 0 ? (s.paid / s.total) * 100 : 100} className="h-1.5" />
+                    <p className="text-xs text-muted-foreground">
+                      £{s.paid.toFixed(2)} of £{s.total.toFixed(2)} paid
+                    </p>
+                  </div>
+                ))}
+                {Object.keys(supplierSummary).length === 0 && (
+                  <p className="text-sm text-muted-foreground">No supplier costs</p>
+                )}
+                <Separator />
+                <div className="flex justify-between text-sm font-bold">
+                  <span>Total Outstanding</span>
+                  <span className="text-destructive">£{owedToSuppliers.toFixed(2)}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Owed BY platforms */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-success flex items-center gap-1.5">
+                  <DollarSign className="h-3.5 w-3.5" /> Owed to You (Platforms)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {Object.values(platformSummary).map((p) => (
+                  <div key={p.name} className="space-y-1.5">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium">{p.name}</span>
+                      <span className={p.owed > 0 ? "text-warning font-medium" : "text-success font-medium"}>
+                        {p.owed > 0 ? `£${p.owed.toFixed(2)} pending` : "✓ Received"}
+                      </span>
+                    </div>
+                    <Progress value={p.total > 0 ? (p.received / p.total) * 100 : 100} className="h-1.5" />
+                    <p className="text-xs text-muted-foreground">
+                      £{p.received.toFixed(2)} of £{p.total.toFixed(2)} received
+                    </p>
+                  </div>
+                ))}
+                {Object.keys(platformSummary).length === 0 && (
+                  <p className="text-sm text-muted-foreground">No sales yet</p>
+                )}
+                <Separator />
+                <div className="flex justify-between text-sm font-bold">
+                  <span>Total Pending</span>
+                  <span className="text-warning">£{owedToYou.toFixed(2)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Net Position */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Net Cash Position</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Money owed to you minus money you owe</p>
+                </div>
+                <div className="text-right">
+                  <p className={`text-2xl font-bold ${(owedToYou - owedToSuppliers) >= 0 ? "text-success" : "text-destructive"}`}>
+                    {(owedToYou - owedToSuppliers) >= 0 ? "+" : ""}£{(owedToYou - owedToSuppliers).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Sales Tab */}
         <TabsContent value="sales">
