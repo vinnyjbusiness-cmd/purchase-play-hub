@@ -5,7 +5,7 @@ import {
   ShoppingCart,
   Package,
   Wallet,
-  AlertTriangle,
+  HeartPulse,
   Globe,
   Sun,
   Moon,
@@ -23,7 +23,7 @@ const navItems = [
   { to: "/purchases", icon: Package, label: "Purchases" },
   { to: "/platforms", icon: Globe, label: "Platforms" },
   { to: "/finance", icon: Wallet, label: "Finance" },
-  { to: "/reconciliation", icon: AlertTriangle, label: "Reconciliation" },
+  { to: "/health", icon: HeartPulse, label: "Health" },
 ];
 
 export default function AppSidebar() {
