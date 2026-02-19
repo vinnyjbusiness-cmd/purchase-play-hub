@@ -17,6 +17,7 @@ import {
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import ChangePasswordDialog from "./ChangePasswordDialog";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -84,6 +85,7 @@ export default function AppSidebar() {
           {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           {theme === "light" ? "Dark Mode" : "Light Mode"}
         </button>
+        <ChangePasswordDialog />
         <button
           onClick={handleLogout}
           className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"

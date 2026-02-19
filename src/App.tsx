@@ -19,6 +19,7 @@ import Platforms from "./pages/Platforms";
 import EventDetail from "./pages/EventDetail";
 import Team from "./pages/Team";
 import Cashflow from "./pages/Cashflow";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -57,6 +58,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route
               element={
                 <AuthGate>
