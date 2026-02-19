@@ -239,6 +239,7 @@ export default function Finance() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Supplier</TableHead>
+                        <TableHead>Name</TableHead>
                         <TableHead>Details</TableHead>
                         <TableHead>Category</TableHead>
                         <TableHead>Qty</TableHead>
@@ -251,8 +252,9 @@ export default function Finance() {
                       {items.map(p => (
                         <TableRow key={p.id}>
                           <TableCell className="font-medium">{supplierMap[p.supplier_id]?.name || "Unknown"}</TableCell>
+                          <TableCell className="text-sm">{getSupplierDetail(p.notes) || "—"}</TableCell>
                           <TableCell className="text-muted-foreground text-sm">
-                            {getSupplierDetail(p.notes) || p.supplier_order_id || "—"}
+                            {p.supplier_order_id || "—"}
                           </TableCell>
                           <TableCell>{p.category}</TableCell>
                           <TableCell>{p.quantity}</TableCell>
