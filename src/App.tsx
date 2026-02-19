@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { OrgProvider } from "./hooks/useOrg";
 import AppLayout from "./components/AppLayout";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -16,6 +17,8 @@ import Finance from "./pages/Finance";
 import Reconciliation from "./pages/Reconciliation";
 import Platforms from "./pages/Platforms";
 import EventDetail from "./pages/EventDetail";
+import Team from "./pages/Team";
+import Cashflow from "./pages/Cashflow";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -57,7 +60,9 @@ const App = () => (
             <Route
               element={
                 <AuthGate>
-                  <AppLayout />
+                  <OrgProvider>
+                    <AppLayout />
+                  </OrgProvider>
                 </AuthGate>
               }
             >
@@ -68,7 +73,9 @@ const App = () => (
               <Route path="/purchases" element={<Purchases />} />
               <Route path="/platforms" element={<Platforms />} />
               <Route path="/finance" element={<Finance />} />
+              <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/health" element={<Reconciliation />} />
+              <Route path="/team" element={<Team />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
