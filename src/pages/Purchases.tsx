@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Scissors } from "lucide-react";
+import { Search, Scissors, Phone } from "lucide-react";
 import { format } from "date-fns";
 import FilterSelect from "@/components/FilterSelect";
 import AddPurchaseDialog from "@/components/AddPurchaseDialog";
@@ -196,15 +196,15 @@ export default function Purchases() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-[10px] uppercase tracking-wider">Source</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Contact</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Phone</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Supplier Name</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]"><Phone className="h-3.5 w-3.5 mx-auto" /></TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Order ID</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-right">Qty</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-right">Cost/Ticket</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-right">Total</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Paid</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Status</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Notes</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Date</TableHead>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
@@ -214,7 +214,7 @@ export default function Purchases() {
                       <TableRow key={p.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedPurchaseId(p.id)}>
                         <TableCell className="font-medium">{p.suppliers?.name || "—"}</TableCell>
                         <TableCell>{p.suppliers?.contact_name || "—"}</TableCell>
-                        <TableCell className="text-muted-foreground text-xs">{p.suppliers?.contact_phone || "—"}</TableCell>
+                        <TableCell className="text-center text-xs text-muted-foreground">{p.suppliers?.contact_phone || "—"}</TableCell>
                         <TableCell className="font-mono text-xs">{p.supplier_order_id || "—"}</TableCell>
                         <TableCell>{p.category}</TableCell>
                         <TableCell className="text-right">{p.quantity}</TableCell>
@@ -225,12 +225,8 @@ export default function Purchases() {
                             {p.supplier_paid ? "Paid" : "Unpaid"}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={statusColor[p.status] || ""}>
-                            {p.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-xs">{format(new Date(p.purchase_date), "dd MMM yy")}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs max-w-[120px] truncate" title={p.notes || ""}>{p.notes || "—"}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{format(new Date(p.purchase_date), "dd MMM yy, HH:mm")}</TableCell>
                         <TableCell>
                           {p.quantity > 1 && (
                             <Button
