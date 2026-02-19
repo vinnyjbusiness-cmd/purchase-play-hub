@@ -33,7 +33,8 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
   });
 
   const selectedSupplier = suppliers.find((s) => s.id === form.supplier_id);
-  const isP2P = selectedSupplier?.name?.toLowerCase().includes("p2p") || selectedSupplier?.name?.toLowerCase().includes("whatsapp");
+  const isTrade = selectedSupplier?.name?.toLowerCase() === "trade";
+  const isWebsites = selectedSupplier?.name?.toLowerCase() === "websites";
 
   useEffect(() => {
     if (open) {
@@ -48,8 +49,9 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
     setLoading(true);
     try {
       const noteParts: string[] = [];
-      if (isP2P && form.supplier_name.trim()) noteParts.push(`Supplier: ${form.supplier_name.trim()}`);
-      if (isP2P && form.supplier_number.trim()) noteParts.push(`Phone: ${form.supplier_number.trim()}`);
+      if (isTrade && form.supplier_name.trim()) noteParts.push(`Name: ${form.supplier_name.trim()}`);
+      if (isTrade && form.supplier_number.trim()) noteParts.push(`Phone: ${form.supplier_number.trim()}`);
+      if (isWebsites && form.supplier_name.trim()) noteParts.push(`Website: ${form.supplier_name.trim()}`);
       if (form.device_type.trim()) noteParts.push(`Device: ${form.device_type.trim()}`);
 
       const { error } = await supabase.from("purchases").insert({
@@ -119,10 +121,10 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             </div>
           </div>
 
-          {isP2P && (
+          {isTrade && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Supplier Name</Label>
+                <Label>Name</Label>
                 <Input
                   value={form.supplier_name}
                   onChange={(e) => setForm({ ...form, supplier_name: e.target.value })}
@@ -131,7 +133,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Supplier Number</Label>
+                <Label>Number</Label>
                 <Input
                   value={form.supplier_number}
                   onChange={(e) => setForm({ ...form, supplier_number: e.target.value })}
@@ -139,6 +141,18 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
                   maxLength={20}
                 />
               </div>
+            </div>
+          )}
+
+          {isWebsites && (
+            <div className="space-y-1.5">
+              <Label>Website Name</Label>
+              <Input
+                value={form.supplier_name}
+                onChange={(e) => setForm({ ...form, supplier_name: e.target.value })}
+                placeholder="e.g. Tixstock, FanPass"
+                maxLength={100}
+              />
             </div>
           )}
 
