@@ -6,6 +6,7 @@ import {
   Package,
   Wallet,
   AlertTriangle,
+  Globe,
   Sun,
   Moon,
   LogOut,
@@ -20,6 +21,7 @@ const navItems = [
   { to: "/events", icon: CalendarDays, label: "Events" },
   { to: "/orders", icon: ShoppingCart, label: "Orders" },
   { to: "/purchases", icon: Package, label: "Purchases" },
+  { to: "/platforms", icon: Globe, label: "Platforms" },
   { to: "/finance", icon: Wallet, label: "Finance" },
   { to: "/reconciliation", icon: AlertTriangle, label: "Reconciliation" },
 ];

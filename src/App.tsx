@@ -14,6 +14,7 @@ import Orders from "./pages/Orders";
 import Purchases from "./pages/Purchases";
 import Finance from "./pages/Finance";
 import Reconciliation from "./pages/Reconciliation";
+import Platforms from "./pages/Platforms";
 import EventDetail from "./pages/EventDetail";
 import NotFound from "./pages/NotFound";
 
@@ -65,6 +66,7 @@ const App = () => (
               <Route path="/events/:id" element={<EventDetail />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/purchases" element={<Purchases />} />
+              <Route path="/platforms" element={<Platforms />} />
               <Route path="/finance" element={<Finance />} />
               <Route path="/reconciliation" element={<Reconciliation />} />
             </Route>
