@@ -3,12 +3,30 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Phone, Mail, Smartphone, CheckCircle2, Circle } from "lucide-react";
+import { Search, Phone, Mail, Smartphone, Copy, Check } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours } from "date-fns";
+import { toast } from "sonner";
 import FilterSelect from "@/components/FilterSelect";
 import AddOrderDialog from "@/components/AddOrderDialog";
 import OrderDetailSheet from "@/components/OrderDetailSheet";
+
+const CopyText = ({ text, className = "" }: { text: string; className?: string }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success("Copied!");
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button onClick={handleCopy} className={`group inline-flex items-center gap-1 hover:text-foreground transition-colors ${className}`} title="Click to copy">
+      <span className="truncate">{text}</span>
+      {copied ? <Check className="h-3 w-3 text-success shrink-0" /> : <Copy className="h-3 w-3 opacity-0 group-hover:opacity-60 shrink-0" />}
+    </button>
+  );
+};
 
 interface Order {
   id: string;
@@ -230,16 +248,17 @@ export default function Orders() {
                 <Table>
                   <TableHeader>
                     <TableRow className="text-[10px] uppercase tracking-wider">
-                      <TableHead className="text-[10px]">Ref</TableHead>
+                      <TableHead className="text-[10px]">Order #</TableHead>
                       <TableHead className="text-[10px]">Platform</TableHead>
+                      <TableHead className="text-[10px] text-center">🏳️</TableHead>
                       <TableHead className="text-[10px]">Customer Name</TableHead>
                       <TableHead className="text-[10px]">Phone</TableHead>
                       <TableHead className="text-[10px]">Email</TableHead>
                       <TableHead className="text-[10px]">Cat</TableHead>
                       <TableHead className="text-[10px]">Qty</TableHead>
                       <TableHead className="text-[10px] text-right">Sale</TableHead>
-                      <TableHead className="text-[10px]">Device</TableHead>
-                      <TableHead className="text-[10px]">Contacted</TableHead>
+                      <TableHead className="text-[10px] text-center">Device</TableHead>
+                      <TableHead className="text-[10px] text-center">Contacted</TableHead>
                       <TableHead className="text-[10px]">Delivery</TableHead>
                       <TableHead className="text-[10px]">Date Sold</TableHead>
                       <TableHead className="text-[10px]">Deadline</TableHead>
@@ -255,26 +274,24 @@ export default function Orders() {
                           className="cursor-pointer hover:bg-muted/50 text-xs"
                           onClick={() => setSelectedOrderId(o.id)}
                         >
-                          <TableCell className="font-mono font-bold">{o.order_ref || "—"}</TableCell>
+                          <TableCell className="font-mono font-bold">
+                            {o.order_ref ? <CopyText text={o.order_ref} className="font-mono font-bold text-foreground" /> : "—"}
+                          </TableCell>
                           <TableCell>{o.platforms?.name || "—"}</TableCell>
+                          <TableCell className="text-center text-lg">
+                            {flag || "—"}
+                          </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-1.5">
-                              {flag && <span className="text-base">{flag}</span>}
-                              <span className="font-medium">{o.buyer_name || "—"}</span>
-                            </div>
+                            <span className="font-medium">{o.buyer_name || "—"}</span>
                           </TableCell>
                           <TableCell>
                             {o.buyer_phone ? (
-                              <span className="flex items-center gap-1 text-muted-foreground text-xs">
-                                <Phone className="h-3 w-3" />{o.buyer_phone}
-                              </span>
+                              <CopyText text={o.buyer_phone} className="text-muted-foreground text-xs" />
                             ) : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell>
                             {o.buyer_email ? (
-                              <span className="flex items-center gap-1 text-muted-foreground truncate max-w-[180px] text-xs">
-                                <Mail className="h-3 w-3" />{o.buyer_email}
-                              </span>
+                              <CopyText text={o.buyer_email} className="text-muted-foreground text-xs max-w-[160px]" />
                             ) : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell>{o.category}</TableCell>
