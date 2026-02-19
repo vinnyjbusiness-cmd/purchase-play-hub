@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +25,7 @@ interface Purchase {
   notes: string | null;
   event_id: string;
   suppliers: { name: string; contact_name: string | null; contact_phone: string | null } | null;
-  events: { match_code: string; home_team: string; away_team: string } | null;
+  events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
 }
 
 const statusColor: Record<string, string> = {
@@ -47,15 +47,28 @@ export default function Purchases() {
   const load = useCallback(() => {
     supabase
       .from("purchases")
-      .select("*, suppliers(name, contact_name, contact_phone), events(match_code, home_team, away_team)")
+      .select("*, suppliers(name, contact_name, contact_phone), events(match_code, home_team, away_team, event_date)")
       .order("purchase_date", { ascending: false })
       .then(({ data }) => setPurchases((data as any) || []));
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const supplierOptions = [...new Set(purchases.map((p) => p.suppliers?.name).filter(Boolean))].map((n) => ({ value: n!, label: n! }));
-  const eventOptions = [...new Set(purchases.map((p) => p.events?.match_code).filter(Boolean))].map((c) => ({ value: c!, label: c! }));
+  const supplierOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    purchases.forEach(p => {
+      if (p.suppliers?.name) seen.set(p.suppliers.name, p.suppliers.name);
+    });
+    return [...seen.entries()].map(([value, label]) => ({ value, label }));
+  }, [purchases]);
+
+  const eventOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    purchases.forEach(p => {
+      if (p.events) seen.set(p.events.match_code, `${p.events.match_code} — ${p.events.home_team} vs ${p.events.away_team}`);
+    });
+    return [...seen.entries()].map(([value, label]) => ({ value, label }));
+  }, [purchases]);
 
   const filtered = purchases.filter((p) => {
     if (filterSupplier !== "all" && p.suppliers?.name !== filterSupplier) return false;
@@ -75,15 +88,31 @@ export default function Purchases() {
     return true;
   });
 
+  // Group by event
+  const grouped = useMemo(() => {
+    const map: Record<string, { event: Purchase["events"]; eventId: string; purchases: Purchase[] }> = {};
+    filtered.forEach(p => {
+      const key = p.event_id;
+      if (!map[key]) map[key] = { event: p.events, eventId: key, purchases: [] };
+      map[key].purchases.push(p);
+    });
+    return Object.values(map).sort((a, b) => {
+      const da = a.event?.event_date || "";
+      const db = b.event?.event_date || "";
+      return da.localeCompare(db);
+    });
+  }, [filtered]);
+
   const totalCost = filtered.reduce((s, p) => s + Number(p.total_cost || 0), 0);
+  const totalQtyAll = filtered.reduce((s, p) => s + p.quantity, 0);
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Purchases</h1>
-          <p className="text-muted-foreground">
-            {filtered.length} purchase{filtered.length !== 1 ? "s" : ""} · Total: £{totalCost.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+          <p className="text-muted-foreground text-sm">
+            {filtered.length} purchase{filtered.length !== 1 ? "s" : ""} · {totalQtyAll} tickets across {grouped.length} game{grouped.length !== 1 ? "s" : ""} · Total: £{totalCost.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
           </p>
         </div>
         <AddPurchaseDialog onCreated={load} />
@@ -98,7 +127,7 @@ export default function Purchases() {
           </div>
         </div>
         <FilterSelect label="Source" value={filterSupplier} onValueChange={setFilterSupplier} options={supplierOptions} />
-        <FilterSelect label="Event" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
+        <FilterSelect label="Game" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
         <FilterSelect label="Status" value={filterStatus} onValueChange={setFilterStatus} options={[
           { value: "pending", label: "Pending" },
           { value: "confirmed", label: "Confirmed" },
@@ -107,68 +136,122 @@ export default function Purchases() {
         ]} />
       </div>
 
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Source</TableHead>
-              <TableHead>Contact</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Order ID</TableHead>
-              <TableHead>Event</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead className="text-right">Qty</TableHead>
-              <TableHead className="text-right">Cost/Ticket</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead>Paid</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((p) => (
-              <TableRow key={p.id} className="cursor-pointer" onClick={() => setSelectedPurchaseId(p.id)}>
-                <TableCell className="font-medium">{p.suppliers?.name || "—"}</TableCell>
-                <TableCell className="font-medium">
-                  {p.suppliers?.contact_name || "—"}
-                </TableCell>
-                <TableCell className="text-muted-foreground text-xs">
-                  {p.suppliers?.contact_phone || "—"}
-                </TableCell>
-                <TableCell>{p.supplier_order_id || "—"}</TableCell>
-                <TableCell>{p.events?.match_code || "—"}</TableCell>
-                <TableCell>{p.category}</TableCell>
-                <TableCell className="text-right">{p.quantity}</TableCell>
-                <TableCell className="text-right">£{Number(p.unit_cost).toFixed(2)}</TableCell>
-                <TableCell className="text-right font-medium">£{Number(p.total_cost).toFixed(2)}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={p.supplier_paid ? "bg-success/10 text-success border-success/20" : "bg-warning/10 text-warning border-warning/20"}>
-                    {p.supplier_paid ? "Paid" : "Unpaid"}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">{format(new Date(p.purchase_date), "dd MMM yy")}</TableCell>
-                <TableCell>
-                  {p.quantity > 1 && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0"
-                      title="Split purchase"
-                      onClick={(e) => { e.stopPropagation(); setSplitPurchase(p); }}
-                    >
-                      <Scissors className="h-3.5 w-3.5" />
-                    </Button>
+      {/* Grouped by game */}
+      <div className="space-y-5">
+        {grouped.length === 0 && (
+          <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No purchases found</div>
+        )}
+        {grouped.map(group => {
+          const groupTotal = group.purchases.reduce((s, p) => s + Number(p.total_cost || 0), 0);
+          const groupQty = group.purchases.reduce((s, p) => s + p.quantity, 0);
+          const unpaidCount = group.purchases.filter(p => !p.supplier_paid).length;
+          const paidCount = group.purchases.filter(p => p.supplier_paid).length;
+
+          return (
+            <div key={group.eventId} className="rounded-xl border bg-card overflow-hidden shadow-sm">
+              {/* Game header */}
+              <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/40">
+                <div className="flex items-center gap-4">
+                  <div>
+                    <p className="font-bold text-base">
+                      {group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event"}
+                    </p>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <span className="text-xs text-muted-foreground font-mono">{group.event?.match_code}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {group.event?.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-5">
+                  <div className="text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Purchases</p>
+                    <p className="text-sm font-mono font-bold">{group.purchases.length}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tickets</p>
+                    <p className="text-sm font-mono font-bold">{groupQty}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total Cost</p>
+                    <p className="text-sm font-mono font-bold">£{groupTotal.toLocaleString("en-GB", { minimumFractionDigits: 2 })}</p>
+                  </div>
+                  {paidCount > 0 && (
+                    <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">
+                      {paidCount} paid
+                    </Badge>
                   )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {filtered.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={12} className="text-center py-12 text-muted-foreground">No purchases found</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+                  {unpaidCount > 0 && (
+                    <Badge variant="outline" className="text-[10px] font-bold uppercase bg-warning/10 text-warning border-warning/20">
+                      {unpaidCount} unpaid
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* Purchases table */}
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Source</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Contact</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Phone</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Order ID</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-right">Qty</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-right">Cost/Ticket</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-right">Total</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Paid</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Status</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Date</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {group.purchases.map((p) => (
+                      <TableRow key={p.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedPurchaseId(p.id)}>
+                        <TableCell className="font-medium">{p.suppliers?.name || "—"}</TableCell>
+                        <TableCell>{p.suppliers?.contact_name || "—"}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{p.suppliers?.contact_phone || "—"}</TableCell>
+                        <TableCell className="font-mono text-xs">{p.supplier_order_id || "—"}</TableCell>
+                        <TableCell>{p.category}</TableCell>
+                        <TableCell className="text-right">{p.quantity}</TableCell>
+                        <TableCell className="text-right">£{Number(p.unit_cost).toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-medium">£{Number(p.total_cost).toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={p.supplier_paid ? "bg-success/10 text-success border-success/20" : "bg-warning/10 text-warning border-warning/20"}>
+                            {p.supplier_paid ? "Paid" : "Unpaid"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={statusColor[p.status] || ""}>
+                            {p.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{format(new Date(p.purchase_date), "dd MMM yy")}</TableCell>
+                        <TableCell>
+                          {p.quantity > 1 && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              title="Split purchase"
+                              onClick={(e) => { e.stopPropagation(); setSplitPurchase(p); }}
+                            >
+                              <Scissors className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <PurchaseDetailSheet
