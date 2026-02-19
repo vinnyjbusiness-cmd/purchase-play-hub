@@ -177,10 +177,12 @@ export type Database = {
           buyer_phone: string | null
           buyer_ref: string | null
           category: string
+          contacted: boolean
           created_at: string
           currency: Database["public"]["Enums"]["currency_code"]
           delivery_status: string | null
           delivery_type: Database["public"]["Enums"]["delivery_type"]
+          device_type: string | null
           event_id: string
           exchange_rate: number
           fees: number
@@ -201,10 +203,12 @@ export type Database = {
           buyer_phone?: string | null
           buyer_ref?: string | null
           category?: string
+          contacted?: boolean
           created_at?: string
           currency?: Database["public"]["Enums"]["currency_code"]
           delivery_status?: string | null
           delivery_type?: Database["public"]["Enums"]["delivery_type"]
+          device_type?: string | null
           event_id: string
           exchange_rate?: number
           fees?: number
@@ -225,10 +229,12 @@ export type Database = {
           buyer_phone?: string | null
           buyer_ref?: string | null
           category?: string
+          contacted?: boolean
           created_at?: string
           currency?: Database["public"]["Enums"]["currency_code"]
           delivery_status?: string | null
           delivery_type?: Database["public"]["Enums"]["delivery_type"]
+          device_type?: string | null
           event_id?: string
           exchange_rate?: number
           fees?: number
