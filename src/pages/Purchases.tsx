@@ -7,6 +7,7 @@ import { Search } from "lucide-react";
 import { format } from "date-fns";
 import FilterSelect from "@/components/FilterSelect";
 import AddPurchaseDialog from "@/components/AddPurchaseDialog";
+import PurchaseDetailSheet from "@/components/PurchaseDetailSheet";
 
 interface Purchase {
   id: string;
@@ -15,12 +16,12 @@ interface Purchase {
   section: string | null;
   quantity: number;
   unit_cost: number;
-  fees: number;
   total_cost: number;
-  currency: string;
-  exchange_rate: number;
   status: string;
+  supplier_paid: boolean;
   purchase_date: string;
+  notes: string | null;
+  event_id: string;
   suppliers: { name: string } | null;
   events: { match_code: string; home_team: string; away_team: string } | null;
 }
@@ -32,15 +33,13 @@ const statusColor: Record<string, string> = {
   cancelled: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
-const sym = (c: string) => (c === "GBP" ? "£" : c === "USD" ? "$" : "€");
-
 export default function Purchases() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [search, setSearch] = useState("");
   const [filterSupplier, setFilterSupplier] = useState("all");
   const [filterEvent, setFilterEvent] = useState("all");
-  const [filterCurrency, setFilterCurrency] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     supabase
@@ -58,7 +57,6 @@ export default function Purchases() {
   const filtered = purchases.filter((p) => {
     if (filterSupplier !== "all" && p.suppliers?.name !== filterSupplier) return false;
     if (filterEvent !== "all" && p.events?.match_code !== filterEvent) return false;
-    if (filterCurrency !== "all" && p.currency !== filterCurrency) return false;
     if (filterStatus !== "all" && p.status !== filterStatus) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -66,7 +64,8 @@ export default function Purchases() {
         (p.supplier_order_id || "").toLowerCase().includes(q) ||
         (p.suppliers?.name || "").toLowerCase().includes(q) ||
         (p.events?.home_team || "").toLowerCase().includes(q) ||
-        (p.events?.away_team || "").toLowerCase().includes(q)
+        (p.events?.away_team || "").toLowerCase().includes(q) ||
+        (p.notes || "").toLowerCase().includes(q)
       );
     }
     return true;
@@ -94,55 +93,63 @@ export default function Purchases() {
             <Input placeholder="Search purchases..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
           </div>
         </div>
-        <FilterSelect label="Supplier" value={filterSupplier} onValueChange={setFilterSupplier} options={supplierOptions} />
+        <FilterSelect label="Source" value={filterSupplier} onValueChange={setFilterSupplier} options={supplierOptions} />
         <FilterSelect label="Event" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
-        <FilterSelect label="Currency" value={filterCurrency} onValueChange={setFilterCurrency} options={[{ value: "GBP", label: "GBP" }, { value: "USD", label: "USD" }, { value: "EUR", label: "EUR" }]} />
-        <FilterSelect label="Status" value={filterStatus} onValueChange={setFilterStatus} options={[{ value: "pending", label: "Pending" }, { value: "confirmed", label: "Confirmed" }, { value: "received", label: "Received" }, { value: "cancelled", label: "Cancelled" }]} />
+        <FilterSelect label="Status" value={filterStatus} onValueChange={setFilterStatus} options={[
+          { value: "pending", label: "Pending" },
+          { value: "confirmed", label: "Confirmed" },
+          { value: "received", label: "Received" },
+          { value: "cancelled", label: "Cancelled" },
+        ]} />
       </div>
 
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Supplier</TableHead>
-              <TableHead>Supplier Order</TableHead>
+              <TableHead>Source</TableHead>
+              <TableHead>Order ID</TableHead>
               <TableHead>Event</TableHead>
               <TableHead>Category</TableHead>
               <TableHead className="text-right">Qty</TableHead>
-              <TableHead className="text-right">Unit Cost</TableHead>
-              <TableHead className="text-right">Fees</TableHead>
+              <TableHead className="text-right">Cost/Ticket</TableHead>
               <TableHead className="text-right">Total</TableHead>
-              <TableHead>Currency</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Paid</TableHead>
               <TableHead>Date</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.map((p) => (
-              <TableRow key={p.id}>
+              <TableRow key={p.id} className="cursor-pointer" onClick={() => setSelectedPurchaseId(p.id)}>
                 <TableCell className="font-medium">{p.suppliers?.name || "—"}</TableCell>
                 <TableCell>{p.supplier_order_id || "—"}</TableCell>
                 <TableCell>{p.events?.match_code || "—"}</TableCell>
                 <TableCell>{p.category}</TableCell>
                 <TableCell className="text-right">{p.quantity}</TableCell>
-                <TableCell className="text-right">{sym(p.currency)}{Number(p.unit_cost).toFixed(2)}</TableCell>
-                <TableCell className="text-right">{sym(p.currency)}{Number(p.fees).toFixed(2)}</TableCell>
-                <TableCell className="text-right font-medium">{sym(p.currency)}{Number(p.total_cost).toFixed(2)}</TableCell>
-                <TableCell>{p.currency}</TableCell>
+                <TableCell className="text-right">£{Number(p.unit_cost).toFixed(2)}</TableCell>
+                <TableCell className="text-right font-medium">£{Number(p.total_cost).toFixed(2)}</TableCell>
                 <TableCell>
-                  <Badge variant="outline" className={statusColor[p.status] || ""}>{p.status}</Badge>
+                  <Badge variant="outline" className={p.supplier_paid ? "bg-success/10 text-success border-success/20" : "bg-warning/10 text-warning border-warning/20"}>
+                    {p.supplier_paid ? "Paid" : "Unpaid"}
+                  </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">{format(new Date(p.purchase_date), "dd MMM yy")}</TableCell>
               </TableRow>
             ))}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">No purchases found</TableCell>
+                <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">No purchases found</TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+
+      <PurchaseDetailSheet
+        purchaseId={selectedPurchaseId}
+        onClose={() => setSelectedPurchaseId(null)}
+        onUpdated={load}
+      />
     </div>
   );
 }
