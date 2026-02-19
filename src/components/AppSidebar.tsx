@@ -11,6 +11,8 @@ import {
   Moon,
   LogOut,
   Ticket,
+  Users,
+  Banknote,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -23,7 +25,9 @@ const navItems = [
   { to: "/purchases", icon: Package, label: "Purchases" },
   { to: "/platforms", icon: Globe, label: "Platforms" },
   { to: "/finance", icon: Wallet, label: "Finance" },
+  { to: "/cashflow", icon: Banknote, label: "Cashflow" },
   { to: "/health", icon: HeartPulse, label: "Health" },
+  { to: "/team", icon: Users, label: "Team" },
 ];
 
 export default function AppSidebar() {
