@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -22,15 +23,16 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
     supplier_id: "",
     event_id: "",
     supplier_order_id: "",
+    supplier_name: "",
     category: "Cat 1",
-    section: "",
     quantity: "1",
     unit_cost: "",
-    fees: "0",
-    currency: "GBP" as "GBP" | "USD" | "EUR",
-    exchange_rate: "1.0",
-    status: "confirmed" as "pending" | "confirmed" | "received" | "cancelled",
+    device_type: "",
+    notes: "",
   });
+
+  const selectedSupplier = suppliers.find((s) => s.id === form.supplier_id);
+  const isP2P = selectedSupplier?.name?.toLowerCase().includes("p2p") || selectedSupplier?.name?.toLowerCase().includes("whatsapp");
 
   useEffect(() => {
     if (open) {
@@ -41,23 +43,40 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.supplier_id || !form.event_id || !form.unit_cost) return;
     setLoading(true);
     try {
+      const noteParts: string[] = [];
+      if (isP2P && form.supplier_name.trim()) noteParts.push(`Supplier: ${form.supplier_name.trim()}`);
+      if (form.device_type.trim()) noteParts.push(`Device: ${form.device_type.trim()}`);
+      if (form.notes.trim()) noteParts.push(form.notes.trim());
+
       const { error } = await supabase.from("purchases").insert({
         supplier_id: form.supplier_id,
         event_id: form.event_id,
         supplier_order_id: form.supplier_order_id || null,
         category: form.category,
-        section: form.section || null,
         quantity: parseInt(form.quantity),
         unit_cost: parseFloat(form.unit_cost),
-        fees: parseFloat(form.fees),
-        currency: form.currency,
-        exchange_rate: parseFloat(form.exchange_rate),
-        status: form.status,
+        fees: 0,
+        currency: "GBP" as const,
+        exchange_rate: 1,
+        status: "confirmed" as const,
+        notes: noteParts.length > 0 ? noteParts.join(" | ") : null,
       });
       if (error) throw error;
       toast.success("Purchase added");
+      setForm({
+        supplier_id: "",
+        event_id: "",
+        supplier_order_id: "",
+        supplier_name: "",
+        category: "Cat 1",
+        quantity: "1",
+        unit_cost: "",
+        device_type: "",
+        notes: "",
+      });
       setOpen(false);
       onCreated();
     } catch (err: any) {
@@ -98,10 +117,22 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             </div>
           </div>
 
+          {isP2P && (
+            <div className="space-y-1.5">
+              <Label>Supplier Name</Label>
+              <Input
+                value={form.supplier_name}
+                onChange={(e) => setForm({ ...form, supplier_name: e.target.value })}
+                placeholder="e.g. John Smith"
+                maxLength={100}
+              />
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Supplier Order ID</Label>
-              <Input value={form.supplier_order_id} onChange={(e) => setForm({ ...form, supplier_order_id: e.target.value })} placeholder="e.g. TX-1234" />
+              <Label>Order ID</Label>
+              <Input value={form.supplier_order_id} onChange={(e) => setForm({ ...form, supplier_order_id: e.target.value })} placeholder="e.g. ORD-1234" maxLength={100} />
             </div>
             <div className="space-y-1.5">
               <Label>Category</Label>
@@ -124,44 +155,28 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
               <Input type="number" step="0.01" min="0" value={form.unit_cost} onChange={(e) => setForm({ ...form, unit_cost: e.target.value })} placeholder="0.00" />
             </div>
             <div className="space-y-1.5">
-              <Label>Fees</Label>
-              <Input type="number" step="0.01" min="0" value={form.fees} onChange={(e) => setForm({ ...form, fees: e.target.value })} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <Label>Currency</Label>
-              <Select value={form.currency} onValueChange={(v: any) => setForm({ ...form, currency: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Label>Device Type</Label>
+              <Select value={form.device_type} onValueChange={(v) => setForm({ ...form, device_type: v })}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="GBP">GBP (£)</SelectItem>
-                  <SelectItem value="USD">USD ($)</SelectItem>
-                  <SelectItem value="EUR">EUR (€)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Exchange Rate</Label>
-              <Input type="number" step="0.0001" min="0" value={form.exchange_rate} onChange={(e) => setForm({ ...form, exchange_rate: e.target.value })} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={(v: any) => setForm({ ...form, status: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="confirmed">Confirmed</SelectItem>
-                  <SelectItem value="received">Received</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="mobile">Mobile</SelectItem>
+                  <SelectItem value="desktop">Desktop</SelectItem>
+                  <SelectItem value="tablet">Tablet</SelectItem>
+                  <SelectItem value="physical">Physical</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label>Section</Label>
-            <Input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} placeholder="e.g. Block A" />
+            <Label>Notes</Label>
+            <Textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              placeholder="Any additional info..."
+              maxLength={500}
+              rows={2}
+            />
           </div>
 
           <Button type="submit" className="w-full" disabled={loading || !form.supplier_id || !form.event_id || !form.unit_cost}>
