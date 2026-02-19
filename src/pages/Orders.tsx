@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Phone, Mail, Smartphone, Copy, Check, Download, Zap } from "lucide-react";
+import { Search, Smartphone, Copy, Check, Download, Zap, CheckCircle2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours } from "date-fns";
 import { toast } from "sonner";
@@ -53,6 +53,11 @@ interface Order {
   platform_id: string | null;
   events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
   platforms: { name: string } | null;
+}
+
+interface AssignmentInfo {
+  linked_count: number;
+  supplier_contact_name: string | null;
 }
 
 const deliveryColor: Record<string, string> = {
@@ -135,13 +140,69 @@ export default function Orders() {
   const [filterDelivery, setFilterDelivery] = useState("all");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [assignOrder, setAssignOrder] = useState<Order | null>(null);
+  const [assignments, setAssignments] = useState<Record<string, AssignmentInfo>>({});
 
   const load = useCallback(async () => {
     const { data: ordersData } = await supabase
       .from("orders")
       .select("*, events(match_code, home_team, away_team, event_date), platforms(name)")
       .order("order_date", { ascending: false });
-    setOrders((ordersData as any) || []);
+    const loadedOrders = (ordersData as any) || [];
+    setOrders(loadedOrders);
+
+    // Load assignment info for all orders
+    if (loadedOrders.length > 0) {
+      const orderIds = loadedOrders.map((o: Order) => o.id);
+      const { data: orderLines } = await supabase
+        .from("order_lines")
+        .select("order_id, inventory_id")
+        .in("order_id", orderIds);
+
+      if (orderLines && orderLines.length > 0) {
+        // Get inventory -> purchase -> supplier info
+        const invIds = orderLines.map(ol => ol.inventory_id);
+        const { data: invData } = await supabase
+          .from("inventory")
+          .select("id, purchase_id")
+          .in("id", invIds);
+
+        const purchaseIds = [...new Set((invData || []).map(i => i.purchase_id))];
+        const { data: purchaseData } = purchaseIds.length > 0
+          ? await supabase
+              .from("purchases")
+              .select("id, suppliers(name, contact_name)")
+              .in("id", purchaseIds)
+          : { data: [] };
+
+        const purchaseMap = new Map((purchaseData || []).map((p: any) => [p.id, p]));
+        const invMap = new Map((invData || []).map(i => [i.id, i]));
+
+        // Build per-order assignment info
+        const assignMap: Record<string, AssignmentInfo> = {};
+        for (const ol of orderLines) {
+          if (!assignMap[ol.order_id]) {
+            assignMap[ol.order_id] = { linked_count: 0, supplier_contact_name: null };
+          }
+          assignMap[ol.order_id].linked_count++;
+
+          // Get supplier contact name from first linked ticket
+          if (!assignMap[ol.order_id].supplier_contact_name) {
+            const inv = invMap.get(ol.inventory_id);
+            if (inv) {
+              const purchase = purchaseMap.get(inv.purchase_id) as any;
+              if (purchase?.suppliers?.contact_name) {
+                assignMap[ol.order_id].supplier_contact_name = purchase.suppliers.contact_name;
+              } else if (purchase?.suppliers?.name) {
+                assignMap[ol.order_id].supplier_contact_name = purchase.suppliers.name;
+              }
+            }
+          }
+        }
+        setAssignments(assignMap);
+      } else {
+        setAssignments({});
+      }
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -213,6 +274,11 @@ export default function Orders() {
     return { label: `${days}d`, color: "text-muted-foreground" };
   };
 
+  const isFullyAssigned = (order: Order) => {
+    const info = assignments[order.id];
+    return info && info.linked_count >= order.quantity;
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -259,6 +325,7 @@ export default function Orders() {
           const deadlineStatus = getDeadlineStatus(group.event?.event_date);
           const pendingCount = group.orders.filter(o => (o.delivery_status || "pending") !== "delivered" && o.delivery_status !== "completed").length;
           const totalQty = group.orders.reduce((s, o) => s + o.quantity, 0);
+          const assignedCount = group.orders.filter(o => isFullyAssigned(o)).length;
 
           return (
             <div key={group.eventId} className="rounded-xl border bg-card overflow-hidden shadow-sm">
@@ -292,6 +359,11 @@ export default function Orders() {
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tickets</p>
                     <p className="text-sm font-mono font-bold">{totalQty}</p>
                   </div>
+                  {assignedCount > 0 && (
+                    <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">
+                      {assignedCount} assigned
+                    </Badge>
+                  )}
                   {pendingCount > 0 && (
                     <Badge variant="outline" className="text-[10px] font-bold uppercase bg-warning/10 text-warning border-warning/20">
                       {pendingCount} pending
@@ -318,16 +390,23 @@ export default function Orders() {
                       <TableHead className="text-[10px] uppercase tracking-wider text-center w-[30px]">📞</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[80px]">Status</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[75px]">Sold</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider w-[100px]">Assigned From</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[60px]">Assign</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {group.orders.map(o => {
                       const flag = phoneToFlag(o.buyer_phone);
+                      const assigned = isFullyAssigned(o);
+                      const assignInfo = assignments[o.id];
                       return (
                         <TableRow
                           key={o.id}
-                          className="cursor-pointer hover:bg-muted/40 text-xs h-10"
+                          className={`cursor-pointer text-xs h-10 transition-colors ${
+                            assigned
+                              ? "bg-success/8 hover:bg-success/15 border-l-2 border-l-success"
+                              : "hover:bg-muted/40"
+                          }`}
                           onClick={() => setSelectedOrderId(o.id)}
                         >
                           <TableCell className="font-mono font-bold text-xs py-2">
@@ -388,14 +467,28 @@ export default function Orders() {
                             {format(new Date(o.order_date), "dd MMM")}
                           </TableCell>
                           <TableCell className="py-2">
+                            {assigned ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {assignInfo?.supplier_contact_name || "Assigned"}
+                              </span>
+                            ) : assignInfo?.linked_count ? (
+                              <span className="text-xs text-warning font-medium">
+                                {assignInfo.linked_count}/{o.quantity} · {assignInfo.supplier_contact_name || "—"}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/40 text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2">
                             <Button
                               size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0"
+                              variant={assigned ? "ghost" : "outline"}
+                              className={`h-7 w-7 p-0 ${assigned ? "text-success" : ""}`}
                               title="Quick assign purchase"
                               onClick={(e) => { e.stopPropagation(); setAssignOrder(o); }}
                             >
-                              <Zap className="h-3.5 w-3.5" />
+                              {assigned ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
                             </Button>
                           </TableCell>
                         </TableRow>

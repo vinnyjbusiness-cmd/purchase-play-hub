@@ -18,6 +18,7 @@ interface Props {
 interface AvailablePurchase {
   purchase_id: string;
   supplier_name: string;
+  supplier_contact_name: string | null;
   supplier_order_id: string | null;
   category: string;
   section: string | null;
@@ -49,7 +50,7 @@ export default function AssignPurchaseDialog({ orderId, eventId, orderCategory, 
       // Get all purchases for this event
       const { data: eventPurchases } = await supabase
         .from("purchases")
-        .select("id, category, section, unit_cost, currency, supplier_order_id, quantity, suppliers(name)")
+        .select("id, category, section, unit_cost, currency, supplier_order_id, quantity, suppliers(name, contact_name)")
         .eq("event_id", eventId);
 
       if (!eventPurchases || eventPurchases.length === 0) {
@@ -75,6 +76,7 @@ export default function AssignPurchaseDialog({ orderId, eventId, orderCategory, 
         return {
           purchase_id: p.id,
           supplier_name: p.suppliers?.name || "Unknown",
+          supplier_contact_name: (p.suppliers as any)?.contact_name || null,
           supplier_order_id: p.supplier_order_id,
           category: p.category,
           section: p.section,
@@ -175,7 +177,10 @@ export default function AssignPurchaseDialog({ orderId, eventId, orderCategory, 
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{p.supplier_name}</span>
+                      <span className="font-bold text-sm">
+                        {p.supplier_contact_name || p.supplier_name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">({p.supplier_name})</span>
                       {p.match_score >= 3 && (
                         <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/20">Best match</Badge>
                       )}
