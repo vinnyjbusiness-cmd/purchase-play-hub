@@ -172,6 +172,9 @@ export type Database = {
       }
       orders: {
         Row: {
+          buyer_email: string | null
+          buyer_name: string | null
+          buyer_phone: string | null
           buyer_ref: string | null
           category: string
           created_at: string
@@ -193,6 +196,9 @@ export type Database = {
           status: Database["public"]["Enums"]["order_status"]
         }
         Insert: {
+          buyer_email?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
           buyer_ref?: string | null
           category?: string
           created_at?: string
@@ -214,6 +220,9 @@ export type Database = {
           status?: Database["public"]["Enums"]["order_status"]
         }
         Update: {
+          buyer_email?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
           buyer_ref?: string | null
           category?: string
           created_at?: string

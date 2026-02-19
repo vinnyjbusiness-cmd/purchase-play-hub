@@ -23,12 +23,14 @@ export default function AddOrderDialog({ onCreated }: Props) {
     event_id: "",
     order_ref: "",
     buyer_ref: "",
+    buyer_name: "",
+    buyer_phone: "",
+    buyer_email: "",
     category: "Cat 1",
     quantity: "1",
     sale_price: "",
     fees: "0",
     currency: "GBP" as "GBP" | "USD" | "EUR",
-    status: "pending" as "pending" | "fulfilled" | "delivered" | "refunded" | "cancelled",
     delivery_type: "email" as "email" | "physical" | "mobile_transfer" | "will_call" | "instant",
   });
 
@@ -48,12 +50,14 @@ export default function AddOrderDialog({ onCreated }: Props) {
         event_id: form.event_id,
         order_ref: form.order_ref || null,
         buyer_ref: form.buyer_ref || null,
+        buyer_name: form.buyer_name || null,
+        buyer_phone: form.buyer_phone || null,
+        buyer_email: form.buyer_email || null,
         category: form.category,
         quantity: parseInt(form.quantity),
         sale_price: parseFloat(form.sale_price),
         fees: parseFloat(form.fees),
         currency: form.currency,
-        status: form.status,
         delivery_type: form.delivery_type,
       });
       if (error) throw error;
@@ -109,6 +113,22 @@ export default function AddOrderDialog({ onCreated }: Props) {
             </div>
           </div>
 
+          {/* Customer details */}
+          <div className="space-y-1.5">
+            <Label>Customer Name</Label>
+            <Input value={form.buyer_name} onChange={(e) => setForm({ ...form, buyer_name: e.target.value })} placeholder="e.g. John Smith" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Customer Phone</Label>
+              <Input value={form.buyer_phone} onChange={(e) => setForm({ ...form, buyer_phone: e.target.value })} placeholder="e.g. +44 7700 900000" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Customer Email</Label>
+              <Input type="email" value={form.buyer_email} onChange={(e) => setForm({ ...form, buyer_email: e.target.value })} placeholder="e.g. john@example.com" />
+            </div>
+          </div>
+
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label>Category</Label>
@@ -147,33 +167,18 @@ export default function AddOrderDialog({ onCreated }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={(v: any) => setForm({ ...form, status: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="fulfilled">Fulfilled</SelectItem>
-                  <SelectItem value="delivered">Delivered</SelectItem>
-                  <SelectItem value="refunded">Refunded</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Delivery Type</Label>
-              <Select value={form.delivery_type} onValueChange={(v: any) => setForm({ ...form, delivery_type: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="physical">Physical</SelectItem>
-                  <SelectItem value="mobile_transfer">Mobile Transfer</SelectItem>
-                  <SelectItem value="will_call">Will Call</SelectItem>
-                  <SelectItem value="instant">Instant</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1.5">
+            <Label>Delivery Type</Label>
+            <Select value={form.delivery_type} onValueChange={(v: any) => setForm({ ...form, delivery_type: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="physical">Physical</SelectItem>
+                <SelectItem value="mobile_transfer">Mobile Transfer</SelectItem>
+                <SelectItem value="will_call">Will Call</SelectItem>
+                <SelectItem value="instant">Instant</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <Button type="submit" className="w-full" disabled={loading || !form.event_id || !form.sale_price}>
