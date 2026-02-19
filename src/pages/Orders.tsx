@@ -20,6 +20,7 @@ interface Order {
   net_received: number;
   status: string;
   delivery_type: string;
+  delivery_status: string | null;
   order_date: string;
   currency: string;
   event_id: string;
@@ -38,12 +39,20 @@ const statusColor: Record<string, string> = {
   cancelled: "bg-muted text-muted-foreground",
 };
 
+const deliveryColor: Record<string, string> = {
+  pending: "bg-muted text-muted-foreground",
+  awaiting_delivery: "bg-warning/10 text-warning border-warning/20",
+  delivered: "bg-primary/10 text-primary border-primary/20",
+  completed: "bg-success/10 text-success border-success/20",
+};
+
 export default function Orders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [search, setSearch] = useState("");
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [filterEvent, setFilterEvent] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterDelivery, setFilterDelivery] = useState("all");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -95,6 +104,7 @@ export default function Orders() {
     if (filterPlatform !== "all" && o.platforms?.name !== filterPlatform) return false;
     if (filterEvent !== "all" && o.events?.match_code !== filterEvent) return false;
     if (filterStatus !== "all" && o.status !== filterStatus) return false;
+    if (filterDelivery !== "all" && (o.delivery_status || "pending") !== filterDelivery) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -121,6 +131,12 @@ export default function Orders() {
             Revenue: £{totalRevenue.toLocaleString("en-GB", { minimumFractionDigits: 2 })} ·
             Profit: <span className={totalProfit >= 0 ? "text-success" : "text-destructive"}>£{totalProfit.toLocaleString("en-GB", { minimumFractionDigits: 2 })}</span>
           </p>
+          <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+            <span>⏳ {filtered.filter(o => (o.delivery_status || "pending") === "pending").length} Pending</span>
+            <span>📦 {filtered.filter(o => o.delivery_status === "awaiting_delivery").length} Awaiting</span>
+            <span>🚚 {filtered.filter(o => o.delivery_status === "delivered").length} Delivered</span>
+            <span>✅ {filtered.filter(o => o.delivery_status === "completed").length} Completed</span>
+          </div>
         </div>
         <AddOrderDialog onCreated={load} />
       </div>
@@ -142,6 +158,12 @@ export default function Orders() {
           { value: "refunded", label: "Refunded" },
           { value: "cancelled", label: "Cancelled" },
         ]} />
+        <FilterSelect label="Delivery" value={filterDelivery} onValueChange={setFilterDelivery} options={[
+          { value: "pending", label: "Pending" },
+          { value: "awaiting_delivery", label: "Awaiting Delivery" },
+          { value: "delivered", label: "Delivered" },
+          { value: "completed", label: "Completed" },
+        ]} />
       </div>
 
       <div className="rounded-lg border">
@@ -157,6 +179,7 @@ export default function Orders() {
               <TableHead className="text-right">Cost</TableHead>
               <TableHead className="text-right">Profit</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Delivery</TableHead>
               <TableHead>Date</TableHead>
             </TableRow>
           </TableHeader>
@@ -186,13 +209,18 @@ export default function Orders() {
                   <TableCell>
                     <Badge variant="outline" className={statusColor[o.status] || ""}>{o.status}</Badge>
                   </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={deliveryColor[(o.delivery_status || "pending")] || ""}>
+                      {(o.delivery_status || "pending").replace("_", " ")}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{format(new Date(o.order_date), "dd MMM yy")}</TableCell>
                 </TableRow>
               );
             })}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">No orders found</TableCell>
+                <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">No orders found</TableCell>
               </TableRow>
             )}
           </TableBody>
