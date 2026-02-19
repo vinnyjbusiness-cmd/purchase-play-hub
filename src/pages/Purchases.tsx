@@ -24,7 +24,7 @@ interface Purchase {
   purchase_date: string;
   notes: string | null;
   event_id: string;
-  suppliers: { name: string } | null;
+  suppliers: { name: string; contact_name: string | null; contact_phone: string | null } | null;
   events: { match_code: string; home_team: string; away_team: string } | null;
 }
 
@@ -47,7 +47,7 @@ export default function Purchases() {
   const load = useCallback(() => {
     supabase
       .from("purchases")
-      .select("*, suppliers(name), events(match_code, home_team, away_team)")
+      .select("*, suppliers(name, contact_name, contact_phone), events(match_code, home_team, away_team)")
       .order("purchase_date", { ascending: false })
       .then(({ data }) => setPurchases((data as any) || []));
   }, []);
@@ -66,6 +66,7 @@ export default function Purchases() {
       return (
         (p.supplier_order_id || "").toLowerCase().includes(q) ||
         (p.suppliers?.name || "").toLowerCase().includes(q) ||
+        (p.suppliers?.contact_name || "").toLowerCase().includes(q) ||
         (p.events?.home_team || "").toLowerCase().includes(q) ||
         (p.events?.away_team || "").toLowerCase().includes(q) ||
         (p.notes || "").toLowerCase().includes(q)
@@ -111,6 +112,8 @@ export default function Purchases() {
           <TableHeader>
             <TableRow>
               <TableHead>Source</TableHead>
+              <TableHead>Contact</TableHead>
+              <TableHead>Phone</TableHead>
               <TableHead>Order ID</TableHead>
               <TableHead>Event</TableHead>
               <TableHead>Category</TableHead>
@@ -126,6 +129,12 @@ export default function Purchases() {
             {filtered.map((p) => (
               <TableRow key={p.id} className="cursor-pointer" onClick={() => setSelectedPurchaseId(p.id)}>
                 <TableCell className="font-medium">{p.suppliers?.name || "—"}</TableCell>
+                <TableCell className="font-medium">
+                  {p.suppliers?.contact_name || "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-xs">
+                  {p.suppliers?.contact_phone || "—"}
+                </TableCell>
                 <TableCell>{p.supplier_order_id || "—"}</TableCell>
                 <TableCell>{p.events?.match_code || "—"}</TableCell>
                 <TableCell>{p.category}</TableCell>
@@ -155,7 +164,7 @@ export default function Purchases() {
             ))}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">No purchases found</TableCell>
+                <TableCell colSpan={12} className="text-center py-12 text-muted-foreground">No purchases found</TableCell>
               </TableRow>
             )}
           </TableBody>
