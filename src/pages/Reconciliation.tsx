@@ -1,128 +1,133 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Activity, CheckCircle, XCircle, Clock, RefreshCw, Globe, Bot, CreditCard, Send, Database } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Activity, CheckCircle, XCircle, Clock, RefreshCw,
+  Globe, Bot, CreditCard, Send, Database, Terminal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-interface PlatformInfo {
-  id: string;
-  name: string;
+interface LogEntry {
+  timestamp: Date;
+  level: "info" | "warn" | "error" | "success";
+  message: string;
 }
 
-interface HealthCheck {
+interface ScriptCheck {
   name: string;
   status: "ok" | "error" | "pending";
   message: string;
-  icon: typeof Activity;
 }
 
-interface PlatformHealth {
-  platform: PlatformInfo;
-  checks: HealthCheck[];
+interface WebsiteConfig {
+  key: string;
+  name: string;
+  url: string;
+  scripts: ScriptCheck[];
+  logs: LogEntry[];
 }
+
+const WEBSITES: Omit<WebsiteConfig, "scripts" | "logs">[] = [
+  { key: "fanpass", name: "FanPass", url: "fanpass.co.uk" },
+  { key: "tixstock", name: "Tixstock", url: "tixstock.com" },
+  { key: "livefootball", name: "Live Football Tickets", url: "livefootballtickets.com" },
+];
+
+const now = () => new Date();
+
+const makeLog = (level: LogEntry["level"], message: string): LogEntry => ({
+  timestamp: now(),
+  level,
+  message,
+});
 
 export default function Health() {
-  const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
-  const [systemChecks, setSystemChecks] = useState<HealthCheck[]>([]);
-  const [platformHealths, setPlatformHealths] = useState<PlatformHealth[]>([]);
+  const [sites, setSites] = useState<WebsiteConfig[]>([]);
+  const [systemChecks, setSystemChecks] = useState<ScriptCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const logEndRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const addLog = (siteKey: string, log: LogEntry) => {
+    setSites(prev =>
+      prev.map(s =>
+        s.key === siteKey
+          ? { ...s, logs: [...s.logs.slice(-99), log] }
+          : s
+      )
+    );
+  };
 
   const runChecks = async () => {
     setLoading(true);
 
-    // Fetch platforms
-    const { data: platData, error: platError } = await supabase.from("platforms").select("id,name").order("name");
-    const plats = platData || [];
-    setPlatforms(plats);
+    // System checks
+    const sysChecks: ScriptCheck[] = [];
 
-    // System-level checks
-    const sysChecks: HealthCheck[] = [];
-
-    // 1. Database connectivity
     const dbStart = Date.now();
     const { error: dbError } = await supabase.from("events").select("id").limit(1);
     const dbTime = Date.now() - dbStart;
     sysChecks.push({
       name: "Database Connection",
       status: dbError ? "error" : "ok",
-      message: dbError ? `Connection failed: ${dbError.message}` : `Connected (${dbTime}ms)`,
-      icon: Database,
+      message: dbError ? `Failed: ${dbError.message}` : `Connected (${dbTime}ms)`,
     });
 
-    // 2. Auth service
     const { data: sessionData, error: authError } = await supabase.auth.getSession();
     sysChecks.push({
-      name: "Authentication Service",
+      name: "Authentication",
       status: authError ? "error" : sessionData.session ? "ok" : "error",
-      message: authError ? `Auth error: ${authError.message}` : sessionData.session ? "Authenticated & active" : "No active session",
-      icon: Activity,
+      message: authError ? authError.message : sessionData.session ? "Active session" : "No session",
     });
 
-    // 3. Data integrity - orders with events
     const { data: ordersData } = await supabase.from("orders").select("id,event_id");
     const { data: eventsData } = await supabase.from("events").select("id");
     const eventIds = new Set((eventsData || []).map(e => e.id));
-    const orphanedOrders = (ordersData || []).filter(o => !eventIds.has(o.event_id));
+    const orphaned = (ordersData || []).filter(o => !eventIds.has(o.event_id));
     sysChecks.push({
       name: "Data Integrity",
-      status: orphanedOrders.length > 0 ? "error" : "ok",
-      message: orphanedOrders.length > 0 ? `${orphanedOrders.length} orders with missing events` : "All references valid",
-      icon: Database,
+      status: orphaned.length > 0 ? "error" : "ok",
+      message: orphaned.length > 0 ? `${orphaned.length} orphaned orders` : "All references valid",
     });
 
     setSystemChecks(sysChecks);
 
-    // Per-platform checks
-    const platHealths: PlatformHealth[] = plats.map((p) => {
-      const checks: HealthCheck[] = [];
+    // Build website configs with placeholder scripts and initial logs
+    const websiteConfigs: WebsiteConfig[] = WEBSITES.map(w => {
+      const initialLogs: LogEntry[] = [
+        makeLog("info", `[${w.name}] Initialising health check...`),
+        makeLog("info", `[${w.name}] Checking API connection to ${w.url}...`),
+        makeLog("warn", `[${w.name}] API not configured — skipping live check`),
+        makeLog("info", `[${w.name}] Checking listing sync script...`),
+        makeLog("warn", `[${w.name}] Listing sync script not yet integrated`),
+        makeLog("info", `[${w.name}] Checking order import script...`),
+        makeLog("warn", `[${w.name}] Order import script not yet integrated`),
+        makeLog("info", `[${w.name}] Checking price bot...`),
+        makeLog("warn", `[${w.name}] Price bot not yet integrated`),
+        makeLog("info", `[${w.name}] Checking payment webhook...`),
+        makeLog("warn", `[${w.name}] Payment webhook not configured`),
+        makeLog("info", `[${w.name}] Checking inventory sync...`),
+        makeLog("warn", `[${w.name}] Inventory sync not yet integrated`),
+        makeLog("info", `[${w.name}] Health check complete — awaiting script integration`),
+      ];
 
-      // API Connection placeholder
-      checks.push({
-        name: "API Connection",
-        status: "pending",
-        message: "Not configured — connect API to enable",
-        icon: Globe,
-      });
+      const scripts: ScriptCheck[] = [
+        { name: "API Connection", status: "pending", message: "Not configured" },
+        { name: "Listing Sync", status: "pending", message: "Script not integrated" },
+        { name: "Order Import", status: "pending", message: "Script not integrated" },
+        { name: "Price Bot", status: "pending", message: "Bot not integrated" },
+        { name: "Payment Webhook", status: "pending", message: "Not configured" },
+        { name: "Inventory Sync", status: "pending", message: "Script not integrated" },
+      ];
 
-      // Listing Sync script placeholder
-      checks.push({
-        name: "Listing Sync Script",
-        status: "pending",
-        message: "Placeholder — script not yet integrated",
-        icon: RefreshCw,
-      });
-
-      // Order Import script placeholder
-      checks.push({
-        name: "Order Import Script",
-        status: "pending",
-        message: "Placeholder — script not yet integrated",
-        icon: Send,
-      });
-
-      // Payment Webhook placeholder
-      checks.push({
-        name: "Payment Webhook",
-        status: "pending",
-        message: "Placeholder — webhook not yet configured",
-        icon: CreditCard,
-      });
-
-      // Price Bot placeholder
-      checks.push({
-        name: "Price Bot / Auto-Pricer",
-        status: "pending",
-        message: "Placeholder — bot not yet integrated",
-        icon: Bot,
-      });
-
-      return { platform: p, checks };
+      return { ...w, scripts, logs: initialLogs };
     });
 
-    setPlatformHealths(platHealths);
-    setLastChecked(new Date());
+    setSites(websiteConfigs);
+    setLastChecked(now());
     setLoading(false);
   };
 
@@ -130,18 +135,52 @@ export default function Health() {
     runChecks();
   }, []);
 
-  const statusBadge = (status: "ok" | "error" | "pending") => {
+  // Simulate periodic log entries
+  useEffect(() => {
+    if (sites.length === 0) return;
+    const interval = setInterval(() => {
+      const siteKey = WEBSITES[Math.floor(Math.random() * WEBSITES.length)].key;
+      const messages = [
+        { level: "info" as const, msg: "Heartbeat ping — awaiting script connection" },
+        { level: "info" as const, msg: "Polling for new orders... no script configured" },
+        { level: "info" as const, msg: "Checking listing prices... script pending" },
+        { level: "warn" as const, msg: "No API credentials found — skipping sync" },
+        { level: "info" as const, msg: "Idle — waiting for integration" },
+      ];
+      const pick = messages[Math.floor(Math.random() * messages.length)];
+      const site = WEBSITES.find(w => w.key === siteKey);
+      addLog(siteKey, makeLog(pick.level, `[${site?.name}] ${pick.msg}`));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [sites.length]);
+
+  const statusIcon = (status: "ok" | "error" | "pending") => {
     switch (status) {
-      case "ok":
-        return <Badge variant="outline" className="bg-success/10 text-success border-success/20 gap-1"><CheckCircle className="h-3 w-3" /> Healthy</Badge>;
-      case "error":
-        return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 gap-1"><XCircle className="h-3 w-3" /> Error</Badge>;
-      case "pending":
-        return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 gap-1"><Clock className="h-3 w-3" /> Pending</Badge>;
+      case "ok": return <CheckCircle className="h-4 w-4 text-success" />;
+      case "error": return <XCircle className="h-4 w-4 text-destructive" />;
+      case "pending": return <Clock className="h-4 w-4 text-warning" />;
     }
   };
 
-  const overallSystemStatus = systemChecks.length > 0
+  const statusBadge = (status: "ok" | "error" | "pending") => {
+    switch (status) {
+      case "ok":
+        return <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium bg-success/10 text-success border-success/20"><CheckCircle className="h-3 w-3" /> Healthy</span>;
+      case "error":
+        return <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium bg-destructive/10 text-destructive border-destructive/20"><XCircle className="h-3 w-3" /> Error</span>;
+      case "pending":
+        return <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium bg-warning/10 text-warning border-warning/20"><Clock className="h-3 w-3" /> Pending</span>;
+    }
+  };
+
+  const logColor: Record<string, string> = {
+    info: "text-muted-foreground",
+    warn: "text-warning",
+    error: "text-destructive",
+    success: "text-success",
+  };
+
+  const overallSystem = systemChecks.length > 0
     ? systemChecks.every(c => c.status === "ok") ? "ok" : systemChecks.some(c => c.status === "error") ? "error" : "pending"
     : "pending";
 
@@ -150,9 +189,7 @@ export default function Health() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Health Check</h1>
-          <p className="text-muted-foreground">
-            System status, API connections & script monitoring
-          </p>
+          <p className="text-muted-foreground">Live monitoring for website scripts & APIs</p>
         </div>
         <div className="flex items-center gap-3">
           {lastChecked && (
@@ -171,66 +208,101 @@ export default function Health() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base font-semibold">System Health</CardTitle>
-          {statusBadge(overallSystemStatus)}
+          {statusBadge(overallSystem)}
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-2">
           {systemChecks.map((check, i) => (
             <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
               <div className="flex items-center gap-3">
-                <check.icon className="h-4 w-4 text-muted-foreground" />
+                <Database className="h-4 w-4 text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium">{check.name}</p>
                   <p className="text-xs text-muted-foreground">{check.message}</p>
                 </div>
               </div>
-              {statusBadge(check.status)}
+              {statusIcon(check.status)}
             </div>
           ))}
         </CardContent>
       </Card>
 
-      {/* Per-platform health */}
-      <div>
-        <h2 className="text-lg font-semibold mb-3">Platform Scripts & APIs</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {platformHealths.map((ph) => {
-            const overallPlatStatus = ph.checks.every(c => c.status === "ok")
-              ? "ok"
-              : ph.checks.some(c => c.status === "error")
-              ? "error"
-              : "pending";
+      {/* Website tabs */}
+      <Tabs defaultValue="fanpass" className="space-y-4">
+        <TabsList>
+          {sites.map(s => (
+            <TabsTrigger key={s.key} value={s.key} className="gap-2">
+              <Globe className="h-3.5 w-3.5" />
+              {s.name}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-            return (
-              <Card key={ph.platform.id}>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Globe className="h-4 w-4 text-primary" />
-                    {ph.platform.name}
-                  </CardTitle>
-                  {statusBadge(overallPlatStatus)}
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {ph.checks.map((check, i) => (
-                    <div key={i} className="flex items-center justify-between py-1.5">
-                      <div className="flex items-center gap-2">
-                        <check.icon className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-xs font-medium">{check.name}</span>
+        {sites.map(s => {
+          const overallStatus = s.scripts.every(sc => sc.status === "ok")
+            ? "ok"
+            : s.scripts.some(sc => sc.status === "error")
+            ? "error"
+            : "pending";
+
+          return (
+            <TabsContent key={s.key} value={s.key} className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                {/* Script status */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-semibold">Script Status</CardTitle>
+                    {statusBadge(overallStatus)}
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {s.scripts.map((sc, i) => (
+                      <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
+                        <div>
+                          <p className="text-sm font-medium">{sc.name}</p>
+                          <p className="text-xs text-muted-foreground">{sc.message}</p>
+                        </div>
+                        {statusIcon(sc.status)}
                       </div>
-                      {check.status === "ok" ? (
-                        <CheckCircle className="h-4 w-4 text-success" />
-                      ) : check.status === "error" ? (
-                        <XCircle className="h-4 w-4 text-destructive" />
-                      ) : (
-                        <Clock className="h-4 w-4 text-warning" />
-                      )}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* Live console */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center gap-2 pb-2">
+                    <Terminal className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-sm font-semibold">Live Console</CardTitle>
+                    <span className="ml-auto flex items-center gap-1.5">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
+                      </span>
+                      <span className="text-xs text-muted-foreground">Live</span>
+                    </span>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <ScrollArea className="h-[320px]">
+                      <div className="bg-sidebar text-sidebar-foreground rounded-b-lg p-3 font-mono text-xs space-y-1 min-h-[320px]">
+                        {s.logs.map((log, i) => (
+                          <div key={i} className={`flex gap-2 ${logColor[log.level]}`}>
+                            <span className="text-muted-foreground shrink-0 opacity-60">
+                              {log.timestamp.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            </span>
+                            <span className="uppercase w-12 shrink-0 font-bold opacity-80">
+                              {log.level === "success" ? "OK" : log.level}
+                            </span>
+                            <span className="break-all">{log.message}</span>
+                          </div>
+                        ))}
+                        <div ref={(el) => { logEndRefs.current[s.key] = el; }} />
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          );
+        })}
+      </Tabs>
     </div>
   );
 }
