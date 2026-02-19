@@ -24,6 +24,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
     event_id: "",
     supplier_order_id: "",
     supplier_name: "",
+    supplier_number: "",
     category: "Cat 1",
     quantity: "1",
     unit_cost: "",
@@ -48,8 +49,8 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
     try {
       const noteParts: string[] = [];
       if (isP2P && form.supplier_name.trim()) noteParts.push(`Supplier: ${form.supplier_name.trim()}`);
+      if (isP2P && form.supplier_number.trim()) noteParts.push(`Phone: ${form.supplier_number.trim()}`);
       if (form.device_type.trim()) noteParts.push(`Device: ${form.device_type.trim()}`);
-      if (form.notes.trim()) noteParts.push(form.notes.trim());
 
       const { error } = await supabase.from("purchases").insert({
         supplier_id: form.supplier_id,
@@ -71,6 +72,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
         event_id: "",
         supplier_order_id: "",
         supplier_name: "",
+        supplier_number: "",
         category: "Cat 1",
         quantity: "1",
         unit_cost: "",
@@ -118,14 +120,25 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
           </div>
 
           {isP2P && (
-            <div className="space-y-1.5">
-              <Label>Supplier Name</Label>
-              <Input
-                value={form.supplier_name}
-                onChange={(e) => setForm({ ...form, supplier_name: e.target.value })}
-                placeholder="e.g. John Smith"
-                maxLength={100}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Supplier Name</Label>
+                <Input
+                  value={form.supplier_name}
+                  onChange={(e) => setForm({ ...form, supplier_name: e.target.value })}
+                  placeholder="e.g. John Smith"
+                  maxLength={100}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Supplier Number</Label>
+                <Input
+                  value={form.supplier_number}
+                  onChange={(e) => setForm({ ...form, supplier_number: e.target.value })}
+                  placeholder="e.g. +44 7700 900000"
+                  maxLength={20}
+                />
+              </div>
             </div>
           )}
 
@@ -151,7 +164,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
               <Input type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label>Unit Cost *</Label>
+              <Label>Cost Per Ticket *</Label>
               <Input type="number" step="0.01" min="0" value={form.unit_cost} onChange={(e) => setForm({ ...form, unit_cost: e.target.value })} placeholder="0.00" />
             </div>
             <div className="space-y-1.5">
