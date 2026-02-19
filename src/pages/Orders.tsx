@@ -3,7 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Phone, Mail } from "lucide-react";
+import { Search, Phone, Mail, Smartphone, CheckCircle2, Circle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours } from "date-fns";
 import FilterSelect from "@/components/FilterSelect";
 import AddOrderDialog from "@/components/AddOrderDialog";
@@ -24,6 +25,8 @@ interface Order {
   status: string;
   delivery_type: string;
   delivery_status: string | null;
+  device_type: string | null;
+  contacted: boolean;
   order_date: string;
   currency: string;
   event_id: string;
@@ -78,6 +81,11 @@ export default function Orders() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const updateField = useCallback(async (orderId: string, field: string, value: any) => {
+    await supabase.from("orders").update({ [field]: value }).eq("id", orderId);
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: value } : o));
+  }, []);
 
   const platformOptions = [...new Set(orders.map((o) => o.platforms?.name).filter(Boolean))].map((n) => ({ value: n!, label: n! }));
   const eventOptions = useMemo(() => {
@@ -224,11 +232,14 @@ export default function Orders() {
                     <TableRow className="text-[10px] uppercase tracking-wider">
                       <TableHead className="text-[10px]">Ref</TableHead>
                       <TableHead className="text-[10px]">Platform</TableHead>
-                      <TableHead className="text-[10px]">Customer</TableHead>
-                      <TableHead className="text-[10px]">Contact</TableHead>
+                      <TableHead className="text-[10px]">Customer Name</TableHead>
+                      <TableHead className="text-[10px]">Phone</TableHead>
+                      <TableHead className="text-[10px]">Email</TableHead>
                       <TableHead className="text-[10px]">Cat</TableHead>
                       <TableHead className="text-[10px]">Qty</TableHead>
                       <TableHead className="text-[10px] text-right">Sale</TableHead>
+                      <TableHead className="text-[10px]">Device</TableHead>
+                      <TableHead className="text-[10px]">Contacted</TableHead>
                       <TableHead className="text-[10px]">Delivery</TableHead>
                       <TableHead className="text-[10px]">Date Sold</TableHead>
                       <TableHead className="text-[10px]">Deadline</TableHead>
@@ -253,24 +264,49 @@ export default function Orders() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="flex flex-col gap-0.5">
-                              {o.buyer_phone && (
-                                <span className="flex items-center gap-1 text-muted-foreground">
-                                  <Phone className="h-3 w-3" />{o.buyer_phone}
-                                </span>
-                              )}
-                              {o.buyer_email && (
-                                <span className="flex items-center gap-1 text-muted-foreground truncate max-w-[180px]">
-                                  <Mail className="h-3 w-3" />{o.buyer_email}
-                                </span>
-                              )}
-                              {!o.buyer_phone && !o.buyer_email && <span className="text-muted-foreground">—</span>}
-                            </div>
+                            {o.buyer_phone ? (
+                              <span className="flex items-center gap-1 text-muted-foreground text-xs">
+                                <Phone className="h-3 w-3" />{o.buyer_phone}
+                              </span>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell>
+                            {o.buyer_email ? (
+                              <span className="flex items-center gap-1 text-muted-foreground truncate max-w-[180px] text-xs">
+                                <Mail className="h-3 w-3" />{o.buyer_email}
+                              </span>
+                            ) : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell>{o.category}</TableCell>
                           <TableCell className="font-mono font-bold">{o.quantity}</TableCell>
                           <TableCell className="text-right font-mono">
                             £{Number(o.sale_price).toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); updateField(o.id, 'device_type', o.device_type === 'ios' ? null : 'ios'); }}
+                                className={`p-1 rounded transition-colors ${o.device_type === 'ios' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground'}`}
+                                title="iOS"
+                              >
+                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); updateField(o.id, 'device_type', o.device_type === 'android' ? null : 'android'); }}
+                                className={`p-1 rounded transition-colors ${o.device_type === 'android' ? 'bg-success/10 text-success' : 'text-muted-foreground/40 hover:text-muted-foreground'}`}
+                                title="Android"
+                              >
+                                <Smartphone className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Checkbox
+                              checked={o.contacted}
+                              onCheckedChange={(checked) => { updateField(o.id, 'contacted', !!checked); }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="data-[state=checked]:bg-success data-[state=checked]:border-success"
+                            />
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={`text-[10px] ${deliveryColor[(o.delivery_status || "pending")] || ""}`}>
