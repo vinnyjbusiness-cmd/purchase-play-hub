@@ -2,12 +2,14 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search } from "lucide-react";
+import { Search, Scissors } from "lucide-react";
 import { format } from "date-fns";
 import FilterSelect from "@/components/FilterSelect";
 import AddPurchaseDialog from "@/components/AddPurchaseDialog";
 import PurchaseDetailSheet from "@/components/PurchaseDetailSheet";
+import SplitPurchaseDialog from "@/components/SplitPurchaseDialog";
 
 interface Purchase {
   id: string;
@@ -40,6 +42,7 @@ export default function Purchases() {
   const [filterEvent, setFilterEvent] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
+  const [splitPurchase, setSplitPurchase] = useState<Purchase | null>(null);
 
   const load = useCallback(() => {
     supabase
@@ -116,6 +119,7 @@ export default function Purchases() {
               <TableHead className="text-right">Total</TableHead>
               <TableHead>Paid</TableHead>
               <TableHead>Date</TableHead>
+              <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -134,11 +138,24 @@ export default function Purchases() {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">{format(new Date(p.purchase_date), "dd MMM yy")}</TableCell>
+                <TableCell>
+                  {p.quantity > 1 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      title="Split purchase"
+                      onClick={(e) => { e.stopPropagation(); setSplitPurchase(p); }}
+                    >
+                      <Scissors className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </TableCell>
               </TableRow>
             ))}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">No purchases found</TableCell>
+                <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">No purchases found</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -150,6 +167,20 @@ export default function Purchases() {
         onClose={() => setSelectedPurchaseId(null)}
         onUpdated={load}
       />
+
+      {splitPurchase && (
+        <SplitPurchaseDialog
+          purchaseId={splitPurchase.id}
+          currentQuantity={splitPurchase.quantity}
+          category={splitPurchase.category}
+          section={splitPurchase.section}
+          unitCost={splitPurchase.unit_cost}
+          currency="GBP"
+          supplierName={splitPurchase.suppliers?.name || "Unknown"}
+          onClose={() => setSplitPurchase(null)}
+          onSplit={() => { setSplitPurchase(null); load(); }}
+        />
+      )}
     </div>
   );
 }
