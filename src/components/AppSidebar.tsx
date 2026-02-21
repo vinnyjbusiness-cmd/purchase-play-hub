@@ -19,12 +19,9 @@ import { useState } from "react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { useOrg } from "@/hooks/useOrg";
 import ChangePasswordDialog from "./ChangePasswordDialog";
-
-const navItems = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/events", icon: CalendarDays, label: "Events" },
-];
+import { ChangePinDialog } from "./FinancePinGate";
 
 const orderSubItems = [
   { to: "/orders", label: "All Orders" },
@@ -42,24 +39,18 @@ const financeSubItems = [
   { to: "/finance/world-cup", label: "World Cup" },
 ];
 
-const bottomNavItems = [
-  { to: "/purchases", icon: Package, label: "Purchases" },
-  { to: "/platforms", icon: Globe, label: "Platforms" },
-  { to: "/analytics", icon: BarChart3, label: "Analytics" },
-  { to: "/cashflow", icon: Banknote, label: "Cashflow" },
-  { to: "/health", icon: HeartPulse, label: "Health" },
-  { to: "/team", icon: Users, label: "Team" },
-];
-
 export default function AppSidebar() {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { userRole } = useOrg();
+  const isAdmin = userRole === "admin";
   const isOrdersActive = location.pathname.startsWith("/orders");
   const isFinanceActive = location.pathname.startsWith("/finance");
   const [ordersOpen, setOrdersOpen] = useState(isOrdersActive);
   const [financeOpen, setFinanceOpen] = useState(isFinanceActive);
 
   const handleLogout = async () => {
+    sessionStorage.removeItem("vjx_finance_unlocked");
     await supabase.auth.signOut();
   };
 
@@ -133,6 +124,30 @@ export default function AppSidebar() {
     </div>
   );
 
+  // Viewer nav: Dashboard, Orders, Purchases only
+  const viewerNavItems = [
+    { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+  ];
+
+  // Admin nav
+  const adminNavItems = [
+    { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+    { to: "/events", icon: CalendarDays, label: "Events" },
+  ];
+
+  const adminBottomItems = [
+    { to: "/purchases", icon: Package, label: "Purchases" },
+    { to: "/platforms", icon: Globe, label: "Platforms" },
+    { to: "/analytics", icon: BarChart3, label: "Analytics" },
+    { to: "/cashflow", icon: Banknote, label: "Cashflow" },
+    { to: "/health", icon: HeartPulse, label: "Health" },
+    { to: "/team", icon: Users, label: "Team" },
+  ];
+
+  const viewerBottomItems = [
+    { to: "/purchases", icon: Package, label: "Purchases" },
+  ];
+
   return (
     <aside className="flex h-screen w-[240px] flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       {/* Logo */}
@@ -144,15 +159,15 @@ export default function AppSidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map(renderNavLink)}
+        {(isAdmin ? adminNavItems : viewerNavItems).map(renderNavLink)}
 
-        {/* Orders with sub-items */}
+        {/* Orders — always visible */}
         {renderCollapsible("Orders", ShoppingCart, isOrdersActive, ordersOpen, setOrdersOpen, orderSubItems)}
 
-        {/* Finance with sub-items */}
-        {renderCollapsible("Finance", Wallet, isFinanceActive, financeOpen, setFinanceOpen, financeSubItems)}
+        {/* Finance — admin only */}
+        {isAdmin && renderCollapsible("Finance", Wallet, isFinanceActive, financeOpen, setFinanceOpen, financeSubItems)}
 
-        {bottomNavItems.map(renderNavLink)}
+        {(isAdmin ? adminBottomItems : viewerBottomItems).map(renderNavLink)}
       </nav>
 
       {/* Footer */}
@@ -165,6 +180,7 @@ export default function AppSidebar() {
           {theme === "light" ? "Dark Mode" : "Light Mode"}
         </button>
         <ChangePasswordDialog />
+        {isAdmin && <ChangePinDialog />}
         <button
           onClick={handleLogout}
           className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"

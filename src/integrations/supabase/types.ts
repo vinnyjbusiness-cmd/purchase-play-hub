@@ -373,6 +373,7 @@ export type Database = {
       organizations: {
         Row: {
           created_at: string
+          finance_pin: string | null
           id: string
           name: string
           owner_user_id: string
@@ -380,6 +381,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          finance_pin?: string | null
           id?: string
           name: string
           owner_user_id: string
@@ -387,6 +389,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          finance_pin?: string | null
           id?: string
           name?: string
           owner_user_id?: string

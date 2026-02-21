@@ -6,7 +6,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ThemeProvider } from "./components/ThemeProvider";
-import { OrgProvider } from "./hooks/useOrg";
+import { OrgProvider, useOrg } from "./hooks/useOrg";
+import { FinancePinGate } from "./components/FinancePinGate";
 import AppLayout from "./components/AppLayout";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -50,6 +51,23 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Blocks viewers from accessing admin-only routes */
+function AdminOnly({ children }: { children: React.ReactNode }) {
+  const { userRole, loading } = useOrg();
+  if (loading) return null;
+  if (userRole !== "admin") return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+/** Wraps pages that need PIN protection */
+function PinProtected({ children }: { children: React.ReactNode }) {
+  return (
+    <AdminOnly>
+      <FinancePinGate>{children}</FinancePinGate>
+    </AdminOnly>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
@@ -70,18 +88,18 @@ const App = () => (
               }
             >
               <Route path="/" element={<Dashboard />} />
-              <Route path="/events" element={<Events />} />
-              <Route path="/events/:id" element={<EventDetail />} />
+              <Route path="/events" element={<AdminOnly><Events /></AdminOnly>} />
+              <Route path="/events/:id" element={<AdminOnly><EventDetail /></AdminOnly>} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/orders/:club" element={<Orders />} />
               <Route path="/purchases" element={<Purchases />} />
-              <Route path="/platforms" element={<Platforms />} />
-              <Route path="/finance" element={<Finance />} />
-              <Route path="/finance/:club" element={<Finance />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/cashflow" element={<Cashflow />} />
-              <Route path="/health" element={<Reconciliation />} />
-              <Route path="/team" element={<Team />} />
+              <Route path="/platforms" element={<AdminOnly><Platforms /></AdminOnly>} />
+              <Route path="/finance" element={<PinProtected><Finance /></PinProtected>} />
+              <Route path="/finance/:club" element={<PinProtected><Finance /></PinProtected>} />
+              <Route path="/analytics" element={<PinProtected><Analytics /></PinProtected>} />
+              <Route path="/cashflow" element={<PinProtected><Cashflow /></PinProtected>} />
+              <Route path="/health" element={<AdminOnly><Reconciliation /></AdminOnly>} />
+              <Route path="/team" element={<AdminOnly><Team /></AdminOnly>} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
