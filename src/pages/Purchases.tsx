@@ -323,7 +323,17 @@ export default function Purchases() {
                             title="Delete purchase"
                             onClick={async (e) => {
                               e.stopPropagation();
-                              if (!confirm("Delete this purchase?")) return;
+                              if (!confirm("Delete this purchase? Any assigned inventory will be unlinked from orders.")) return;
+                              // 1. Get inventory linked to this purchase
+                              const { data: inv } = await supabase.from("inventory").select("id").eq("purchase_id", p.id);
+                              const invIds = (inv || []).map(i => i.id);
+                              // 2. Delete order_lines referencing this inventory
+                              if (invIds.length > 0) {
+                                await supabase.from("order_lines").delete().in("inventory_id", invIds);
+                                // 3. Delete inventory
+                                await supabase.from("inventory").delete().eq("purchase_id", p.id);
+                              }
+                              // 4. Delete purchase
                               await supabase.from("purchases").delete().eq("id", p.id);
                               load();
                             }}
