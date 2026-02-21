@@ -45,7 +45,17 @@ export default function Events() {
       const purchases = purchasesRes.data || [];
       const inventory = inventoryRes.data || [];
 
-      const enriched: EventWithPL[] = rawEvents.map((ev) => {
+      // Filter out past events and deduplicate by match_code
+      const now = new Date();
+      const futureEvents = rawEvents.filter((ev) => new Date(ev.event_date) >= now);
+      const seen = new Set<string>();
+      const uniqueEvents = futureEvents.filter((ev) => {
+        if (seen.has(ev.match_code)) return false;
+        seen.add(ev.match_code);
+        return true;
+      });
+
+      const enriched: EventWithPL[] = uniqueEvents.map((ev) => {
         const evOrders = orders.filter((o) => o.event_id === ev.id);
         const evPurchases = purchases.filter((p) => p.event_id === ev.id);
         const evInventory = inventory.filter((i) => i.event_id === ev.id);
