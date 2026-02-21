@@ -56,6 +56,13 @@ export default function Balance() {
   const [openingNotes, setOpeningNotes] = useState("");
   const [openingLoading, setOpeningLoading] = useState(false);
 
+  // Add Balance dialog (quick add to supplier)
+  const [showAddBalance, setShowAddBalance] = useState(false);
+  const [addBalSupplierId, setAddBalSupplierId] = useState("");
+  const [addBalAmount, setAddBalAmount] = useState("");
+  const [addBalNotes, setAddBalNotes] = useState("");
+  const [addBalLoading, setAddBalLoading] = useState(false);
+
   const loadData = () => {
     Promise.all([
       supabase.from("purchases").select("id,quantity,unit_cost,total_cost,total_cost_gbp,currency,purchase_date,supplier_paid,notes,category,event_id,supplier_id"),
@@ -406,9 +413,14 @@ export default function Balance() {
             <h1 className="text-2xl font-bold tracking-tight">Balances</h1>
             <p className="text-sm text-muted-foreground mt-1">Running balances across all events. Click a name to see details &amp; record payments.</p>
           </div>
-          <Button variant="outline" onClick={() => setShowAddOpening(true)}>
-            <BookOpen className="h-4 w-4 mr-1.5" /> Add Opening Balance
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowAddBalance(true)}>
+              <Plus className="h-4 w-4 mr-1.5" /> Add Balance
+            </Button>
+            <Button variant="outline" onClick={() => setShowAddOpening(true)}>
+              <BookOpen className="h-4 w-4 mr-1.5" /> Add Opening Balance
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -503,6 +515,69 @@ export default function Balance() {
           </div>
         </div>
       </div>
+
+      {/* Add Balance dialog (quick supplier charge) */}
+      <Dialog open={showAddBalance} onOpenChange={setShowAddBalance}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Plus className="h-4 w-4" /> Add Balance</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
+              Add an amount to a supplier's balance — for anything outside of a normal purchase (e.g. a favour, extra charge, ad-hoc fee).
+            </p>
+            <div className="space-y-1.5">
+              <Label>Supplier</Label>
+              <Select value={addBalSupplierId} onValueChange={setAddBalSupplierId}>
+                <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                <SelectContent>
+                  {suppliers.map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Amount (£)</Label>
+              <Input type="number" step="0.01" min="0" value={addBalAmount} onChange={e => setAddBalAmount(e.target.value)} placeholder="0.00" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notes (optional)</Label>
+              <Textarea value={addBalNotes} onChange={e => setAddBalNotes(e.target.value)} placeholder="e.g. Favour — sourced 2 tickets" rows={2} maxLength={200} />
+            </div>
+            <Button
+              onClick={async () => {
+                if (!addBalSupplierId || !addBalAmount) return;
+                setAddBalLoading(true);
+                try {
+                  const { error } = await supabase.from("balance_payments").insert({
+                    party_type: "supplier",
+                    party_id: addBalSupplierId,
+                    amount: parseFloat(addBalAmount),
+                    notes: addBalNotes || null,
+                    type: "adjustment",
+                  } as any);
+                  if (error) throw error;
+                  toast.success("Balance added");
+                  setShowAddBalance(false);
+                  setAddBalSupplierId("");
+                  setAddBalAmount("");
+                  setAddBalNotes("");
+                  loadData();
+                } catch (err: any) {
+                  toast.error(err.message);
+                } finally {
+                  setAddBalLoading(false);
+                }
+              }}
+              disabled={addBalLoading || !addBalSupplierId || !addBalAmount}
+              className="w-full"
+            >
+              {addBalLoading ? "Saving..." : "Add Balance"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Opening Balance dialog (from overview) */}
       <Dialog open={showAddOpening} onOpenChange={setShowAddOpening}>
