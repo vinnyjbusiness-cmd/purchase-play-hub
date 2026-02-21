@@ -2,13 +2,15 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Search, ArrowUpRight, ArrowDownLeft } from "lucide-react";
-import { format } from "date-fns";
+import { Search, ArrowUpRight, ArrowDownLeft, CalendarDays, TrendingUp, TrendingDown, Ticket } from "lucide-react";
+import { format, startOfMonth, endOfMonth, subMonths, addMonths, isSameMonth } from "date-fns";
 import FilterSelect from "@/components/FilterSelect";
 import { toast } from "sonner";
+import { CLUBS } from "@/lib/seatingSections";
 
 interface LedgerEntry {
   id: string;
@@ -55,7 +57,7 @@ interface Order {
   category: string;
 }
 
-interface EventInfo { id: string; match_code: string; home_team: string; away_team: string; event_date: string; }
+interface EventInfo { id: string; match_code: string; home_team: string; away_team: string; event_date: string; competition: string; }
 interface SupplierInfo { id: string; name: string; }
 interface PlatformInfo { id: string; name: string; }
 
@@ -69,6 +71,21 @@ const typeColor: Record<string, string> = {
   adjustment: "bg-muted text-muted-foreground",
 };
 
+const CLUB_FILTERS = [
+  { value: "all", label: "All Clubs" },
+  ...CLUBS,
+];
+
+function matchesClub(event: EventInfo, clubValue: string): boolean {
+  if (clubValue === "all") return true;
+  const clubLabel = CLUBS.find(c => c.value === clubValue)?.label.toLowerCase() || "";
+  return (
+    event.home_team.toLowerCase().includes(clubLabel) ||
+    event.away_team.toLowerCase().includes(clubLabel) ||
+    (clubValue === "world-cup" && event.competition.toLowerCase().includes("world cup"))
+  );
+}
+
 export default function Finance() {
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -79,13 +96,15 @@ export default function Finance() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [filterCurrency, setFilterCurrency] = useState("all");
+  const [clubFilter, setClubFilter] = useState("all");
+  const [monthOffset, setMonthOffset] = useState(0); // 0 = current month
 
   useEffect(() => {
     Promise.all([
       supabase.from("transactions_ledger").select("*").order("transaction_date", { ascending: false }),
       supabase.from("purchases").select("id,supplier_order_id,quantity,unit_cost,total_cost,total_cost_gbp,currency,purchase_date,supplier_paid,notes,category,section,event_id,supplier_id"),
       supabase.from("orders").select("id,order_ref,sale_price,fees,net_received,quantity,order_date,payment_received,status,event_id,platform_id,category"),
-      supabase.from("events").select("id,match_code,home_team,away_team,event_date"),
+      supabase.from("events").select("id,match_code,home_team,away_team,event_date,competition"),
       supabase.from("suppliers").select("id,name"),
       supabase.from("platforms").select("id,name"),
     ]).then(([ledger, purch, ord, ev, sup, plat]) => {
@@ -102,17 +121,28 @@ export default function Finance() {
   const supplierMap = useMemo(() => Object.fromEntries(suppliers.map(s => [s.id, s])), [suppliers]);
   const platformMap = useMemo(() => Object.fromEntries(platforms.map(p => [p.id, p])), [platforms]);
 
+  // Filter events by club
+  const clubEventIds = useMemo(() => {
+    if (clubFilter === "all") return null; // null = no filter
+    return new Set(events.filter(e => matchesClub(e, clubFilter)).map(e => e.id));
+  }, [events, clubFilter]);
+
+  const filterByClub = <T extends { event_id: string }>(items: T[]): T[] => {
+    if (!clubEventIds) return items;
+    return items.filter(i => clubEventIds.has(i.event_id));
+  };
+
   const eventLabel = (id: string) => {
     const ev = eventMap[id];
     return ev ? `${ev.home_team} vs ${ev.away_team}` : "Unknown";
   };
 
   // --- I Owe (purchases) ---
-  const unpaidPurchases = purchases.filter(p => !p.supplier_paid);
-  const paidPurchases = purchases.filter(p => p.supplier_paid);
+  const allPurchasesFiltered = filterByClub(purchases);
+  const unpaidPurchases = allPurchasesFiltered.filter(p => !p.supplier_paid);
+  const paidPurchases = allPurchasesFiltered.filter(p => p.supplier_paid);
   const totalIOwe = unpaidPurchases.reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
 
-  // Group unpaid purchases by event
   const iOweByGame = useMemo(() => {
     const map: Record<string, Purchase[]> = {};
     unpaidPurchases.forEach(p => {
@@ -123,8 +153,9 @@ export default function Finance() {
   }, [unpaidPurchases]);
 
   // --- Owed to Me (orders) ---
-  const unpaidOrders = orders.filter(o => !o.payment_received && o.status !== "cancelled" && o.status !== "refunded");
-  const paidOrders = orders.filter(o => o.payment_received);
+  const allOrdersFiltered = filterByClub(orders);
+  const unpaidOrders = allOrdersFiltered.filter(o => !o.payment_received && o.status !== "cancelled" && o.status !== "refunded");
+  const paidOrders = allOrdersFiltered.filter(o => o.payment_received);
   const totalOwedToMe = unpaidOrders.reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
 
   const owedToMeByGame = useMemo(() => {
@@ -152,17 +183,17 @@ export default function Finance() {
   };
 
   // --- Ledger filters ---
-  const filtered = entries.filter((e) => {
+  const filteredLedger = entries.filter((e) => {
+    if (clubEventIds && e.event_id && !clubEventIds.has(e.event_id)) return false;
     if (filterType !== "all" && e.transaction_type !== filterType) return false;
     if (filterCurrency !== "all" && e.currency !== filterCurrency) return false;
     if (search) return e.description.toLowerCase().includes(search.toLowerCase());
     return true;
   });
 
-  const totalIn = filtered.filter((e) => e.amount_gbp > 0).reduce((s, e) => s + e.amount_gbp, 0);
-  const totalOut = filtered.filter((e) => e.amount_gbp < 0).reduce((s, e) => s + e.amount_gbp, 0);
+  const totalIn = filteredLedger.filter((e) => e.amount_gbp > 0).reduce((s, e) => s + e.amount_gbp, 0);
+  const totalOut = filteredLedger.filter((e) => e.amount_gbp < 0).reduce((s, e) => s + e.amount_gbp, 0);
 
-  // Extract supplier details from notes
   const getSupplierDetail = (notes: string | null) => {
     if (!notes) return null;
     const nameMatch = notes.match(/Name:\s*([^|]+)/);
@@ -170,11 +201,66 @@ export default function Finance() {
     return nameMatch ? nameMatch[1].trim() : websiteMatch ? websiteMatch[1].trim() : null;
   };
 
+  // --- Monthly Summary ---
+  const selectedMonth = addMonths(new Date(), monthOffset);
+  const monthStart = startOfMonth(selectedMonth);
+  const monthEnd = endOfMonth(selectedMonth);
+
+  const monthlyGames = useMemo(() => {
+    const relevantEvents = events.filter(ev => {
+      if (clubFilter !== "all" && !matchesClub(ev, clubFilter)) return false;
+      const d = new Date(ev.event_date);
+      return isSameMonth(d, selectedMonth);
+    });
+
+    return relevantEvents.map(ev => {
+      const evOrders = orders.filter(o => o.event_id === ev.id);
+      const evPurchases = purchases.filter(p => p.event_id === ev.id);
+      const revenue = evOrders.reduce((s, o) => s + Number(o.sale_price || 0), 0);
+      const fees = evOrders.reduce((s, o) => s + Number(o.fees || 0), 0);
+      const costs = evPurchases.reduce((s, p) => s + Number(p.total_cost || 0), 0);
+      const soldQty = evOrders.reduce((s, o) => s + Number(o.quantity || 0), 0);
+      const boughtQty = evPurchases.reduce((s, p) => s + Number(p.quantity || 0), 0);
+      return {
+        ...ev,
+        revenue,
+        fees,
+        costs,
+        profit: revenue - costs - fees,
+        soldQty,
+        boughtQty,
+      };
+    }).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
+  }, [events, orders, purchases, clubFilter, selectedMonth]);
+
+  const monthTotalRevenue = monthlyGames.reduce((s, g) => s + g.revenue, 0);
+  const monthTotalCosts = monthlyGames.reduce((s, g) => s + g.costs, 0);
+  const monthTotalFees = monthlyGames.reduce((s, g) => s + g.fees, 0);
+  const monthTotalProfit = monthTotalRevenue - monthTotalCosts - monthTotalFees;
+  const monthTotalSold = monthlyGames.reduce((s, g) => s + g.soldQty, 0);
+
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Finance</h1>
-        <p className="text-muted-foreground">Track what you owe, what you're owed, and your full ledger</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Finance</h1>
+          <p className="text-muted-foreground">Track what you owe, what you're owed, and your full ledger</p>
+        </div>
+      </div>
+
+      {/* Club filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        {CLUB_FILTERS.map((club) => (
+          <Button
+            key={club.value}
+            variant={clubFilter === club.value ? "default" : "outline"}
+            size="sm"
+            onClick={() => setClubFilter(club.value)}
+            className="text-xs"
+          >
+            {club.label}
+          </Button>
+        ))}
       </div>
 
       {/* Summary cards */}
@@ -200,7 +286,7 @@ export default function Finance() {
           <p className={`text-xl font-bold ${totalIn + totalOut >= 0 ? "text-success" : "text-destructive"}`}>
             £{(totalIn + totalOut).toLocaleString("en-GB", { minimumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-muted-foreground mt-1">From {entries.length} ledger entries</p>
+          <p className="text-xs text-muted-foreground mt-1">From {filteredLedger.length} ledger entries</p>
         </div>
       </div>
 
@@ -212,6 +298,7 @@ export default function Finance() {
           <TabsTrigger value="owed-to-me">
             Owed to Me {unpaidOrders.length > 0 && <Badge className="ml-2 text-xs bg-success text-success-foreground">{unpaidOrders.length}</Badge>}
           </TabsTrigger>
+          <TabsTrigger value="monthly">Monthly</TabsTrigger>
           <TabsTrigger value="ledger">Ledger</TabsTrigger>
         </TabsList>
 
@@ -253,9 +340,7 @@ export default function Finance() {
                         <TableRow key={p.id}>
                           <TableCell className="font-medium">{supplierMap[p.supplier_id]?.name || "Unknown"}</TableCell>
                           <TableCell className="text-sm">{getSupplierDetail(p.notes) || "—"}</TableCell>
-                          <TableCell className="text-muted-foreground text-sm">
-                            {p.supplier_order_id || "—"}
-                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{p.supplier_order_id || "—"}</TableCell>
                           <TableCell>{p.category}</TableCell>
                           <TableCell>{p.quantity}</TableCell>
                           <TableCell className="text-right font-medium">
@@ -401,6 +486,98 @@ export default function Finance() {
           )}
         </TabsContent>
 
+        {/* === MONTHLY TAB === */}
+        <TabsContent value="monthly" className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" onClick={() => setMonthOffset(o => o - 1)}>← Prev</Button>
+            <h2 className="text-lg font-semibold">{format(selectedMonth, "MMMM yyyy")}</h2>
+            <Button variant="outline" size="sm" onClick={() => setMonthOffset(o => o + 1)}>Next →</Button>
+          </div>
+
+          {/* Monthly summary cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="rounded-lg border bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground">Games</p>
+              <p className="text-lg font-bold">{monthlyGames.length}</p>
+            </div>
+            <div className="rounded-lg border bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground">Revenue</p>
+              <p className="text-lg font-bold">£{monthTotalRevenue.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</p>
+            </div>
+            <div className="rounded-lg border bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground">Costs</p>
+              <p className="text-lg font-bold">£{monthTotalCosts.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</p>
+            </div>
+            <div className="rounded-lg border bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground">Tickets Sold</p>
+              <p className="text-lg font-bold">{monthTotalSold}</p>
+            </div>
+            <div className="rounded-lg border bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground">Net Profit</p>
+              <p className={`text-lg font-bold ${monthTotalProfit >= 0 ? "text-success" : "text-destructive"}`}>
+                £{monthTotalProfit.toLocaleString("en-GB", { minimumFractionDigits: 0 })}
+              </p>
+            </div>
+          </div>
+
+          {/* Per-game breakdown */}
+          {monthlyGames.length === 0 ? (
+            <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
+              No games found for {format(selectedMonth, "MMMM yyyy")}
+            </div>
+          ) : (
+            <div className="rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Match</TableHead>
+                    <TableHead className="text-center">Tickets Bought</TableHead>
+                    <TableHead className="text-center">Tickets Sold</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="text-right">Costs</TableHead>
+                    <TableHead className="text-right">Fees</TableHead>
+                    <TableHead className="text-right">Profit</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {monthlyGames.map(g => (
+                    <TableRow key={g.id}>
+                      <TableCell className="text-muted-foreground whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <CalendarDays className="h-3.5 w-3.5" />
+                          {format(new Date(g.event_date), "dd MMM")}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">{g.home_team} vs {g.away_team}</TableCell>
+                      <TableCell className="text-center">{g.boughtQty}</TableCell>
+                      <TableCell className="text-center">{g.soldQty}</TableCell>
+                      <TableCell className="text-right">£{g.revenue.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</TableCell>
+                      <TableCell className="text-right">£{g.costs.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</TableCell>
+                      <TableCell className="text-right">£{g.fees.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</TableCell>
+                      <TableCell className={`text-right font-semibold ${g.profit >= 0 ? "text-success" : "text-destructive"}`}>
+                        £{g.profit.toLocaleString("en-GB", { minimumFractionDigits: 0 })}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {/* Totals row */}
+                  <TableRow className="bg-muted/30 font-semibold">
+                    <TableCell colSpan={2}>Total</TableCell>
+                    <TableCell className="text-center">{monthlyGames.reduce((s, g) => s + g.boughtQty, 0)}</TableCell>
+                    <TableCell className="text-center">{monthTotalSold}</TableCell>
+                    <TableCell className="text-right">£{monthTotalRevenue.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right">£{monthTotalCosts.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right">£{monthTotalFees.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</TableCell>
+                    <TableCell className={`text-right ${monthTotalProfit >= 0 ? "text-success" : "text-destructive"}`}>
+                      £{monthTotalProfit.toLocaleString("en-GB", { minimumFractionDigits: 0 })}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </TabsContent>
+
         {/* === LEDGER TAB === */}
         <TabsContent value="ledger" className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
@@ -457,7 +634,7 @@ export default function Finance() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((e) => (
+                {filteredLedger.map((e) => (
                   <TableRow key={e.id}>
                     <TableCell className="text-muted-foreground">{format(new Date(e.transaction_date), "dd MMM yy")}</TableCell>
                     <TableCell>
@@ -471,7 +648,7 @@ export default function Finance() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {filtered.length === 0 && (
+                {filteredLedger.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">No transactions found</TableCell>
                   </TableRow>
