@@ -1,10 +1,15 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CalendarDays, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
-import { format, startOfMonth, endOfMonth, addMonths, isSameMonth, startOfQuarter, endOfQuarter, isSameQuarter } from "date-fns";
+import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, subMonths, startOfQuarter, endOfQuarter } from "date-fns";
 import { CLUBS } from "@/lib/seatingSections";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell, LineChart, Line,
+} from "recharts";
 
 interface EventInfo { id: string; match_code: string; home_team: string; away_team: string; event_date: string; competition: string; }
 interface Order { id: string; sale_price: number; fees: number; quantity: number; order_date: string; event_id: string; status: string; }
@@ -22,15 +27,26 @@ function matchesClub(event: EventInfo, clubValue: string): boolean {
   return event.home_team.toLowerCase().includes(clubLabel) || event.away_team.toLowerCase().includes(clubLabel);
 }
 
-type ViewMode = "monthly" | "quarterly";
+type RangePreset = "this-month" | "last-month" | "this-quarter" | "last-quarter" | "custom";
+
+const CHART_COLORS = [
+  "hsl(220, 70%, 55%)",
+  "hsl(142, 60%, 40%)",
+  "hsl(0, 62%, 50%)",
+  "hsl(38, 80%, 50%)",
+  "hsl(280, 60%, 50%)",
+  "hsl(190, 70%, 45%)",
+];
 
 export default function Analytics() {
   const [events, setEvents] = useState<EventInfo[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [clubFilter, setClubFilter] = useState("all");
-  const [viewMode, setViewMode] = useState<ViewMode>("monthly");
-  const [offset, setOffset] = useState(0); // 0 = current period
+
+  const [rangePreset, setRangePreset] = useState<RangePreset>("this-month");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -44,23 +60,35 @@ export default function Analytics() {
     });
   }, []);
 
-  const selectedDate = addMonths(new Date(), viewMode === "monthly" ? offset : offset * 3);
+  // Compute date range
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    switch (rangePreset) {
+      case "this-month": return { start: startOfMonth(now), end: endOfMonth(now) };
+      case "last-month": { const prev = subMonths(now, 1); return { start: startOfMonth(prev), end: endOfMonth(prev) }; }
+      case "this-quarter": return { start: startOfQuarter(now), end: endOfQuarter(now) };
+      case "last-quarter": { const prev = subMonths(now, 3); return { start: startOfQuarter(prev), end: endOfQuarter(prev) }; }
+      case "custom": {
+        if (customFrom && customTo) return { start: parseISO(customFrom), end: parseISO(customTo) };
+        return { start: startOfMonth(now), end: endOfMonth(now) };
+      }
+    }
+  }, [rangePreset, customFrom, customTo]);
 
-  const periodLabel = viewMode === "monthly"
-    ? format(selectedDate, "MMMM yyyy")
-    : `Q${Math.ceil((selectedDate.getMonth() + 1) / 3)} ${format(selectedDate, "yyyy")}`;
+  const rangeLabel = rangePreset === "custom" && customFrom && customTo
+    ? `${format(dateRange.start, "dd MMM yyyy")} — ${format(dateRange.end, "dd MMM yyyy")}`
+    : format(dateRange.start, "MMMM yyyy");
 
-  const isInPeriod = (dateStr: string) => {
+  const isInRange = (dateStr: string) => {
     const d = new Date(dateStr);
-    if (viewMode === "monthly") return isSameMonth(d, selectedDate);
-    return isSameQuarter(d, selectedDate);
+    return isWithinInterval(d, { start: dateRange.start, end: dateRange.end });
   };
 
-  // Build per-game data for this period
+  // Per-game data
   const periodGames = useMemo(() => {
     const filteredEvents = events.filter(ev => {
       if (clubFilter !== "all" && !matchesClub(ev, clubFilter)) return false;
-      return isInPeriod(ev.event_date);
+      return isInRange(ev.event_date);
     });
 
     return filteredEvents.map(ev => {
@@ -73,7 +101,7 @@ export default function Analytics() {
       const boughtQty = evPurchases.reduce((s, p) => s + Number(p.quantity || 0), 0);
       return { ...ev, revenue, fees, costs, profit: revenue - costs - fees, soldQty, boughtQty };
     }).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
-  }, [events, orders, purchases, clubFilter, selectedDate, viewMode]);
+  }, [events, orders, purchases, clubFilter, dateRange]);
 
   const totals = useMemo(() => ({
     revenue: periodGames.reduce((s, g) => s + g.revenue, 0),
@@ -85,10 +113,41 @@ export default function Analytics() {
     games: periodGames.length,
   }), [periodGames]);
 
-  // Margin %
   const margin = totals.revenue > 0 ? ((totals.profit / totals.revenue) * 100).toFixed(1) : "0.0";
   const avgPerGame = totals.games > 0 ? totals.profit / totals.games : 0;
   const avgTicketProfit = totals.sold > 0 ? totals.profit / totals.sold : 0;
+
+  // Chart data: per-game bar chart
+  const barChartData = periodGames.map(g => ({
+    name: `${g.home_team.split(" ").pop()} v ${g.away_team.split(" ").pop()}`,
+    Revenue: g.revenue,
+    Costs: g.costs,
+    Fees: g.fees,
+    Profit: g.profit,
+  }));
+
+  // Pie chart: revenue breakdown by game
+  const pieData = periodGames
+    .filter(g => g.revenue > 0)
+    .map(g => ({ name: `${g.home_team} v ${g.away_team}`, value: g.revenue }));
+
+  // Cumulative profit line
+  const cumulativeData = periodGames.reduce<{ name: string; profit: number }[]>((acc, g) => {
+    const prev = acc.length > 0 ? acc[acc.length - 1].profit : 0;
+    acc.push({
+      name: format(new Date(g.event_date), "dd MMM"),
+      profit: prev + g.profit,
+    });
+    return acc;
+  }, []);
+
+  const presets: { key: RangePreset; label: string }[] = [
+    { key: "this-month", label: "This Month" },
+    { key: "last-month", label: "Last Month" },
+    { key: "this-quarter", label: "This Quarter" },
+    { key: "last-quarter", label: "Last Quarter" },
+    { key: "custom", label: "Custom Range" },
+  ];
 
   return (
     <div className="p-6 space-y-6">
@@ -108,25 +167,27 @@ export default function Analytics() {
         ))}
       </div>
 
-      {/* Period selector */}
-      <div className="flex items-center gap-3">
+      {/* Date range selector */}
+      <div className="flex flex-wrap items-end gap-3">
         <div className="flex rounded-md border overflow-hidden">
-          <button
-            onClick={() => { setViewMode("monthly"); setOffset(0); }}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "monthly" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
-          >
-            Monthly
-          </button>
-          <button
-            onClick={() => { setViewMode("quarterly"); setOffset(0); }}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "quarterly" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
-          >
-            Quarterly
-          </button>
+          {presets.map(p => (
+            <button
+              key={p.key}
+              onClick={() => setRangePreset(p.key)}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${rangePreset === p.key ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
-        <Button variant="outline" size="sm" onClick={() => setOffset(o => o - 1)}>← Prev</Button>
-        <h2 className="text-lg font-semibold min-w-[160px] text-center">{periodLabel}</h2>
-        <Button variant="outline" size="sm" onClick={() => setOffset(o => o + 1)}>Next →</Button>
+        {rangePreset === "custom" && (
+          <div className="flex items-center gap-2">
+            <Input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="h-8 w-36 text-xs" />
+            <span className="text-xs text-muted-foreground">to</span>
+            <Input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="h-8 w-36 text-xs" />
+          </div>
+        )}
+        <span className="text-sm font-semibold text-muted-foreground">{rangeLabel}</span>
       </div>
 
       {/* KPI Cards */}
@@ -165,10 +226,100 @@ export default function Analytics() {
         </div>
       </div>
 
+      {/* Charts */}
+      {periodGames.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Revenue vs Costs vs Profit bar chart */}
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold mb-3">Revenue vs Costs per Game</h3>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={barChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `£${v}`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                  formatter={(value: number) => `£${value.toLocaleString("en-GB")}`}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="Revenue" fill="hsl(220, 70%, 55%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Costs" fill="hsl(0, 62%, 50%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Profit" fill="hsl(142, 60%, 40%)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Cumulative profit line chart */}
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold mb-3">Cumulative Profit</h3>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={cumulativeData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `£${v}`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                  formatter={(value: number) => `£${value.toLocaleString("en-GB")}`}
+                />
+                <Line type="monotone" dataKey="profit" stroke="hsl(220, 70%, 55%)" strokeWidth={2} dot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Revenue breakdown pie */}
+          {pieData.length > 0 && (
+            <div className="rounded-lg border bg-card p-4">
+              <h3 className="text-sm font-semibold mb-3">Revenue by Game</h3>
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                    {pieData.map((_, i) => (
+                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: number) => `£${value.toLocaleString("en-GB")}`} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* P&L waterfall-style summary */}
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold mb-3">P&L Summary</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-sm">Total Revenue</span>
+                <span className="font-semibold text-success">£{totals.revenue.toLocaleString("en-GB")}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-sm">Total Costs</span>
+                <span className="font-semibold text-destructive">-£{totals.costs.toLocaleString("en-GB")}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-sm">Total Fees</span>
+                <span className="font-semibold text-destructive">-£{totals.fees.toLocaleString("en-GB")}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-foreground/20">
+                <span className="text-sm font-bold">Gross Profit</span>
+                <span className={`font-bold text-lg ${totals.revenue - totals.costs >= 0 ? "text-success" : "text-destructive"}`}>
+                  £{(totals.revenue - totals.costs).toLocaleString("en-GB")}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-sm font-bold">Net Profit (after fees)</span>
+                <span className={`font-bold text-lg ${totals.profit >= 0 ? "text-success" : "text-destructive"}`}>
+                  £{totals.profit.toLocaleString("en-GB")}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Per-game breakdown table */}
       {periodGames.length === 0 ? (
         <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">
-          No games found for {periodLabel}
+          No games found for selected range
         </div>
       ) : (
         <div className="rounded-lg border">
@@ -213,9 +364,8 @@ export default function Analytics() {
                   </TableRow>
                 );
               })}
-              {/* Totals */}
               <TableRow className="bg-muted/30 font-semibold border-t-2">
-                <TableCell colSpan={2}>Total — {periodLabel}</TableCell>
+                <TableCell colSpan={2}>Total</TableCell>
                 <TableCell className="text-center">{totals.bought}</TableCell>
                 <TableCell className="text-center">{totals.sold}</TableCell>
                 <TableCell className="text-right">£{totals.revenue.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</TableCell>
@@ -231,7 +381,7 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* Avg per game stat */}
+      {/* Avg per game stats */}
       {totals.games > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="rounded-lg border bg-card p-4 text-center">
