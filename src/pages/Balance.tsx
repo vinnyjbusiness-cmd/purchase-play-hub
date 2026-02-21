@@ -187,7 +187,12 @@ export default function Balance() {
       if (!bal) return null;
       const byEvent: Record<string, Purchase[]> = {};
       bal.purchases.forEach(p => { if (!byEvent[p.event_id]) byEvent[p.event_id] = []; byEvent[p.event_id].push(p); });
-      const partyPayments = payments.filter(p => p.party_type === "supplier" && p.party_id === selectedParty.id);
+      // For trade_ keys, match by contact_name; otherwise match by party_id
+      const isTradeKey = selectedParty.id.startsWith("trade_");
+      const tradeName = isTradeKey ? selectedParty.id.replace("trade_", "") : null;
+      const partyPayments = isTradeKey
+        ? payments.filter(p => p.party_type === "supplier" && p.contact_name?.toLowerCase() === tradeName)
+        : payments.filter(p => p.party_type === "supplier" && p.party_id === selectedParty.id);
       return { ...bal, byEvent, payments: partyPayments, type: "supplier" as const };
     } else {
       const bal = platformBalances.find(b => b.platformId === selectedParty.id);
@@ -204,12 +209,21 @@ export default function Balance() {
     if (!selectedParty || !dialogAmount || !dialogMode) return;
     setDialogLoading(true);
     try {
+      // Resolve real supplier ID for trade_ keys
+      const isTradeKey = selectedParty.id.startsWith("trade_");
+      const tradeName = isTradeKey ? selectedParty.id.replace("trade_", "") : null;
+      const realPartyId = isTradeKey
+        ? payments.find(p => p.party_type === "supplier" && p.contact_name?.toLowerCase() === tradeName)?.party_id
+        : selectedParty.id;
+      const contactName = isTradeKey ? selectedData?.displayName || null : null;
+      
       const { error } = await supabase.from("balance_payments").insert({
         party_type: selectedParty.type,
-        party_id: selectedParty.id,
+        party_id: realPartyId,
         amount: parseFloat(dialogAmount),
         notes: dialogNotes || null,
         type: dialogMode,
+        contact_name: contactName,
       } as any);
       if (error) throw error;
       const labels = { payment: "Payment recorded", opening_balance: "Opening balance added", adjustment: "Adjustment added" };
@@ -357,10 +371,10 @@ export default function Balance() {
             </div>
           )}
 
-          {/* Ledger / history */}
+          {/* Activity Log */}
           <div className="rounded-lg border bg-card overflow-hidden">
             <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center justify-between">
-              <h3 className="text-sm font-semibold flex items-center gap-2"><History className="h-4 w-4" /> Ledger</h3>
+              <h3 className="text-sm font-semibold flex items-center gap-2"><History className="h-4 w-4" /> Activity Log</h3>
               <div className="flex gap-1.5">
                 <Button size="sm" variant="outline" onClick={() => { setDialogMode("payment"); setDialogAmount(""); setDialogNotes(""); }}>
                   <Plus className="h-3.5 w-3.5 mr-1" /> Payment
@@ -377,22 +391,42 @@ export default function Balance() {
               <div className="p-4 text-sm text-muted-foreground text-center">No entries yet</div>
             ) : (
               <div className="divide-y divide-border">
-                {selectedData.payments.map(pay => (
-                  <div key={pay.id} className="px-4 py-3 flex items-center justify-between">
-                    <div>
-                      <p className={cn("text-sm font-medium", typeColor(pay.type))}>
-                        {typeIcon(pay.type)} {fmt(pay.amount)} — {typeLabel(pay.type)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(pay.payment_date), "dd MMM yyyy")}
-                        {pay.notes && ` · ${pay.notes}`}
-                      </p>
+                {selectedData.payments.map((pay, idx) => {
+                  // Calculate running balance at this point
+                  const priorEntries = selectedData.payments.slice(idx);
+                  const runningOwed = priorEntries.filter(e => e.type !== "payment").reduce((s, e) => s + e.amount, 0);
+                  const runningPaid = priorEntries.filter(e => e.type === "payment").reduce((s, e) => s + e.amount, 0);
+                  
+                  return (
+                    <div key={pay.id} className="px-4 py-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("text-sm font-semibold", typeColor(pay.type))}>
+                              {typeIcon(pay.type)} {fmt(pay.amount)}
+                            </span>
+                            <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium",
+                              pay.type === "payment" ? "bg-success/10 text-success" :
+                              pay.type === "opening_balance" ? "bg-primary/10 text-primary" :
+                              "bg-warning/10 text-warning"
+                            )}>
+                              {typeLabel(pay.type)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground space-y-0.5">
+                            <p>📅 {format(new Date(pay.payment_date), "dd MMM yyyy 'at' HH:mm")}</p>
+                            {pay.contact_name && <p>👤 Contact: {pay.contact_name}</p>}
+                            {pay.notes && <p>📝 {pay.notes}</p>}
+                            <p className="text-[10px] text-muted-foreground/60">Added: {format(new Date(pay.created_at), "dd MMM yyyy 'at' HH:mm:ss")}</p>
+                          </div>
+                        </div>
+                        <Button size="sm" variant="ghost" className="text-xs text-destructive hover:text-destructive shrink-0" onClick={() => deletePayment(pay.id)}>
+                          Remove
+                        </Button>
+                      </div>
                     </div>
-                    <Button size="sm" variant="ghost" className="text-xs text-destructive hover:text-destructive" onClick={() => deletePayment(pay.id)}>
-                      Remove
-                    </Button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
