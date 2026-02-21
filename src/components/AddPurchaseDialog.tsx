@@ -50,14 +50,21 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
   const isWebsites = selectedSupplier?.name?.toLowerCase() === "websites";
 
   const selectedSection = STANDARD_SECTIONS.find((s) => s.label === form.section);
+  const isWorldCup = form.club === "world-cup";
 
   useEffect(() => {
     if (open) {
       supabase.from("suppliers").select("id, name").then(({ data }) => {
-        // Only keep Website and Trade suppliers
-        const filtered = (data || []).filter(
-          (s) => s.name.toLowerCase() === "websites" || s.name.toLowerCase() === "trade"
-        );
+        // Only keep one Website and one Trade supplier (dedup)
+        const seen = new Set<string>();
+        const filtered: { id: string; name: string }[] = [];
+        for (const s of data || []) {
+          const key = s.name.toLowerCase();
+          if ((key === "websites" || key === "trade") && !seen.has(key)) {
+            seen.add(key);
+            filtered.push(s);
+          }
+        }
         setSuppliers(filtered);
       });
       supabase
@@ -115,7 +122,9 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
 
       // Build category string
       let category = "";
-      if (form.category_type === "hospitality") {
+      if (isWorldCup) {
+        category = form.category_type; // "Cat 1", "Cat 2", etc.
+      } else if (form.category_type === "hospitality") {
         category = form.hospitality_option || "Hospitality";
       } else {
         category = form.section || "Standard Seating";
@@ -250,59 +259,75 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             </div>
           )}
 
-          {/* Row 3: Category Type */}
-          <div className="space-y-1.5">
-            <Label>Category *</Label>
-            <Select value={form.category_type} onValueChange={(v) => set("category_type", v)}>
-              <SelectTrigger><SelectValue placeholder="Standard Seating or Hospitality" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="standard">Standard Seating</SelectItem>
-                <SelectItem value="hospitality">Hospitality</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Standard: Section + Block */}
-          {form.category_type === "standard" && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Section</Label>
-                <Select value={form.section} onValueChange={(v) => set("section", v)}>
-                  <SelectTrigger><SelectValue placeholder="Select section" /></SelectTrigger>
-                  <SelectContent>
-                    {STANDARD_SECTIONS.map((s) => (
-                      <SelectItem key={s.label} value={s.label}>{s.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Block</Label>
-                <Select value={form.block} onValueChange={(v) => set("block", v)} disabled={!form.section}>
-                  <SelectTrigger><SelectValue placeholder={form.section ? "Select block" : "Pick section first"} /></SelectTrigger>
-                  <SelectContent>
-                    {selectedSection?.blocks.map((b) => (
-                      <SelectItem key={b} value={b}>{b}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-
-          {/* Hospitality: Package */}
-          {form.category_type === "hospitality" && (
+          {/* Category - differs by club */}
+          {isWorldCup ? (
             <div className="space-y-1.5">
-              <Label>Hospitality Package</Label>
-              <Select value={form.hospitality_option} onValueChange={(v) => set("hospitality_option", v)}>
-                <SelectTrigger><SelectValue placeholder="Select package" /></SelectTrigger>
+              <Label>Category *</Label>
+              <Select value={form.category_type} onValueChange={(v) => set("category_type", v)}>
+                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                 <SelectContent>
-                  {HOSPITALITY_OPTIONS.map((h) => (
-                    <SelectItem key={h} value={h}>{h}</SelectItem>
+                  {["Cat 1", "Cat 2", "Cat 3", "Cat 4"].map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label>Category *</Label>
+                <Select value={form.category_type} onValueChange={(v) => set("category_type", v)}>
+                  <SelectTrigger><SelectValue placeholder="Standard Seating or Hospitality" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="standard">Standard Seating</SelectItem>
+                    <SelectItem value="hospitality">Hospitality</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Standard: Section + Block */}
+              {form.category_type === "standard" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Section</Label>
+                    <Select value={form.section} onValueChange={(v) => set("section", v)}>
+                      <SelectTrigger><SelectValue placeholder="Select section" /></SelectTrigger>
+                      <SelectContent>
+                        {STANDARD_SECTIONS.map((s) => (
+                          <SelectItem key={s.label} value={s.label}>{s.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Block</Label>
+                    <Select value={form.block} onValueChange={(v) => set("block", v)} disabled={!form.section}>
+                      <SelectTrigger><SelectValue placeholder={form.section ? "Select block" : "Pick section first"} /></SelectTrigger>
+                      <SelectContent>
+                        {selectedSection?.blocks.map((b) => (
+                          <SelectItem key={b} value={b}>{b}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              {/* Hospitality: Package */}
+              {form.category_type === "hospitality" && (
+                <div className="space-y-1.5">
+                  <Label>Hospitality Package</Label>
+                  <Select value={form.hospitality_option} onValueChange={(v) => set("hospitality_option", v)}>
+                    <SelectTrigger><SelectValue placeholder="Select package" /></SelectTrigger>
+                    <SelectContent>
+                      {HOSPITALITY_OPTIONS.map((h) => (
+                        <SelectItem key={h} value={h}>{h}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </>
           )}
 
           {/* Row 4: Quantity & Cost */}
