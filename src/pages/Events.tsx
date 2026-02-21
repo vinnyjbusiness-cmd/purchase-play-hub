@@ -45,11 +45,11 @@ export default function Events() {
       const purchases = purchasesRes.data || [];
       const inventory = inventoryRes.data || [];
 
-      // Filter out past events and deduplicate by match_code
-      const now = new Date();
-      const futureEvents = rawEvents.filter((ev) => new Date(ev.event_date) >= now);
+      // Only show events that have real orders, deduplicate by match_code
+      const eventIdsWithOrders = new Set(orders.map((o) => o.event_id));
+      const eventsWithOrders = rawEvents.filter((ev) => eventIdsWithOrders.has(ev.id));
       const seen = new Set<string>();
-      const uniqueEvents = futureEvents.filter((ev) => {
+      const uniqueEvents = eventsWithOrders.filter((ev) => {
         if (seen.has(ev.match_code)) return false;
         seen.add(ev.match_code);
         return true;
