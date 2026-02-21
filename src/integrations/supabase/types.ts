@@ -58,6 +58,7 @@ export type Database = {
           party_id: string
           party_type: string
           payment_date: string
+          type: string
         }
         Insert: {
           amount: number
@@ -69,6 +70,7 @@ export type Database = {
           party_id: string
           party_type: string
           payment_date?: string
+          type?: string
         }
         Update: {
           amount?: number
@@ -80,6 +82,7 @@ export type Database = {
           party_id?: string
           party_type?: string
           payment_date?: string
+          type?: string
         }
         Relationships: [
           {
