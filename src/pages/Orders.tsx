@@ -4,10 +4,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Smartphone, Copy, Check, Download, Zap, CheckCircle2 } from "lucide-react";
+import { Search, Smartphone, Copy, Check, Download, Zap, CheckCircle2, CalendarIcon } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { format, subHours } from "date-fns";
+import { format, subHours, addDays, addWeeks, addMonths } from "date-fns";
 import { toast } from "sonner";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import FilterSelect from "@/components/FilterSelect";
 import AddOrderDialog from "@/components/AddOrderDialog";
 import OrderDetailSheet from "@/components/OrderDetailSheet";
@@ -139,6 +142,9 @@ export default function Orders() {
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [filterEvent, setFilterEvent] = useState("all");
   const [filterDelivery, setFilterDelivery] = useState("all");
+  const [filterTimeRange, setFilterTimeRange] = useState("upcoming");
+  const [customDateFrom, setCustomDateFrom] = useState<Date | undefined>();
+  const [customDateTo, setCustomDateTo] = useState<Date | undefined>();
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [assignOrder, setAssignOrder] = useState<Order | null>(null);
   const [assignments, setAssignments] = useState<Record<string, AssignmentInfo>>({});
@@ -223,6 +229,28 @@ export default function Orders() {
   }, [orders]);
 
   const filtered = orders.filter((o) => {
+    // Filter out orders for past events by default
+    const now = new Date();
+    const eventDate = o.events?.event_date ? new Date(o.events.event_date) : null;
+    
+    // Time range filter
+    if (filterTimeRange === "upcoming") {
+      if (eventDate && eventDate < now) return false;
+    } else if (filterTimeRange === "7days") {
+      const limit = addDays(now, 7);
+      if (!eventDate || eventDate < now || eventDate > limit) return false;
+    } else if (filterTimeRange === "14days") {
+      const limit = addWeeks(now, 2);
+      if (!eventDate || eventDate < now || eventDate > limit) return false;
+    } else if (filterTimeRange === "30days") {
+      const limit = addMonths(now, 1);
+      if (!eventDate || eventDate < now || eventDate > limit) return false;
+    } else if (filterTimeRange === "custom") {
+      if (customDateFrom && eventDate && eventDate < customDateFrom) return false;
+      if (customDateTo && eventDate && eventDate > addDays(customDateTo, 1)) return false;
+    }
+    // "all" shows everything including past
+
     if (filterPlatform !== "all" && o.platforms?.name !== filterPlatform) return false;
     if (filterEvent !== "all" && o.events?.match_code !== filterEvent) return false;
     if (filterDelivery !== "all" && (o.delivery_status || "pending") !== filterDelivery) return false;
@@ -314,6 +342,46 @@ export default function Orders() {
           { value: "delivered", label: "Delivered" },
           { value: "completed", label: "Completed" },
         ]} />
+        <FilterSelect label="Time Range" value={filterTimeRange} onValueChange={setFilterTimeRange} options={[
+          { value: "upcoming", label: "Upcoming only" },
+          { value: "7days", label: "Next 7 days" },
+          { value: "14days", label: "Next 14 days" },
+          { value: "30days", label: "Next 30 days" },
+          { value: "all", label: "All (incl. past)" },
+          { value: "custom", label: "Custom range" },
+        ]} />
+        {filterTimeRange === "custom" && (
+          <div className="flex items-end gap-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">From</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("h-9 w-[130px] justify-start text-left text-xs font-normal", !customDateFrom && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-1 h-3 w-3" />
+                    {customDateFrom ? format(customDateFrom, "dd MMM yy") : "Start"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={customDateFrom} onSelect={setCustomDateFrom} initialFocus className="p-3 pointer-events-auto" />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">To</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("h-9 w-[130px] justify-start text-left text-xs font-normal", !customDateTo && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-1 h-3 w-3" />
+                    {customDateTo ? format(customDateTo, "dd MMM yy") : "End"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={customDateTo} onSelect={setCustomDateTo} initialFocus className="p-3 pointer-events-auto" />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Grouped by game */}
