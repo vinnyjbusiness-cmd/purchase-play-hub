@@ -12,8 +12,19 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Package, Link2, CheckCircle2 } from "lucide-react";
+import { Package, Link2, CheckCircle2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface Props {
   purchaseId: string | null;
@@ -68,6 +79,29 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [matchingOrders, setMatchingOrders] = useState<MatchingOrder[]>([]);
   const [allocating, setAllocating] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!purchaseId) return;
+    setDeleting(true);
+    try {
+      // Delete related order_lines via inventory
+      const invIds = inventory.map((i) => i.id);
+      if (invIds.length > 0) {
+        await supabase.from("order_lines").delete().in("inventory_id", invIds);
+        await supabase.from("inventory").delete().eq("purchase_id", purchaseId);
+      }
+      const { error } = await supabase.from("purchases").delete().eq("id", purchaseId);
+      if (error) throw error;
+      toast.success("Purchase deleted");
+      onClose();
+      onUpdated();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!purchaseId) return;
@@ -234,10 +268,33 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
     <Sheet open={!!purchaseId} onOpenChange={() => onClose()}>
       <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            Purchase from {purchase.suppliers?.name || "Unknown"}
-            <Badge variant="outline">{purchase.status}</Badge>
-          </SheetTitle>
+          <div className="flex items-center justify-between">
+            <SheetTitle className="flex items-center gap-2">
+              Purchase from {purchase.suppliers?.name || "Unknown"}
+              <Badge variant="outline">{purchase.status}</Badge>
+            </SheetTitle>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete purchase?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete this purchase and any linked inventory. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    {deleting ? "Deleting..." : "Delete"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
