@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Plus, ChevronRight, CheckCircle2, AlertCircle, History, BookOpen } from "lucide-react";
+import { ArrowLeft, Plus, ChevronRight, CheckCircle2, AlertCircle, History, BookOpen, Inbox, Link } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -26,9 +26,10 @@ interface EventInfo { id: string; home_team: string; away_team: string; event_da
 interface SupplierInfo { id: string; name: string; }
 interface PlatformInfo { id: string; name: string; }
 interface BalancePayment {
-  id: string; party_type: string; party_id: string; amount: number;
+  id: string; party_type: string | null; party_id: string | null; amount: number;
   currency: string; payment_date: string; notes: string | null; created_at: string;
   type: "payment" | "opening_balance" | "adjustment";
+  contact_name: string | null;
 }
 
 const fmt = (n: number) => `£${Math.abs(n).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
@@ -56,12 +57,18 @@ export default function Balance() {
   const [openingNotes, setOpeningNotes] = useState("");
   const [openingLoading, setOpeningLoading] = useState(false);
 
-  // Add Balance dialog (quick add to supplier)
+  // Add Balance dialog (quick add — initially unassigned)
   const [showAddBalance, setShowAddBalance] = useState(false);
   const [addBalSupplierId, setAddBalSupplierId] = useState("");
+  const [addBalContactName, setAddBalContactName] = useState("");
   const [addBalAmount, setAddBalAmount] = useState("");
   const [addBalNotes, setAddBalNotes] = useState("");
   const [addBalLoading, setAddBalLoading] = useState(false);
+
+  // Assign unassigned balance dialog
+  const [assigningPayment, setAssigningPayment] = useState<BalancePayment | null>(null);
+  const [assignSupplierId, setAssignSupplierId] = useState("");
+  const [assignLoading, setAssignLoading] = useState(false);
 
   const loadData = () => {
     Promise.all([
@@ -106,16 +113,15 @@ export default function Balance() {
       map[key].totalOwed += cost;
       map[key].purchases.push(p);
     });
-    // From balance_payments
-    payments.filter(p => p.party_type === "supplier").forEach(pay => {
-      // Ensure entry exists for parties with only payments (opening balances)
-      if (!map[pay.party_id]) {
-        const name = supplierMap[pay.party_id]?.name || "Unknown";
-        map[pay.party_id] = { supplierId: pay.party_id, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, purchases: [] };
+    // From balance_payments (assigned ones only)
+    payments.filter(p => p.party_type === "supplier" && p.party_id).forEach(pay => {
+      if (!map[pay.party_id!]) {
+        const name = pay.contact_name || supplierMap[pay.party_id!]?.name || "Unknown";
+        map[pay.party_id!] = { supplierId: pay.party_id!, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, purchases: [] };
       }
-      if (pay.type === "payment") map[pay.party_id].totalPaid += pay.amount;
-      else if (pay.type === "opening_balance") { map[pay.party_id].openingBalance += pay.amount; map[pay.party_id].totalOwed += pay.amount; }
-      else if (pay.type === "adjustment") { map[pay.party_id].adjustments += pay.amount; map[pay.party_id].totalOwed += pay.amount; }
+      if (pay.type === "payment") map[pay.party_id!].totalPaid += pay.amount;
+      else if (pay.type === "opening_balance") { map[pay.party_id!].openingBalance += pay.amount; map[pay.party_id!].totalOwed += pay.amount; }
+      else if (pay.type === "adjustment") { map[pay.party_id!].adjustments += pay.amount; map[pay.party_id!].totalOwed += pay.amount; }
     });
     return Object.values(map).sort((a, b) => (b.totalOwed - b.totalPaid) - (a.totalOwed - a.totalPaid));
   }, [purchases, payments, supplierMap]);
@@ -133,17 +139,20 @@ export default function Balance() {
       map[key].totalOwed += net;
       map[key].orders.push(o);
     });
-    payments.filter(p => p.party_type === "platform").forEach(pay => {
-      if (!map[pay.party_id]) {
-        const name = platformMap[pay.party_id]?.name || "Unknown";
-        map[pay.party_id] = { platformId: pay.party_id, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, orders: [] };
+    payments.filter(p => p.party_type === "platform" && p.party_id).forEach(pay => {
+      if (!map[pay.party_id!]) {
+        const name = platformMap[pay.party_id!]?.name || "Unknown";
+        map[pay.party_id!] = { platformId: pay.party_id!, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, orders: [] };
       }
-      if (pay.type === "payment") map[pay.party_id].totalPaid += pay.amount;
-      else if (pay.type === "opening_balance") { map[pay.party_id].openingBalance += pay.amount; map[pay.party_id].totalOwed += pay.amount; }
-      else if (pay.type === "adjustment") { map[pay.party_id].adjustments += pay.amount; map[pay.party_id].totalOwed += pay.amount; }
+      if (pay.type === "payment") map[pay.party_id!].totalPaid += pay.amount;
+      else if (pay.type === "opening_balance") { map[pay.party_id!].openingBalance += pay.amount; map[pay.party_id!].totalOwed += pay.amount; }
+      else if (pay.type === "adjustment") { map[pay.party_id!].adjustments += pay.amount; map[pay.party_id!].totalOwed += pay.amount; }
     });
     return Object.values(map).sort((a, b) => (b.totalOwed - b.totalPaid) - (a.totalOwed - a.totalPaid));
   }, [orders, payments, platformMap]);
+
+  // Unassigned balances
+  const unassignedBalances = useMemo(() => payments.filter(p => !p.party_id), [payments]);
 
   const totalIOwOut = supplierBalances.reduce((s, b) => s + Math.max(0, b.totalOwed - b.totalPaid), 0);
   const totalOwedIn = platformBalances.reduce((s, b) => s + Math.max(0, b.totalOwed - b.totalPaid), 0);
@@ -437,6 +446,42 @@ export default function Balance() {
           </div>
         </div>
 
+        {/* Unassigned Balances */}
+        {unassignedBalances.length > 0 && (
+          <div className="rounded-lg border border-warning/40 bg-card overflow-hidden">
+            <div className="px-4 py-3 border-b border-border bg-warning/10">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Inbox className="h-4 w-4 text-warning" /> Unassigned Balances
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">These need to be assigned to a supplier's running tab.</p>
+            </div>
+            <div className="divide-y divide-border">
+              {unassignedBalances.map(ub => (
+                <div key={ub.id} className="px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">
+                      {fmt(ub.amount)}
+                      {ub.contact_name && <span className="text-muted-foreground"> — {ub.contact_name}</span>}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {format(new Date(ub.payment_date), "dd MMM yyyy")}
+                      {ub.notes && ` · ${ub.notes}`}
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Button size="sm" variant="outline" onClick={() => { setAssigningPayment(ub); setAssignSupplierId(""); }}>
+                      <Link className="h-3.5 w-3.5 mr-1" /> Assign
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-xs text-destructive hover:text-destructive" onClick={() => deletePayment(ub.id)}>
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Suppliers */}
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="px-4 py-3 border-b border-border bg-muted/30">
@@ -516,27 +561,33 @@ export default function Balance() {
         </div>
       </div>
 
-      {/* Add Balance dialog (quick supplier charge) */}
-      <Dialog open={showAddBalance} onOpenChange={setShowAddBalance}>
+      {/* Add Balance dialog — goes to unassigned */}
+      <Dialog open={showAddBalance} onOpenChange={(v) => { if (!v) { setShowAddBalance(false); setAddBalSupplierId(""); setAddBalContactName(""); setAddBalAmount(""); setAddBalNotes(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Plus className="h-4 w-4" /> Add Balance</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
-              Add an amount to a supplier's balance — for anything outside of a normal purchase (e.g. a favour, extra charge, ad-hoc fee).
+              Add a balance entry. It will appear in "Unassigned Balances" so you can assign it to a supplier's running tab.
             </p>
             <div className="space-y-1.5">
-              <Label>Supplier</Label>
-              <Select value={addBalSupplierId} onValueChange={setAddBalSupplierId}>
-                <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
-                <SelectContent>
+              <Label>Supplier (optional)</Label>
+              <Select value={addBalSupplierId} onValueChange={(v) => { setAddBalSupplierId(v); setAddBalContactName(""); }}>
+                <SelectTrigger><SelectValue placeholder="Select supplier (or leave blank)" /></SelectTrigger>
+                <SelectContent className="bg-popover z-50">
                   {suppliers.map(s => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+            {addBalSupplierId && supplierMap[addBalSupplierId]?.name?.toLowerCase() === "trade" && (
+              <div className="space-y-1.5">
+                <Label>Contact Name</Label>
+                <Input value={addBalContactName} onChange={e => setAddBalContactName(e.target.value)} placeholder="e.g. John Smith" />
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Amount (£)</Label>
               <Input type="number" step="0.01" min="0" value={addBalAmount} onChange={e => setAddBalAmount(e.target.value)} placeholder="0.00" />
@@ -547,20 +598,23 @@ export default function Balance() {
             </div>
             <Button
               onClick={async () => {
-                if (!addBalSupplierId || !addBalAmount) return;
+                if (!addBalAmount) return;
                 setAddBalLoading(true);
                 try {
+                  const contactName = addBalContactName || (addBalSupplierId ? supplierMap[addBalSupplierId]?.name : null) || null;
                   const { error } = await supabase.from("balance_payments").insert({
-                    party_type: "supplier",
-                    party_id: addBalSupplierId,
+                    party_type: null,
+                    party_id: null,
                     amount: parseFloat(addBalAmount),
                     notes: addBalNotes || null,
                     type: "adjustment",
+                    contact_name: contactName,
                   } as any);
                   if (error) throw error;
-                  toast.success("Balance added");
+                  toast.success("Balance added to unassigned");
                   setShowAddBalance(false);
                   setAddBalSupplierId("");
+                  setAddBalContactName("");
                   setAddBalAmount("");
                   setAddBalNotes("");
                   loadData();
@@ -570,12 +624,65 @@ export default function Balance() {
                   setAddBalLoading(false);
                 }
               }}
-              disabled={addBalLoading || !addBalSupplierId || !addBalAmount}
+              disabled={addBalLoading || !addBalAmount}
               className="w-full"
             >
               {addBalLoading ? "Saving..." : "Add Balance"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign unassigned balance dialog */}
+      <Dialog open={!!assigningPayment} onOpenChange={(v) => { if (!v) setAssigningPayment(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Link className="h-4 w-4" /> Assign to Supplier</DialogTitle>
+          </DialogHeader>
+          {assigningPayment && (
+            <div className="space-y-3">
+              <div className="text-sm">
+                Assigning <span className="font-bold">{fmt(assigningPayment.amount)}</span>
+                {assigningPayment.contact_name && <span className="text-muted-foreground"> ({assigningPayment.contact_name})</span>}
+                {assigningPayment.notes && <span className="text-muted-foreground"> · {assigningPayment.notes}</span>}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Assign to Supplier</Label>
+                <Select value={assignSupplierId} onValueChange={setAssignSupplierId}>
+                  <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                  <SelectContent className="bg-popover z-50">
+                    {suppliers.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={async () => {
+                  if (!assignSupplierId || !assigningPayment) return;
+                  setAssignLoading(true);
+                  try {
+                    const { error } = await supabase.from("balance_payments")
+                      .update({ party_type: "supplier", party_id: assignSupplierId } as any)
+                      .eq("id", assigningPayment.id);
+                    if (error) throw error;
+                    toast.success("Balance assigned to supplier");
+                    setAssigningPayment(null);
+                    setAssignSupplierId("");
+                    loadData();
+                  } catch (err: any) {
+                    toast.error(err.message);
+                  } finally {
+                    setAssignLoading(false);
+                  }
+                }}
+                disabled={assignLoading || !assignSupplierId}
+                className="w-full"
+              >
+                {assignLoading ? "Assigning..." : "Assign"}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -593,7 +700,7 @@ export default function Balance() {
               <Label>Type</Label>
               <Select value={openingPartyType} onValueChange={(v) => { setOpeningPartyType(v as any); setOpeningPartyId(""); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-popover z-50">
                   <SelectItem value="supplier">Supplier (I Owe)</SelectItem>
                   <SelectItem value="platform">Platform (Owed to Me)</SelectItem>
                 </SelectContent>
@@ -603,7 +710,7 @@ export default function Balance() {
               <Label>{openingPartyType === "supplier" ? "Supplier" : "Platform"}</Label>
               <Select value={openingPartyId} onValueChange={setOpeningPartyId}>
                 <SelectTrigger><SelectValue placeholder={`Select ${openingPartyType}`} /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-popover z-50">
                   {(openingPartyType === "supplier" ? suppliers : platforms).map(item => (
                     <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
                   ))}
