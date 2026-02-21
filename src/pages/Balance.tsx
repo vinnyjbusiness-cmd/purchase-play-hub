@@ -130,13 +130,20 @@ export default function Balance() {
     });
     // From balance_payments (assigned ones only)
     payments.filter(p => p.party_type === "supplier" && p.party_id).forEach(pay => {
-      if (!map[pay.party_id!]) {
+      // Use contact_name as a unique key when supplier is "Trade" to keep separate tabs
+      const isTradeSupplier = supplierMap[pay.party_id!]?.name?.toLowerCase() === "trade";
+      const key = isTradeSupplier && pay.contact_name ? `trade_${pay.contact_name.toLowerCase()}` : pay.party_id!;
+      if (!map[key]) {
         const name = pay.contact_name || supplierMap[pay.party_id!]?.name || "Unknown";
-        map[pay.party_id!] = { supplierId: pay.party_id!, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, purchases: [] };
+        map[key] = { supplierId: key, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, purchases: [] };
       }
-      if (pay.type === "payment") map[pay.party_id!].totalPaid += pay.amount;
-      else if (pay.type === "opening_balance") { map[pay.party_id!].openingBalance += pay.amount; map[pay.party_id!].totalOwed += pay.amount; }
-      else if (pay.type === "adjustment") { map[pay.party_id!].adjustments += pay.amount; map[pay.party_id!].totalOwed += pay.amount; }
+      // Update display name if contact_name is available and current is generic
+      if (pay.contact_name && (map[key].displayName === "Trade" || map[key].displayName === "Unknown")) {
+        map[key].displayName = pay.contact_name;
+      }
+      if (pay.type === "payment") map[key].totalPaid += pay.amount;
+      else if (pay.type === "opening_balance") { map[key].openingBalance += pay.amount; map[key].totalOwed += pay.amount; }
+      else if (pay.type === "adjustment") { map[key].adjustments += pay.amount; map[key].totalOwed += pay.amount; }
     });
     return Object.values(map).sort((a, b) => (b.totalOwed - b.totalPaid) - (a.totalOwed - a.totalPaid));
   }, [purchases, payments, supplierMap]);
@@ -669,11 +676,13 @@ export default function Balance() {
                 <Select value={assignSupplierId} onValueChange={setAssignSupplierId}>
                   <SelectTrigger><SelectValue placeholder="Select supplier with balance" /></SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    {supplierBalances.map(b => (
-                      <SelectItem key={b.supplierId} value={b.supplierId}>{b.displayName}</SelectItem>
+                    {supplierBalances.filter(b => (b.totalOwed - b.totalPaid) > 0).map(b => (
+                      <SelectItem key={b.supplierId} value={b.supplierId}>
+                        {b.displayName} — {fmt(b.totalOwed - b.totalPaid)} outstanding
+                      </SelectItem>
                     ))}
-                    {supplierBalances.length === 0 && (
-                      <div className="px-3 py-2 text-xs text-muted-foreground">No existing balances yet</div>
+                    {supplierBalances.filter(b => (b.totalOwed - b.totalPaid) > 0).length === 0 && (
+                      <div className="px-3 py-2 text-xs text-muted-foreground">No ongoing balances to assign to</div>
                     )}
                   </SelectContent>
                 </Select>
@@ -683,8 +692,19 @@ export default function Balance() {
                   if (!assignSupplierId || !assigningPayment) return;
                   setAssignLoading(true);
                   try {
+                    const targetBal = supplierBalances.find(b => b.supplierId === assignSupplierId);
+                    const isTradeKey = assignSupplierId.startsWith("trade_");
+                    const realSupplierId = isTradeKey 
+                      ? payments.find(p => p.party_type === "supplier" && p.contact_name?.toLowerCase() === assignSupplierId.replace("trade_", ""))?.party_id
+                      : assignSupplierId;
+                    const contactName = targetBal?.displayName || null;
+                    
                     const { error } = await supabase.from("balance_payments")
-                      .update({ party_type: "supplier", party_id: assignSupplierId } as any)
+                      .update({ 
+                        party_type: "supplier", 
+                        party_id: realSupplierId,
+                        contact_name: contactName,
+                      } as any)
                       .eq("id", assigningPayment.id);
                     if (error) throw error;
                     toast.success("Balance assigned to supplier");
