@@ -47,6 +47,50 @@ export type Database = {
         }
         Relationships: []
       }
+      balance_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          currency: string
+          id: string
+          notes: string | null
+          org_id: string | null
+          party_id: string
+          party_type: string
+          payment_date: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          currency?: string
+          id?: string
+          notes?: string | null
+          org_id?: string | null
+          party_id: string
+          party_type: string
+          payment_date?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          currency?: string
+          id?: string
+          notes?: string | null
+          org_id?: string | null
+          party_id?: string
+          party_type?: string
+          payment_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "balance_payments_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       events: {
         Row: {
           away_team: string
