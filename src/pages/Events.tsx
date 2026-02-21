@@ -33,17 +33,15 @@ export default function Events() {
 
   useEffect(() => {
     async function load() {
-      const [eventsRes, ordersRes, purchasesRes, inventoryRes] = await Promise.all([
+      const [eventsRes, ordersRes, purchasesRes] = await Promise.all([
         supabase.from("events").select("*").order("event_date", { ascending: true }),
-        supabase.from("orders").select("event_id, sale_price, fees, status"),
-        supabase.from("purchases").select("event_id, total_cost"),
-        supabase.from("inventory").select("event_id, status"),
+        supabase.from("orders").select("event_id, sale_price, fees, status, quantity"),
+        supabase.from("purchases").select("event_id, total_cost, quantity"),
       ]);
 
       const rawEvents = eventsRes.data || [];
       const orders = ordersRes.data || [];
       const purchases = purchasesRes.data || [];
-      const inventory = inventoryRes.data || [];
 
       // Only show events that have real orders, deduplicate by match_code
       const eventIdsWithOrders = new Set(orders.map((o) => o.event_id));
@@ -58,11 +56,12 @@ export default function Events() {
       const enriched: EventWithPL[] = uniqueEvents.map((ev) => {
         const evOrders = orders.filter((o) => o.event_id === ev.id);
         const evPurchases = purchases.filter((p) => p.event_id === ev.id);
-        const evInventory = inventory.filter((i) => i.event_id === ev.id);
 
         const revenue = evOrders.reduce((s, o) => s + Number(o.sale_price || 0), 0);
         const fees = evOrders.reduce((s, o) => s + Number(o.fees || 0), 0);
         const costs = evPurchases.reduce((s, p) => s + Number(p.total_cost || 0), 0);
+        const soldCount = evOrders.reduce((s, o) => s + Number(o.quantity || 0), 0);
+        const purchasedCount = evPurchases.reduce((s, p) => s + Number(p.quantity || 0), 0);
 
         return {
           ...ev,
@@ -70,9 +69,9 @@ export default function Events() {
           costs,
           fees,
           profit: revenue - costs - fees,
-          totalInventory: evInventory.length,
-          soldCount: evInventory.filter((i) => i.status === "sold").length,
-          availableCount: evInventory.filter((i) => i.status === "available").length,
+          totalInventory: purchasedCount,
+          soldCount,
+          availableCount: Math.max(0, purchasedCount - soldCount),
         };
       });
 
