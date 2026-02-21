@@ -364,15 +364,59 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
 
           <Separator />
 
-          {/* Inventory Status */}
+          {/* Allocation Status - clear visual */}
           <div>
-            <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-              <Package className="h-4 w-4" /> Inventory ({inventory.length} tickets)
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <Package className="h-4 w-4" /> Ticket Allocation
             </h3>
-            <div className="flex gap-3 text-sm">
-              <Badge variant="outline" className="bg-success/10 text-success border-success/20">{soldCount} allocated</Badge>
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">{availableCount} available</Badge>
-            </div>
+            {(() => {
+              const totalTickets = purchase.quantity;
+              const allocated = soldCount;
+              const remaining = totalTickets - allocated;
+              const fullyAllocated = remaining === 0 && totalTickets > 0;
+
+              return (
+                <div className="space-y-3">
+                  {/* Summary bar */}
+                  <div className={`rounded-lg border p-4 ${fullyAllocated ? "border-success/40 bg-success/10" : "border-warning/40 bg-warning/5"}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-sm font-semibold ${fullyAllocated ? "text-success" : "text-warning"}`}>
+                        {fullyAllocated ? "✅ Fully Allocated" : `⚠️ ${remaining} of ${totalTickets} ticket${remaining !== 1 ? "s" : ""} unallocated`}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{allocated}/{totalTickets} assigned</span>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${fullyAllocated ? "bg-success" : "bg-warning"}`}
+                        style={{ width: `${totalTickets > 0 ? (allocated / totalTickets) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Individual ticket status */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {Array.from({ length: totalTickets }, (_, i) => {
+                      const inv = inventory[i];
+                      const isSold = inv?.status === "sold";
+                      return (
+                        <div
+                          key={i}
+                          className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold transition-colors ${
+                            isSold
+                              ? "bg-success/20 text-success border border-success/30"
+                              : "bg-destructive/10 text-destructive border border-destructive/20"
+                          }`}
+                          title={isSold ? `Ticket ${i + 1}: Assigned` : `Ticket ${i + 1}: Unassigned`}
+                        >
+                          {isSold ? "✓" : (i + 1)}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <Separator />
