@@ -13,6 +13,7 @@ import {
   Users,
   Banknote,
   ChevronDown,
+  BarChart3,
 } from "lucide-react";
 import { useState } from "react";
 import { useTheme } from "./ThemeProvider";
@@ -33,10 +34,18 @@ const orderSubItems = [
   { to: "/orders/world-cup", label: "World Cup" },
 ];
 
+const financeSubItems = [
+  { to: "/finance", label: "All Clubs" },
+  { to: "/finance/arsenal", label: "Arsenal" },
+  { to: "/finance/manchester-united", label: "Manchester United" },
+  { to: "/finance/liverpool", label: "Liverpool" },
+  { to: "/finance/world-cup", label: "World Cup" },
+];
+
 const bottomNavItems = [
   { to: "/purchases", icon: Package, label: "Purchases" },
   { to: "/platforms", icon: Globe, label: "Platforms" },
-  { to: "/finance", icon: Wallet, label: "Finance" },
+  { to: "/analytics", icon: BarChart3, label: "Analytics" },
   { to: "/cashflow", icon: Banknote, label: "Cashflow" },
   { to: "/health", icon: HeartPulse, label: "Health" },
   { to: "/team", icon: Users, label: "Team" },
@@ -46,7 +55,9 @@ export default function AppSidebar() {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
   const isOrdersActive = location.pathname.startsWith("/orders");
+  const isFinanceActive = location.pathname.startsWith("/finance");
   const [ordersOpen, setOrdersOpen] = useState(isOrdersActive);
+  const [financeOpen, setFinanceOpen] = useState(isFinanceActive);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -74,6 +85,54 @@ export default function AppSidebar() {
     );
   };
 
+  const renderCollapsible = (
+    label: string,
+    Icon: any,
+    isActive: boolean,
+    isOpen: boolean,
+    setOpen: (v: boolean) => void,
+    subItems: { to: string; label: string }[]
+  ) => (
+    <div>
+      <button
+        onClick={() => setOpen(!isOpen)}
+        className={cn(
+          "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
+          isActive
+            ? "bg-sidebar-accent text-sidebar-primary-foreground"
+            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        )}
+      >
+        <span className="flex items-center gap-3">
+          <Icon className="h-4 w-4" />
+          {label}
+        </span>
+        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-180")} />
+      </button>
+      {isOpen && (
+        <div className="ml-4 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
+          {subItems.map((sub) => {
+            const active = location.pathname === sub.to;
+            return (
+              <NavLink
+                key={sub.to}
+                to={sub.to}
+                className={cn(
+                  "block rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                  active
+                    ? "bg-sidebar-accent text-sidebar-primary-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                )}
+              >
+                {sub.label}
+              </NavLink>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <aside className="flex h-screen w-[240px] flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       {/* Logo */}
@@ -88,44 +147,10 @@ export default function AppSidebar() {
         {navItems.map(renderNavLink)}
 
         {/* Orders with sub-items */}
-        <div>
-          <button
-            onClick={() => setOrdersOpen(!ordersOpen)}
-            className={cn(
-              "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              isOrdersActive
-                ? "bg-sidebar-accent text-sidebar-primary-foreground"
-                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            )}
-          >
-            <span className="flex items-center gap-3">
-              <ShoppingCart className="h-4 w-4" />
-              Orders
-            </span>
-            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", ordersOpen && "rotate-180")} />
-          </button>
-          {ordersOpen && (
-            <div className="ml-4 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
-              {orderSubItems.map((sub) => {
-                const isActive = location.pathname === sub.to;
-                return (
-                  <NavLink
-                    key={sub.to}
-                    to={sub.to}
-                    className={cn(
-                      "block rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                      isActive
-                        ? "bg-sidebar-accent text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    )}
-                  >
-                    {sub.label}
-                  </NavLink>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        {renderCollapsible("Orders", ShoppingCart, isOrdersActive, ordersOpen, setOrdersOpen, orderSubItems)}
+
+        {/* Finance with sub-items */}
+        {renderCollapsible("Finance", Wallet, isFinanceActive, financeOpen, setFinanceOpen, financeSubItems)}
 
         {bottomNavItems.map(renderNavLink)}
       </nav>

@@ -14,6 +14,7 @@ import Events from "./pages/Events";
 import Orders from "./pages/Orders";
 import Purchases from "./pages/Purchases";
 import Finance from "./pages/Finance";
+import Analytics from "./pages/Analytics";
 import Reconciliation from "./pages/Reconciliation";
 import Platforms from "./pages/Platforms";
 import EventDetail from "./pages/EventDetail";
@@ -76,6 +77,8 @@ const App = () => (
               <Route path="/purchases" element={<Purchases />} />
               <Route path="/platforms" element={<Platforms />} />
               <Route path="/finance" element={<Finance />} />
+              <Route path="/finance/:club" element={<Finance />} />
+              <Route path="/analytics" element={<Analytics />} />
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/health" element={<Reconciliation />} />
               <Route path="/team" element={<Team />} />
