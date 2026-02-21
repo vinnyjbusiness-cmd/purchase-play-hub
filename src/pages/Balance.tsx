@@ -227,13 +227,19 @@ export default function Balance() {
 
   // Add opening balance from overview
   const handleAddOpening = async () => {
-    if (!openingPartyId || !openingAmount) return;
+    if (openingPartyType === "supplier" && !openingPartyId) return;
+    if (openingPartyType === "platform" && !openingContactName.trim()) return;
+    if (!openingAmount) return;
     setOpeningLoading(true);
     try {
-      const contactName = openingContactName || null;
+      // For trade type, pick the first Trade supplier ID automatically
+      const partyId = openingPartyType === "platform"
+        ? suppliers.find(s => s.name.toLowerCase() === "trade")?.id || null
+        : openingPartyId;
+      const contactName = openingContactName.trim() || null;
       const { error } = await supabase.from("balance_payments").insert({
-        party_type: openingPartyType,
-        party_id: openingPartyId,
+        party_type: "supplier",
+        party_id: partyId,
         amount: parseFloat(openingAmount),
         notes: openingNotes || null,
         type: "opening_balance",
@@ -747,32 +753,22 @@ export default function Balance() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label>{openingPartyType === "supplier" ? "Supplier" : "Trade Contact"}</Label>
-              {openingPartyType === "supplier" ? (
+            {openingPartyType === "supplier" ? (
+              <div className="space-y-1.5">
+                <Label>Supplier</Label>
                 <Select value={openingPartyId} onValueChange={(v) => { setOpeningPartyId(v); setOpeningContactName(""); }}>
                   <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    {supplierOptions.map(item => (
+                    {supplierOptions.filter(s => supplierMap[s.id]?.name?.toLowerCase() !== "trade").map(item => (
                       <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              ) : (
-                <Select value={openingPartyId} onValueChange={(v) => { setOpeningPartyId(v); setOpeningContactName(""); }}>
-                  <SelectTrigger><SelectValue placeholder="Select trade contact" /></SelectTrigger>
-                  <SelectContent className="bg-popover z-50">
-                    {supplierOptions.filter(s => supplierMap[s.id]?.name?.toLowerCase() === "trade").map(item => (
-                      <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-            {openingPartyId && supplierMap[openingPartyId]?.name?.toLowerCase() === "trade" && (
+              </div>
+            ) : (
               <div className="space-y-1.5">
                 <Label>Contact Name</Label>
-                <Input value={openingContactName} onChange={e => setOpeningContactName(e.target.value)} placeholder="e.g. John Smith" />
+                <Input value={openingContactName} onChange={e => setOpeningContactName(e.target.value)} placeholder="e.g. Lewis" />
               </div>
             )}
             <div className="space-y-1.5">
@@ -783,7 +779,7 @@ export default function Balance() {
               <Label>Notes (optional)</Label>
               <Textarea value={openingNotes} onChange={e => setOpeningNotes(e.target.value)} placeholder="e.g. Balance from previous system" rows={2} maxLength={200} />
             </div>
-            <Button onClick={handleAddOpening} disabled={openingLoading || !openingPartyId || !openingAmount} className="w-full">
+            <Button onClick={handleAddOpening} disabled={openingLoading || !openingAmount || (openingPartyType === "supplier" && !openingPartyId) || (openingPartyType === "platform" && !openingContactName.trim())} className="w-full">
               {openingLoading ? "Saving..." : "Add Opening Balance"}
             </Button>
           </div>
