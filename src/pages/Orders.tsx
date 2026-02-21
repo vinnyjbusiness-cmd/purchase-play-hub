@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Smartphone, Copy, Check, Download, Zap, CheckCircle2, CalendarIcon } from "lucide-react";
+import { Search, Smartphone, Copy, Check, Download, Zap, CheckCircle2, CalendarIcon, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours, addDays, addWeeks, addMonths } from "date-fns";
 import { toast } from "sonner";
@@ -479,6 +479,7 @@ export default function Orders() {
                       <TableHead className="text-[10px] uppercase tracking-wider w-[75px]">Sold</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[100px]">Assigned From</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[60px]">Assign</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider w-[40px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -576,6 +577,35 @@ export default function Orders() {
                               onClick={(e) => { e.stopPropagation(); setAssignOrder(o); }}
                             >
                               {assigned ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
+                            </Button>
+                          </TableCell>
+                          <TableCell className="py-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                              title="Delete order"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!confirm("Delete this order? This will unlink any assigned inventory.")) return;
+                                // Get linked inventory first
+                                const { data: lines } = await supabase.from("order_lines").select("inventory_id").eq("order_id", o.id);
+                                // Reset inventory status back to available
+                                if (lines && lines.length > 0) {
+                                  await supabase.from("inventory").update({ status: "available" as any }).in("id", lines.map(l => l.inventory_id));
+                                }
+                                // Delete order_lines
+                                await supabase.from("order_lines").delete().eq("order_id", o.id);
+                                // Delete refunds
+                                await supabase.from("refunds").delete().eq("order_id", o.id);
+                                // Delete the order
+                                const { error } = await supabase.from("orders").delete().eq("id", o.id);
+                                if (error) { toast.error(error.message); return; }
+                                toast.success("Order deleted");
+                                load();
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </TableCell>
                         </TableRow>
