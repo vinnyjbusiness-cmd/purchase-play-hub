@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Smartphone, Link2 } from "lucide-react";
 import { toast } from "sonner";
+import { STANDARD_SECTIONS, HOSPITALITY_OPTIONS, CLUBS } from "@/lib/seatingSections";
 
 interface Props {
   onCreated: () => void;
@@ -16,30 +18,43 @@ export default function AddOrderDialog({ onCreated }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [platforms, setPlatforms] = useState<{ id: string; name: string }[]>([]);
-  const [events, setEvents] = useState<{ id: string; match_code: string; home_team: string; away_team: string }[]>([]);
+  const [events, setEvents] = useState<{ id: string; match_code: string; home_team: string; away_team: string; event_date: string; competition: string }[]>([]);
 
   const [form, setForm] = useState({
     platform_id: "",
+    club: "",
     event_id: "",
     order_ref: "",
-    buyer_ref: "",
     buyer_name: "",
     buyer_phone: "",
-    buyer_email: "",
-    category: "Cat 1",
+    category: "",
     quantity: "1",
     sale_price: "",
-    fees: "0",
-    currency: "GBP" as "GBP" | "USD" | "EUR",
-    delivery_type: "email" as "email" | "physical" | "mobile_transfer" | "will_call" | "instant",
+    delivery_type: "mobile_transfer" as "mobile_transfer" | "email",
+    notes: "",
+  });
+
+  const isWorldCup = form.club === "world-cup";
+
+  // Filter events by selected club
+  const filteredEvents = events.filter((e) => {
+    if (!form.club) return false;
+    if (form.club === "world-cup") return e.competition?.toLowerCase().includes("world cup");
+    const clubLabel = CLUBS.find((c) => c.value === form.club)?.label || "";
+    return e.home_team === clubLabel || e.away_team === clubLabel;
   });
 
   useEffect(() => {
     if (open) {
       supabase.from("platforms").select("id, name").then(({ data }) => setPlatforms(data || []));
-      supabase.from("events").select("id, match_code, home_team, away_team").order("event_date").then(({ data }) => setEvents(data || []));
+      supabase.from("events").select("id, match_code, home_team, away_team, event_date, competition").order("event_date").then(({ data }) => setEvents(data || []));
     }
   }, [open]);
+
+  // Reset event & category when club changes
+  useEffect(() => {
+    setForm((f) => ({ ...f, event_id: "", category: "" }));
+  }, [form.club]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,20 +64,23 @@ export default function AddOrderDialog({ onCreated }: Props) {
         platform_id: form.platform_id || null,
         event_id: form.event_id,
         order_ref: form.order_ref || null,
-        buyer_ref: form.buyer_ref || null,
         buyer_name: form.buyer_name || null,
         buyer_phone: form.buyer_phone || null,
-        buyer_email: form.buyer_email || null,
-        category: form.category,
+        category: form.category || "General",
         quantity: parseInt(form.quantity),
         sale_price: parseFloat(form.sale_price),
-        fees: parseFloat(form.fees),
-        currency: form.currency,
+        fees: 0,
+        currency: "GBP",
         delivery_type: form.delivery_type,
+        notes: form.notes || null,
       });
       if (error) throw error;
       toast.success("Order added");
       setOpen(false);
+      setForm({
+        platform_id: "", club: "", event_id: "", order_ref: "", buyer_name: "", buyer_phone: "",
+        category: "", quantity: "1", sale_price: "", delivery_type: "mobile_transfer", notes: "",
+      });
       onCreated();
     } catch (err: any) {
       toast.error(err.message);
@@ -76,109 +94,136 @@ export default function AddOrderDialog({ onCreated }: Props) {
       <DialogTrigger asChild>
         <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add Order</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Order / Sale</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Platform */}
+          <div className="space-y-1.5">
+            <Label>Platform</Label>
+            <Select value={form.platform_id} onValueChange={(v) => setForm({ ...form, platform_id: v })}>
+              <SelectTrigger><SelectValue placeholder="Select platform" /></SelectTrigger>
+              <SelectContent>
+                {platforms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Club → Event */}
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Platform</Label>
-              <Select value={form.platform_id} onValueChange={(v) => setForm({ ...form, platform_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Select platform" /></SelectTrigger>
+              <Label>Club *</Label>
+              <Select value={form.club} onValueChange={(v) => setForm({ ...form, club: v })}>
+                <SelectTrigger><SelectValue placeholder="Select club" /></SelectTrigger>
                 <SelectContent>
-                  {platforms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  {CLUBS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Event *</Label>
-              <Select value={form.event_id} onValueChange={(v) => setForm({ ...form, event_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Select event" /></SelectTrigger>
+              <Select value={form.event_id} onValueChange={(v) => setForm({ ...form, event_id: v })} disabled={!form.club}>
+                <SelectTrigger><SelectValue placeholder={form.club ? "Select event" : "Pick club first"} /></SelectTrigger>
                 <SelectContent>
-                  {events.map((e) => <SelectItem key={e.id} value={e.id}>{e.match_code} — {e.home_team} vs {e.away_team}</SelectItem>)}
+                  {filteredEvents.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.home_team} vs {e.away_team}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          {/* Order Number & Customer */}
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Order Ref</Label>
+              <Label>Order Number</Label>
               <Input value={form.order_ref} onChange={(e) => setForm({ ...form, order_ref: e.target.value })} placeholder="e.g. ORD-123" />
             </div>
             <div className="space-y-1.5">
-              <Label>Buyer Ref</Label>
-              <Input value={form.buyer_ref} onChange={(e) => setForm({ ...form, buyer_ref: e.target.value })} placeholder="e.g. BUY-A1" />
+              <Label>Customer Name</Label>
+              <Input value={form.buyer_name} onChange={(e) => setForm({ ...form, buyer_name: e.target.value })} placeholder="e.g. John Smith" />
             </div>
           </div>
 
-          {/* Customer details */}
           <div className="space-y-1.5">
-            <Label>Customer Name</Label>
-            <Input value={form.buyer_name} onChange={(e) => setForm({ ...form, buyer_name: e.target.value })} placeholder="e.g. John Smith" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Customer Phone</Label>
-              <Input value={form.buyer_phone} onChange={(e) => setForm({ ...form, buyer_phone: e.target.value })} placeholder="e.g. +44 7700 900000" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Customer Email</Label>
-              <Input type="email" value={form.buyer_email} onChange={(e) => setForm({ ...form, buyer_email: e.target.value })} placeholder="e.g. john@example.com" />
-            </div>
+            <Label>Customer Phone</Label>
+            <Input value={form.buyer_phone} onChange={(e) => setForm({ ...form, buyer_phone: e.target.value })} placeholder="e.g. +44 7700 900000" />
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          {/* Category — club-based */}
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Category</Label>
-              <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {["Cat 1", "Cat 2", "Cat 3", "Cat 4", "VIP", "Hospitality"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label>Category *</Label>
+              {isWorldCup ? (
+                <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectContent>
+                    {["Cat 1", "Cat 2", "Cat 3", "Cat 4"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectContent>
+                    {STANDARD_SECTIONS.map((s) => (
+                      <SelectItem key={s.label} value={s.label}>{s.label}</SelectItem>
+                    ))}
+                    {HOSPITALITY_OPTIONS.map((h) => (
+                      <SelectItem key={h} value={h}>{h}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Quantity *</Label>
               <Input type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
             </div>
-            <div className="space-y-1.5">
-              <Label>Currency</Label>
-              <Select value={form.currency} onValueChange={(v: any) => setForm({ ...form, currency: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="GBP">GBP (£)</SelectItem>
-                  <SelectItem value="USD">USD ($)</SelectItem>
-                  <SelectItem value="EUR">EUR (€)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Sale Price *</Label>
-              <Input type="number" step="0.01" min="0" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} placeholder="0.00" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Fees</Label>
-              <Input type="number" step="0.01" min="0" value={form.fees} onChange={(e) => setForm({ ...form, fees: e.target.value })} />
-            </div>
-          </div>
-
+          {/* Sale Price */}
           <div className="space-y-1.5">
-            <Label>Delivery Type</Label>
-            <Select value={form.delivery_type} onValueChange={(v: any) => setForm({ ...form, delivery_type: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="physical">Physical</SelectItem>
-                <SelectItem value="mobile_transfer">Mobile Transfer</SelectItem>
-                <SelectItem value="will_call">Will Call</SelectItem>
-                <SelectItem value="instant">Instant</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label>Sale Price (£) *</Label>
+            <Input type="number" step="0.01" min="0" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} placeholder="0.00" />
+          </div>
+
+          {/* Delivery Type — compact toggle */}
+          <div className="space-y-1.5">
+            <Label>Delivery</Label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={form.delivery_type === "mobile_transfer" ? "default" : "outline"}
+                className="flex-1 gap-1.5"
+                onClick={() => setForm({ ...form, delivery_type: "mobile_transfer" })}
+              >
+                <Smartphone className="h-3.5 w-3.5" /> Phone
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={form.delivery_type === "email" ? "default" : "outline"}
+                className="flex-1 gap-1.5"
+                onClick={() => setForm({ ...form, delivery_type: "email" })}
+              >
+                <Link2 className="h-3.5 w-3.5" /> Link
+              </Button>
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-1.5">
+            <Label>Notes</Label>
+            <Textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              placeholder="Any additional info..."
+              rows={2}
+            />
           </div>
 
           <Button type="submit" className="w-full" disabled={loading || !form.event_id || !form.sale_price}>
