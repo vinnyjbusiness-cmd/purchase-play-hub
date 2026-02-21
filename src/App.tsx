@@ -95,7 +95,6 @@ const App = () => (
               <Route path="/purchases" element={<Purchases />} />
               <Route path="/platforms" element={<AdminOnly><Platforms /></AdminOnly>} />
               <Route path="/finance" element={<PinProtected><Finance /></PinProtected>} />
-              <Route path="/finance/:club" element={<PinProtected><Finance /></PinProtected>} />
               <Route path="/analytics" element={<PinProtected><Analytics /></PinProtected>} />
               <Route path="/cashflow" element={<PinProtected><Cashflow /></PinProtected>} />
               <Route path="/health" element={<AdminOnly><Reconciliation /></AdminOnly>} />

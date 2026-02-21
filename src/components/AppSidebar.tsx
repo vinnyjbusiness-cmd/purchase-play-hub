@@ -31,13 +31,6 @@ const orderSubItems = [
   { to: "/orders/world-cup", label: "World Cup" },
 ];
 
-const financeSubItems = [
-  { to: "/finance", label: "All Clubs" },
-  { to: "/finance/arsenal", label: "Arsenal" },
-  { to: "/finance/manchester-united", label: "Manchester United" },
-  { to: "/finance/liverpool", label: "Liverpool" },
-  { to: "/finance/world-cup", label: "World Cup" },
-];
 
 export default function AppSidebar() {
   const location = useLocation();
@@ -47,7 +40,6 @@ export default function AppSidebar() {
   const isOrdersActive = location.pathname.startsWith("/orders");
   const isFinanceActive = location.pathname.startsWith("/finance");
   const [ordersOpen, setOrdersOpen] = useState(isOrdersActive);
-  const [financeOpen, setFinanceOpen] = useState(isFinanceActive);
 
   const handleLogout = async () => {
     sessionStorage.removeItem("vjx_finance_unlocked");
@@ -138,6 +130,7 @@ export default function AppSidebar() {
   const adminBottomItems = [
     { to: "/purchases", icon: Package, label: "Purchases" },
     { to: "/platforms", icon: Globe, label: "Platforms" },
+    { to: "/finance", icon: Wallet, label: "Finance" },
     { to: "/analytics", icon: BarChart3, label: "Analytics" },
     { to: "/cashflow", icon: Banknote, label: "Cashflow" },
     { to: "/health", icon: HeartPulse, label: "Health" },
@@ -164,8 +157,7 @@ export default function AppSidebar() {
         {/* Orders — always visible */}
         {renderCollapsible("Orders", ShoppingCart, isOrdersActive, ordersOpen, setOrdersOpen, orderSubItems)}
 
-        {/* Finance — admin only */}
-        {isAdmin && renderCollapsible("Finance", Wallet, isFinanceActive, financeOpen, setFinanceOpen, financeSubItems)}
+        {(isAdmin ? adminBottomItems : viewerBottomItems).map(renderNavLink)}
 
         {(isAdmin ? adminBottomItems : viewerBottomItems).map(renderNavLink)}
       </nav>
