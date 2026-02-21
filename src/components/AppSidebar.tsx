@@ -10,7 +10,6 @@ import {
   Sun,
   Moon,
   LogOut,
-  Ticket,
   Users,
   Banknote,
   ChevronDown,
@@ -78,12 +77,9 @@ export default function AppSidebar() {
   return (
     <aside className="flex h-screen w-[240px] flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       {/* Logo */}
-      <div className="flex items-center gap-2 px-5 py-5 border-b border-sidebar-border">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary">
-          <Ticket className="h-4 w-4 text-sidebar-primary-foreground" />
-        </div>
-        <span className="text-lg font-bold tracking-tight text-sidebar-primary-foreground">
-          VJX Ticket Ops
+      <div className="flex items-center px-5 py-5 border-b border-sidebar-border">
+        <span className="text-xl font-extrabold tracking-tight text-sidebar-primary-foreground">
+          VJX
         </span>
       </div>
 
