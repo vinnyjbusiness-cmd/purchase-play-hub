@@ -129,16 +129,31 @@ export default function Finance() {
   const selPurchases = useMemo(() => selectedEvent ? purchases.filter(p => p.event_id === selectedEvent) : [], [purchases, selectedEvent]);
   const selOrders = useMemo(() => selectedEvent ? orders.filter(o => o.event_id === selectedEvent) : [], [orders, selectedEvent]);
 
-  // Group purchases by supplier
+  // Helper: parse supplier/website name from notes
+  const getSupplierDisplayName = (p: Purchase): string => {
+    const supplier = supplierMap[p.supplier_id];
+    const supplierType = supplier?.name?.toLowerCase() || "";
+    if (supplierType === "trade" && p.notes) {
+      const nameMatch = p.notes.match(/Name:\s*([^|]+)/);
+      if (nameMatch) return nameMatch[1].trim();
+    }
+    if (supplierType === "websites" && p.notes) {
+      const webMatch = p.notes.match(/Website:\s*([^|]+)/);
+      if (webMatch) return webMatch[1].trim();
+    }
+    return supplier?.name || "Unknown";
+  };
+
+  // Group purchases by actual supplier/website name (from notes)
   const purchasesBySupplier = useMemo(() => {
     const map: Record<string, Purchase[]> = {};
     selPurchases.forEach(p => {
-      const key = p.supplier_id;
+      const key = getSupplierDisplayName(p);
       if (!map[key]) map[key] = [];
       map[key].push(p);
     });
     return map;
-  }, [selPurchases]);
+  }, [selPurchases, supplierMap]);
 
   // Group orders by platform
   const ordersByPlatform = useMemo(() => {
@@ -249,17 +264,16 @@ export default function Finance() {
                 <div className="p-4 text-sm text-muted-foreground text-center">No purchases for this event</div>
               ) : (
                 <div className="divide-y divide-border">
-                  {Object.entries(purchasesBySupplier).map(([supplierId, items]) => {
-                    const supplierName = supplierMap[supplierId]?.name || "Unknown";
+                  {Object.entries(purchasesBySupplier).map(([displayName, items]) => {
                     const totalQty = items.reduce((s, p) => s + p.quantity, 0);
                     const totalCost = items.reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
                     const unpaidCost = items.filter(p => !p.supplier_paid).reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
                     const allPaid = items.every(p => p.supplier_paid);
                     return (
-                      <div key={supplierId} className="px-4 py-3">
+                      <div key={displayName} className="px-4 py-3">
                         <div className="flex items-center justify-between mb-2">
                           <div>
-                            <p className="font-semibold text-sm">{supplierName}</p>
+                            <p className="font-semibold text-sm">{displayName}</p>
                             <p className="text-xs text-muted-foreground">
                               {items.length} purchase{items.length !== 1 ? "s" : ""} · {totalQty} tickets · Total: {fmt(totalCost)}
                             </p>
