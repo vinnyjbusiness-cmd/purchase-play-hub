@@ -142,6 +142,7 @@ export default function Orders() {
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [filterEvent, setFilterEvent] = useState("all");
   const [filterDelivery, setFilterDelivery] = useState("all");
+  const [filterClub, setFilterClub] = useState("all");
   const [filterTimeRange, setFilterTimeRange] = useState("upcoming");
   const [customDateFrom, setCustomDateFrom] = useState<Date | undefined>();
   const [customDateTo, setCustomDateTo] = useState<Date | undefined>();
@@ -251,6 +252,21 @@ export default function Orders() {
     }
     // "all" shows everything including past
 
+    // Club/tournament filter
+    if (filterClub !== "all") {
+      const home = (o.events?.home_team || "").toLowerCase();
+      const away = (o.events?.away_team || "").toLowerCase();
+      const matchCode = (o.events?.match_code || "").toLowerCase();
+      if (filterClub === "world_cup") {
+        // Match World Cup events (stadium-based match codes or "world cup" in teams)
+        const isWC = matchCode.includes("stadium") || home.includes("tbc") || away.includes("tbc");
+        if (!isWC) return false;
+      } else {
+        const club = filterClub.toLowerCase();
+        if (!home.includes(club) && !away.includes(club)) return false;
+      }
+    }
+
     if (filterPlatform !== "all" && o.platforms?.name !== filterPlatform) return false;
     if (filterEvent !== "all" && o.events?.match_code !== filterEvent) return false;
     if (filterDelivery !== "all" && (o.delivery_status || "pending") !== filterDelivery) return false;
@@ -334,6 +350,12 @@ export default function Orders() {
           </div>
         </div>
         <FilterSelect label="Platform" value={filterPlatform} onValueChange={setFilterPlatform} options={platformOptions} />
+        <FilterSelect label="Club / Tournament" value={filterClub} onValueChange={setFilterClub} options={[
+          { value: "arsenal", label: "Arsenal" },
+          { value: "manchester united", label: "Manchester United" },
+          { value: "liverpool", label: "Liverpool" },
+          { value: "world_cup", label: "World Cup" },
+        ]} />
         <FilterSelect label="Game" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
         <FilterSelect label="Delivery" value={filterDelivery} onValueChange={setFilterDelivery} options={[
           { value: "pending", label: "Pending" },
