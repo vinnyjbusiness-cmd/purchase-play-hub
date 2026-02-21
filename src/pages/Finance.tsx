@@ -176,16 +176,6 @@ export default function Finance() {
       {/* Header */}
       <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
         <h1 className="text-2xl font-bold tracking-tight">{clubTitle} — Finance</h1>
-        <div className="flex gap-6 mt-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">I Owe:</span>
-            <span className="text-sm font-bold text-destructive">{fmt(totalIOwe)}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Owed to Me:</span>
-            <span className="text-sm font-bold text-success">{fmt(totalOwedToMe)}</span>
-          </div>
-        </div>
       </div>
 
       {/* Event buttons */}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -13,6 +14,7 @@ import {
   Users,
   Banknote,
   BarChart3,
+  ChevronDown,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -37,14 +39,6 @@ const financeSubItems = [
   { to: "/finance/world-cup", label: "World Cup" },
 ];
 
-const orderSubItemsFlat = [
-  { to: "/orders", label: "All Orders" },
-  { to: "/orders/arsenal", label: "Arsenal" },
-  { to: "/orders/manchester-united", label: "Manchester United" },
-  { to: "/orders/liverpool", label: "Liverpool" },
-  { to: "/orders/world-cup", label: "World Cup" },
-];
-
 export default function AppSidebar() {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
@@ -52,6 +46,9 @@ export default function AppSidebar() {
   const isAdmin = userRole === "admin";
   const isOrdersActive = location.pathname.startsWith("/orders");
   const isFinanceActive = location.pathname.startsWith("/finance");
+
+  const [ordersOpen, setOrdersOpen] = useState(isOrdersActive);
+  const [financeOpen, setFinanceOpen] = useState(isFinanceActive);
 
   const handleLogout = async () => {
     sessionStorage.removeItem("vjx_finance_unlocked");
@@ -80,52 +77,56 @@ export default function AppSidebar() {
     );
   };
 
-  const renderSubNav = (
+  const renderCollapsibleNav = (
     label: string,
     Icon: any,
     isActive: boolean,
+    isOpen: boolean,
+    setIsOpen: (v: boolean) => void,
     subItems: { to: string; label: string }[]
   ) => (
     <div>
-      <div
+      <button
+        onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+          "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
           isActive
             ? "bg-sidebar-accent text-sidebar-primary-foreground"
-            : "text-sidebar-foreground"
+            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         )}
       >
         <Icon className="h-4 w-4" />
         {label}
-      </div>
-      <div className="ml-4 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
-        {subItems.map((sub) => {
-          const active = location.pathname === sub.to;
-          return (
-            <NavLink
-              key={sub.to}
-              to={sub.to}
-              className={cn(
-                "block rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                active
-                  ? "bg-sidebar-accent text-sidebar-primary-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}
-            >
-              {sub.label}
-            </NavLink>
-          );
-        })}
-      </div>
+        <ChevronDown className={cn("ml-auto h-3.5 w-3.5 transition-transform", isOpen && "rotate-180")} />
+      </button>
+      {isOpen && (
+        <div className="ml-4 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
+          {subItems.map((sub) => {
+            const active = location.pathname === sub.to;
+            return (
+              <NavLink
+                key={sub.to}
+                to={sub.to}
+                className={cn(
+                  "block rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                  active
+                    ? "bg-sidebar-accent text-sidebar-primary-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                )}
+              >
+                {sub.label}
+              </NavLink>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 
-  // Viewer nav: Dashboard, Orders, Purchases only
   const viewerNavItems = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   ];
 
-  // Admin nav
   const adminNavItems = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard" },
     { to: "/events", icon: CalendarDays, label: "Events" },
@@ -146,26 +147,22 @@ export default function AppSidebar() {
 
   return (
     <aside className="flex h-screen w-[240px] flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-      {/* Logo */}
       <div className="flex items-center px-5 py-5 border-b border-sidebar-border">
         <span className="text-xl font-extrabold tracking-tight text-sidebar-primary-foreground">
           VJX
         </span>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {(isAdmin ? adminNavItems : viewerNavItems).map(renderNavLink)}
 
-        {/* Orders — always visible */}
-        {renderSubNav("Orders", ShoppingCart, isOrdersActive, orderSubItems)}
+        {renderCollapsibleNav("Orders", ShoppingCart, isOrdersActive, ordersOpen, setOrdersOpen, orderSubItems)}
 
-        {isAdmin && renderSubNav("Finance", Wallet, isFinanceActive, financeSubItems)}
+        {isAdmin && renderCollapsibleNav("Finance", Wallet, isFinanceActive, financeOpen, setFinanceOpen, financeSubItems)}
 
         {(isAdmin ? adminBottomItems : viewerBottomItems).map(renderNavLink)}
       </nav>
 
-      {/* Footer */}
       <div className="border-t border-sidebar-border px-3 py-3 space-y-1">
         <button
           onClick={toggleTheme}
