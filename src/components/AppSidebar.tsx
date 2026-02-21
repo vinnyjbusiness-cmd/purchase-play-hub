@@ -6,6 +6,7 @@ import {
   ShoppingCart,
   Package,
   Wallet,
+  Scale,
   HeartPulse,
   Globe,
   Sun,
@@ -134,6 +135,7 @@ export default function AppSidebar() {
 
   const adminBottomItems = [
     { to: "/purchases", icon: Package, label: "Purchases" },
+    { to: "/balance", icon: Scale, label: "Balances" },
     { to: "/platforms", icon: Globe, label: "Platforms" },
     { to: "/analytics", icon: BarChart3, label: "Analytics" },
     { to: "/cashflow", icon: Banknote, label: "Cashflow" },

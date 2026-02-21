@@ -15,6 +15,7 @@ import Events from "./pages/Events";
 import Orders from "./pages/Orders";
 import Purchases from "./pages/Purchases";
 import Finance from "./pages/Finance";
+import Balance from "./pages/Balance";
 import Analytics from "./pages/Analytics";
 import Reconciliation from "./pages/Reconciliation";
 import Platforms from "./pages/Platforms";
@@ -97,6 +98,7 @@ const App = () => (
               <Route path="/finance" element={<PinProtected><Finance /></PinProtected>} />
               <Route path="/finance/:club" element={<PinProtected><Finance /></PinProtected>} />
               <Route path="/analytics" element={<PinProtected><Analytics /></PinProtected>} />
+              <Route path="/balance" element={<PinProtected><Balance /></PinProtected>} />
               <Route path="/cashflow" element={<PinProtected><Cashflow /></PinProtected>} />
               <Route path="/health" element={<AdminOnly><Reconciliation /></AdminOnly>} />
               <Route path="/team" element={<AdminOnly><Team /></AdminOnly>} />
