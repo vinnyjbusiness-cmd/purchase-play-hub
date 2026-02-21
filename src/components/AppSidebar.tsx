@@ -12,10 +12,8 @@ import {
   LogOut,
   Users,
   Banknote,
-  ChevronDown,
   BarChart3,
 } from "lucide-react";
-import { useState } from "react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,6 +37,14 @@ const financeSubItems = [
   { to: "/finance/world-cup", label: "World Cup" },
 ];
 
+const orderSubItemsFlat = [
+  { to: "/orders", label: "All Orders" },
+  { to: "/orders/arsenal", label: "Arsenal" },
+  { to: "/orders/manchester-united", label: "Manchester United" },
+  { to: "/orders/liverpool", label: "Liverpool" },
+  { to: "/orders/world-cup", label: "World Cup" },
+];
+
 export default function AppSidebar() {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
@@ -46,8 +52,6 @@ export default function AppSidebar() {
   const isAdmin = userRole === "admin";
   const isOrdersActive = location.pathname.startsWith("/orders");
   const isFinanceActive = location.pathname.startsWith("/finance");
-  const [ordersOpen, setOrdersOpen] = useState(isOrdersActive);
-  const [financeOpen, setFinanceOpen] = useState(isFinanceActive);
 
   const handleLogout = async () => {
     sessionStorage.removeItem("vjx_finance_unlocked");
@@ -76,51 +80,43 @@ export default function AppSidebar() {
     );
   };
 
-  const renderCollapsible = (
+  const renderSubNav = (
     label: string,
     Icon: any,
     isActive: boolean,
-    isOpen: boolean,
-    setOpen: (v: boolean) => void,
     subItems: { to: string; label: string }[]
   ) => (
     <div>
-      <button
-        onClick={() => setOpen(!isOpen)}
+      <div
         className={cn(
-          "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
+          "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
           isActive
             ? "bg-sidebar-accent text-sidebar-primary-foreground"
-            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            : "text-sidebar-foreground"
         )}
       >
-        <span className="flex items-center gap-3">
-          <Icon className="h-4 w-4" />
-          {label}
-        </span>
-        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-180")} />
-      </button>
-      {isOpen && (
-        <div className="ml-4 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
-          {subItems.map((sub) => {
-            const active = location.pathname === sub.to;
-            return (
-              <NavLink
-                key={sub.to}
-                to={sub.to}
-                className={cn(
-                  "block rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  active
-                    ? "bg-sidebar-accent text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                )}
-              >
-                {sub.label}
-              </NavLink>
-            );
-          })}
-        </div>
-      )}
+        <Icon className="h-4 w-4" />
+        {label}
+      </div>
+      <div className="ml-4 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
+        {subItems.map((sub) => {
+          const active = location.pathname === sub.to;
+          return (
+            <NavLink
+              key={sub.to}
+              to={sub.to}
+              className={cn(
+                "block rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                active
+                  ? "bg-sidebar-accent text-sidebar-primary-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
+            >
+              {sub.label}
+            </NavLink>
+          );
+        })}
+      </div>
     </div>
   );
 
@@ -162,9 +158,9 @@ export default function AppSidebar() {
         {(isAdmin ? adminNavItems : viewerNavItems).map(renderNavLink)}
 
         {/* Orders — always visible */}
-        {renderCollapsible("Orders", ShoppingCart, isOrdersActive, ordersOpen, setOrdersOpen, orderSubItems)}
+        {renderSubNav("Orders", ShoppingCart, isOrdersActive, orderSubItems)}
 
-        {isAdmin && renderCollapsible("Finance", Wallet, isFinanceActive, financeOpen, setFinanceOpen, financeSubItems)}
+        {isAdmin && renderSubNav("Finance", Wallet, isFinanceActive, financeSubItems)}
 
         {(isAdmin ? adminBottomItems : viewerBottomItems).map(renderNavLink)}
       </nav>
