@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,8 @@ function matchesClub(event: EventInfo, clubValue: string): boolean {
 }
 
 export default function Finance() {
+  const { club } = useParams<{ club?: string }>();
+
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -94,7 +97,6 @@ export default function Finance() {
   const [filterType, setFilterType] = useState("all");
   const [filterCurrency, setFilterCurrency] = useState("all");
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
-  const club: string | undefined = undefined; // no club filtering
 
   useEffect(() => {
     Promise.all([
@@ -239,7 +241,7 @@ export default function Finance() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Finance</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{clubTitle} — Finance</h1>
         <p className="text-muted-foreground text-sm">
           {eventPL.length} event{eventPL.length !== 1 ? "s" : ""} · {totalSold} tickets sold · Profit: <span className={totalProfit >= 0 ? "text-success" : "text-destructive"}>£{totalProfit.toLocaleString("en-GB", { minimumFractionDigits: 2 })}</span>
         </p>
