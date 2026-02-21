@@ -50,37 +50,40 @@ export type Database = {
       balance_payments: {
         Row: {
           amount: number
+          contact_name: string | null
           created_at: string
           currency: string
           id: string
           notes: string | null
           org_id: string | null
-          party_id: string
-          party_type: string
+          party_id: string | null
+          party_type: string | null
           payment_date: string
           type: string
         }
         Insert: {
           amount: number
+          contact_name?: string | null
           created_at?: string
           currency?: string
           id?: string
           notes?: string | null
           org_id?: string | null
-          party_id: string
-          party_type: string
+          party_id?: string | null
+          party_type?: string | null
           payment_date?: string
           type?: string
         }
         Update: {
           amount?: number
+          contact_name?: string | null
           created_at?: string
           currency?: string
           id?: string
           notes?: string | null
           org_id?: string | null
-          party_id?: string
-          party_type?: string
+          party_id?: string | null
+          party_type?: string | null
           payment_date?: string
           type?: string
         }
