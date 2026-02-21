@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Scissors, Phone } from "lucide-react";
+import { Search, Scissors, Phone, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import FilterSelect from "@/components/FilterSelect";
 import AddPurchaseDialog from "@/components/AddPurchaseDialog";
@@ -58,13 +58,31 @@ export default function Purchases() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
   const [splitPurchase, setSplitPurchase] = useState<Purchase | null>(null);
+  const [allocations, setAllocations] = useState<Record<string, { sold: number; total: number }>>({});
 
-  const load = useCallback(() => {
-    supabase
+  const load = useCallback(async () => {
+    const { data } = await supabase
       .from("purchases")
       .select("*, suppliers(name, contact_name, contact_phone), events(match_code, home_team, away_team, event_date)")
-      .order("purchase_date", { ascending: false })
-      .then(({ data }) => setPurchases((data as any) || []));
+      .order("purchase_date", { ascending: false });
+    const purchaseList = (data as any) || [];
+    setPurchases(purchaseList);
+
+    // Fetch inventory allocation counts per purchase
+    if (purchaseList.length > 0) {
+      const { data: invData } = await supabase
+        .from("inventory")
+        .select("purchase_id, status")
+        .in("purchase_id", purchaseList.map((p: any) => p.id));
+
+      const allocs: Record<string, { sold: number; total: number }> = {};
+      for (const inv of invData || []) {
+        if (!allocs[inv.purchase_id]) allocs[inv.purchase_id] = { sold: 0, total: 0 };
+        allocs[inv.purchase_id].total++;
+        if (inv.status === "sold") allocs[inv.purchase_id].sold++;
+      }
+      setAllocations(allocs);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -218,8 +236,8 @@ export default function Purchases() {
                       <TableHead className="text-[10px] uppercase tracking-wider text-right">Qty</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-right">Cost/Ticket</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-right">Total</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Allocated</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Paid</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Notes</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Date</TableHead>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
@@ -227,6 +245,11 @@ export default function Purchases() {
                   <TableBody>
                     {group.purchases.map((p) => {
                       const contact = parseNotesContact(p.notes);
+                      const alloc = allocations[p.id] || { sold: 0, total: 0 };
+                      const allocated = alloc.sold;
+                      const total = p.quantity;
+                      const fullyAllocated = allocated >= total && total > 0;
+                      const hasAny = allocated > 0;
                       return (
                       <TableRow key={p.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedPurchaseId(p.id)}>
                         <TableCell className="font-medium">{p.suppliers?.name || "—"}</TableCell>
@@ -238,11 +261,31 @@ export default function Purchases() {
                         <TableCell className="text-right">£{Number(p.unit_cost).toFixed(2)}</TableCell>
                         <TableCell className="text-right font-medium">£{Number(p.total_cost).toFixed(2)}</TableCell>
                         <TableCell>
+                          <div className="flex items-center gap-2 min-w-[100px]">
+                            <div className="flex gap-0.5">
+                              {Array.from({ length: total }, (_, i) => (
+                                <div
+                                  key={i}
+                                  className={`w-3 h-3 rounded-sm text-[8px] flex items-center justify-center font-bold ${
+                                    i < allocated
+                                      ? "bg-success/30 text-success border border-success/40"
+                                      : "bg-destructive/15 text-destructive/60 border border-destructive/20"
+                                  }`}
+                                >
+                                  {i < allocated ? "✓" : ""}
+                                </div>
+                              ))}
+                            </div>
+                            <span className={`text-[10px] font-mono whitespace-nowrap ${fullyAllocated ? "text-success" : hasAny ? "text-warning" : "text-muted-foreground"}`}>
+                              {allocated}/{total}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
                           <Badge variant="outline" className={p.supplier_paid ? "bg-success/10 text-success border-success/20" : "bg-warning/10 text-warning border-warning/20"}>
                             {p.supplier_paid ? "Paid" : "Unpaid"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground text-xs max-w-[120px] truncate" title={p.notes || ""}>{p.notes || "—"}</TableCell>
                         <TableCell className="text-muted-foreground text-xs">{format(new Date(p.purchase_date), "dd MMM yy, HH:mm")}</TableCell>
                         <TableCell>
                           {p.quantity > 1 && (
