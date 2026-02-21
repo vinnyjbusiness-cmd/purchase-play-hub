@@ -214,27 +214,16 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
           </div>
 
           {/* Row 2: Supplier */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Supplier *</Label>
-              <Select value={form.supplier_id} onValueChange={(v) => set("supplier_id", v)}>
-                <SelectTrigger><SelectValue placeholder="Website or Trade" /></SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Order ID</Label>
-              <Input
-                value={form.supplier_order_id}
-                onChange={(e) => set("supplier_order_id", e.target.value)}
-                placeholder="e.g. ORD-1234"
-                maxLength={100}
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label>Supplier *</Label>
+            <Select value={form.supplier_id} onValueChange={(v) => set("supplier_id", v)}>
+              <SelectTrigger><SelectValue placeholder="Website or Trade" /></SelectTrigger>
+              <SelectContent>
+                {suppliers.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Trade fields */}
