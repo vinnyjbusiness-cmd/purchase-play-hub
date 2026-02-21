@@ -79,6 +79,7 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [matchingOrders, setMatchingOrders] = useState<MatchingOrder[]>([]);
   const [allocating, setAllocating] = useState<string | null>(null);
+  const [justAssigned, setJustAssigned] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
@@ -211,12 +212,29 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
   }, [purchaseId, load]);
 
   const handleAllocate = async (orderId: string, needed: number) => {
+    if (!purchase) return;
     setAllocating(orderId);
     try {
-      // Find available inventory from this purchase
-      const available = inventory.filter((i) => i.status === "available");
-      const toAllocate = available.slice(0, needed);
+      let available = inventory.filter((i) => i.status === "available");
 
+      // Auto-create inventory if none exists
+      if (available.length === 0 && purchase.quantity > 0) {
+        const ticketsToCreate = Array.from({ length: purchase.quantity }, () => ({
+          purchase_id: purchase.id,
+          event_id: purchase.event_id,
+          category: purchase.category,
+          section: purchase.section,
+          status: "available" as const,
+        }));
+        const { data: newInv, error: createErr } = await supabase
+          .from("inventory")
+          .insert(ticketsToCreate)
+          .select("id, status, category, section, row_name, seat");
+        if (createErr) throw createErr;
+        available = (newInv || []).map((i) => ({ ...i, linked_order_ref: null, linked_order_id: null }));
+      }
+
+      const toAllocate = available.slice(0, needed);
       if (toAllocate.length === 0) {
         toast.error("No available tickets to allocate");
         return;
@@ -237,7 +255,9 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
         .in("id", toAllocate.map((i) => i.id));
       if (invError) throw invError;
 
-      toast.success(`${toAllocate.length} ticket${toAllocate.length !== 1 ? "s" : ""} allocated`);
+      setJustAssigned(orderId);
+      toast.success(`✅ ${toAllocate.length} ticket${toAllocate.length !== 1 ? "s" : ""} assigned`);
+      setTimeout(() => setJustAssigned(null), 2000);
       load();
       onUpdated();
     } catch (err: any) {
@@ -382,8 +402,14 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
                 <TableBody>
                   {matchingOrders.map((o) => {
                     const fullyLinked = o.needed <= 0;
+                    const wasJustAssigned = justAssigned === o.id;
                     return (
-                      <TableRow key={o.id} className={fullyLinked ? "bg-success/5" : ""}>
+                      <TableRow
+                        key={o.id}
+                        className={`transition-colors duration-500 ${
+                          wasJustAssigned ? "bg-success/20" : fullyLinked ? "bg-success/5" : ""
+                        }`}
+                      >
                         <TableCell className="font-medium text-sm">{o.order_ref || o.id.slice(0, 8)}</TableCell>
                         <TableCell className="text-sm">{o.platforms?.name || "—"}</TableCell>
                         <TableCell className="text-sm">{o.category}</TableCell>
@@ -393,17 +419,15 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
                           {fullyLinked && <CheckCircle2 className="inline ml-1 h-3.5 w-3.5 text-success" />}
                         </TableCell>
                         <TableCell className="text-center">
-                          {fullyLinked ? (
-                            <CheckCircle2 className="h-4 w-4 text-success mx-auto" />
-                          ) : availableCount > 0 ? (
+                          {fullyLinked || wasJustAssigned ? (
+                            <CheckCircle2 className={`h-4 w-4 text-success mx-auto ${wasJustAssigned ? "animate-scale-in" : ""}`} />
+                          ) : (
                             <Checkbox
                               disabled={allocating === o.id}
                               onCheckedChange={(checked) => {
                                 if (checked) handleAllocate(o.id, o.needed);
                               }}
                             />
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </TableCell>
                       </TableRow>
