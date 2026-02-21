@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Package, Link2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Package, Link2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -299,14 +300,14 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
 
           <Separator />
 
-          {/* Matching Orders */}
+          {/* All Orders for this Game */}
           <div>
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Link2 className="h-4 w-4" /> Matching Orders
+              <Link2 className="h-4 w-4" /> Orders for this Game
             </h3>
             {availableCount > 0 && (
               <p className="text-xs text-muted-foreground mb-3">
-                {availableCount} ticket{availableCount !== 1 ? "s" : ""} available to allocate. Best matches shown first.
+                {availableCount} ticket{availableCount !== 1 ? "s" : ""} available to assign. Tick the box to assign.
               </p>
             )}
             <div className="rounded-lg border">
@@ -318,57 +319,42 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
                     <TableHead>Category</TableHead>
                     <TableHead className="text-right">Qty</TableHead>
                     <TableHead className="text-right">Linked</TableHead>
-                    <TableHead>Match</TableHead>
-                    <TableHead></TableHead>
+                    <TableHead className="w-[60px] text-center">Assign</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {matchingOrders.map((o) => (
-                    <TableRow key={o.id} className={o.match_score >= 3 ? "bg-success/5" : ""}>
-                      <TableCell className="font-medium text-sm">{o.order_ref || o.id.slice(0, 8)}</TableCell>
-                      <TableCell className="text-sm">{o.platforms?.name || "—"}</TableCell>
-                      <TableCell className="text-sm">{o.category}</TableCell>
-                      <TableCell className="text-right text-sm">{o.quantity}</TableCell>
-                      <TableCell className="text-right text-sm">
-                        {o.linked_count}/{o.quantity}
-                        {o.needed <= 0 && <CheckCircle2 className="inline ml-1 h-3.5 w-3.5 text-success" />}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {o.match_reasons.map((r, i) => (
-                            <Badge key={i} variant="secondary" className="text-[10px] py-0">
-                              {r}
-                            </Badge>
-                          ))}
-                          {o.match_score >= 3 && (
-                            <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/20">
-                              Best match
-                            </Badge>
+                  {matchingOrders.map((o) => {
+                    const fullyLinked = o.needed <= 0;
+                    return (
+                      <TableRow key={o.id} className={fullyLinked ? "bg-success/5" : ""}>
+                        <TableCell className="font-medium text-sm">{o.order_ref || o.id.slice(0, 8)}</TableCell>
+                        <TableCell className="text-sm">{o.platforms?.name || "—"}</TableCell>
+                        <TableCell className="text-sm">{o.category}</TableCell>
+                        <TableCell className="text-right text-sm">{o.quantity}</TableCell>
+                        <TableCell className="text-right text-sm">
+                          {o.linked_count}/{o.quantity}
+                          {fullyLinked && <CheckCircle2 className="inline ml-1 h-3.5 w-3.5 text-success" />}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {fullyLinked ? (
+                            <CheckCircle2 className="h-4 w-4 text-success mx-auto" />
+                          ) : availableCount > 0 ? (
+                            <Checkbox
+                              disabled={allocating === o.id}
+                              onCheckedChange={(checked) => {
+                                if (checked) handleAllocate(o.id, o.needed);
+                              }}
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {o.needed > 0 && availableCount > 0 ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
-                            disabled={allocating === o.id}
-                            onClick={() => handleAllocate(o.id, o.needed)}
-                          >
-                            {allocating === o.id ? "..." : `Allocate ${Math.min(o.needed, availableCount)}`}
-                          </Button>
-                        ) : o.needed <= 0 ? (
-                          <span className="text-xs text-success">Fulfilled</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No stock</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                   {matchingOrders.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                         No orders for this event yet
                       </TableCell>
                     </TableRow>

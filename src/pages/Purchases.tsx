@@ -28,6 +28,21 @@ interface Purchase {
   events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
 }
 
+/** Extract Name: X and Phone: X from pipe-delimited notes */
+function parseNotesContact(notes: string | null): { name: string | null; phone: string | null } {
+  if (!notes) return { name: null, phone: null };
+  const parts = notes.split(" | ");
+  let name: string | null = null;
+  let phone: string | null = null;
+  for (const p of parts) {
+    const trimmed = p.trim();
+    if (trimmed.startsWith("Name: ")) name = trimmed.slice(6);
+    else if (trimmed.startsWith("Website: ")) name = trimmed.slice(9);
+    if (trimmed.startsWith("Phone: ")) phone = trimmed.slice(7);
+  }
+  return { name, phone };
+}
+
 const statusColor: Record<string, string> = {
   pending: "bg-warning/10 text-warning border-warning/20",
   confirmed: "bg-primary/10 text-primary border-primary/20",
@@ -210,11 +225,13 @@ export default function Purchases() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {group.purchases.map((p) => (
+                    {group.purchases.map((p) => {
+                      const contact = parseNotesContact(p.notes);
+                      return (
                       <TableRow key={p.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedPurchaseId(p.id)}>
                         <TableCell className="font-medium">{p.suppliers?.name || "—"}</TableCell>
-                        <TableCell>{p.suppliers?.contact_name || "—"}</TableCell>
-                        <TableCell className="text-center text-xs text-muted-foreground">{p.suppliers?.contact_phone || "—"}</TableCell>
+                        <TableCell>{contact.name || p.suppliers?.contact_name || "—"}</TableCell>
+                        <TableCell className="text-center text-xs text-muted-foreground">{contact.phone || p.suppliers?.contact_phone || "—"}</TableCell>
                         <TableCell className="font-mono text-xs">{p.supplier_order_id || "—"}</TableCell>
                         <TableCell>{p.category}</TableCell>
                         <TableCell className="text-right">{p.quantity}</TableCell>
@@ -241,7 +258,7 @@ export default function Purchases() {
                           )}
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )})}
                   </TableBody>
                 </Table>
               </div>
