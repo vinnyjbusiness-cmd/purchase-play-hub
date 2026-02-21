@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -142,7 +143,7 @@ export default function Orders() {
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [filterEvent, setFilterEvent] = useState("all");
   const [filterDelivery, setFilterDelivery] = useState("all");
-  const [filterClub, setFilterClub] = useState("all");
+  const { club } = useParams<{ club?: string }>();
   const [filterTimeRange, setFilterTimeRange] = useState("upcoming");
   const [customDateFrom, setCustomDateFrom] = useState<Date | undefined>();
   const [customDateTo, setCustomDateTo] = useState<Date | undefined>();
@@ -252,18 +253,17 @@ export default function Orders() {
     }
     // "all" shows everything including past
 
-    // Club/tournament filter
-    if (filterClub !== "all") {
+    // Club/tournament filter from URL param
+    if (club) {
       const home = (o.events?.home_team || "").toLowerCase();
       const away = (o.events?.away_team || "").toLowerCase();
       const matchCode = (o.events?.match_code || "").toLowerCase();
-      if (filterClub === "world_cup") {
-        // Match World Cup events (stadium-based match codes or "world cup" in teams)
+      if (club === "world-cup") {
         const isWC = matchCode.includes("stadium") || home.includes("tbc") || away.includes("tbc");
         if (!isWC) return false;
       } else {
-        const club = filterClub.toLowerCase();
-        if (!home.includes(club) && !away.includes(club)) return false;
+        const clubName = club.replace(/-/g, " ").toLowerCase();
+        if (!home.includes(clubName) && !away.includes(clubName)) return false;
       }
     }
 
@@ -328,7 +328,9 @@ export default function Orders() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {club ? `${club.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())} Orders` : "All Orders"}
+          </h1>
           <p className="text-muted-foreground text-sm">
             {filtered.length} order{filtered.length !== 1 ? "s" : ""} across {grouped.length} game{grouped.length !== 1 ? "s" : ""}
           </p>
@@ -350,12 +352,6 @@ export default function Orders() {
           </div>
         </div>
         <FilterSelect label="Platform" value={filterPlatform} onValueChange={setFilterPlatform} options={platformOptions} />
-        <FilterSelect label="Club / Tournament" value={filterClub} onValueChange={setFilterClub} options={[
-          { value: "arsenal", label: "Arsenal" },
-          { value: "manchester united", label: "Manchester United" },
-          { value: "liverpool", label: "Liverpool" },
-          { value: "world_cup", label: "World Cup" },
-        ]} />
         <FilterSelect label="Game" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
         <FilterSelect label="Delivery" value={filterDelivery} onValueChange={setFilterDelivery} options={[
           { value: "pending", label: "Pending" },
