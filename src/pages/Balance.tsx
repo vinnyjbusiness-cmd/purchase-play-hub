@@ -723,22 +723,33 @@ export default function Balance() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-popover z-50">
                   <SelectItem value="supplier">Supplier (I Owe)</SelectItem>
-                  <SelectItem value="platform">Supplier (Owed to Me)</SelectItem>
+                  <SelectItem value="platform">Trade (Owed to Me)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>{openingPartyType === "supplier" ? "Supplier" : "Platform"}</Label>
-              <Select value={openingPartyId} onValueChange={(v) => { setOpeningPartyId(v); setOpeningContactName(""); }}>
-                <SelectTrigger><SelectValue placeholder={`Select ${openingPartyType}`} /></SelectTrigger>
-                <SelectContent className="bg-popover z-50">
-                  {(openingPartyType === "supplier" ? supplierOptions : platforms).map(item => (
-                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>{openingPartyType === "supplier" ? "Supplier" : "Trade Contact"}</Label>
+              {openingPartyType === "supplier" ? (
+                <Select value={openingPartyId} onValueChange={(v) => { setOpeningPartyId(v); setOpeningContactName(""); }}>
+                  <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                  <SelectContent className="bg-popover z-50">
+                    {supplierOptions.map(item => (
+                      <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={openingPartyId} onValueChange={(v) => { setOpeningPartyId(v); setOpeningContactName(""); }}>
+                  <SelectTrigger><SelectValue placeholder="Select trade contact" /></SelectTrigger>
+                  <SelectContent className="bg-popover z-50">
+                    {supplierOptions.filter(s => supplierMap[s.id]?.name?.toLowerCase() === "trade").map(item => (
+                      <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
-            {openingPartyType === "supplier" && openingPartyId && supplierMap[openingPartyId]?.name?.toLowerCase() === "trade" && (
+            {openingPartyId && supplierMap[openingPartyId]?.name?.toLowerCase() === "trade" && (
               <div className="space-y-1.5">
                 <Label>Contact Name</Label>
                 <Input value={openingContactName} onChange={e => setOpeningContactName(e.target.value)} placeholder="e.g. John Smith" />
