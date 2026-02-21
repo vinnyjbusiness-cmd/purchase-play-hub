@@ -53,6 +53,7 @@ export default function Balance() {
   const [showAddOpening, setShowAddOpening] = useState(false);
   const [openingPartyType, setOpeningPartyType] = useState<"supplier" | "platform">("supplier");
   const [openingPartyId, setOpeningPartyId] = useState("");
+  const [openingContactName, setOpeningContactName] = useState("");
   const [openingAmount, setOpeningAmount] = useState("");
   const [openingNotes, setOpeningNotes] = useState("");
   const [openingLoading, setOpeningLoading] = useState(false);
@@ -101,6 +102,20 @@ export default function Balance() {
     if (st === "websites" && p.notes) { const m = p.notes.match(/Website:\s*([^|]+)/); if (m) return m[1].trim(); }
     return supplier?.name || "Unknown";
   };
+
+  // Build deduplicated supplier options with display names from purchases
+  const supplierOptions = useMemo(() => {
+    const seen = new Map<string, string>(); // id -> displayName
+    // From purchases — use the smart display name
+    purchases.forEach(p => {
+      if (!seen.has(p.supplier_id)) seen.set(p.supplier_id, getSupplierDisplayName(p));
+    });
+    // Any suppliers without purchases
+    suppliers.forEach(s => {
+      if (!seen.has(s.id)) seen.set(s.id, s.name);
+    });
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [suppliers, purchases, supplierMap]);
 
   // Compute supplier balances
   const supplierBalances = useMemo(() => {
@@ -208,17 +223,20 @@ export default function Balance() {
     if (!openingPartyId || !openingAmount) return;
     setOpeningLoading(true);
     try {
+      const contactName = openingContactName || null;
       const { error } = await supabase.from("balance_payments").insert({
         party_type: openingPartyType,
         party_id: openingPartyId,
         amount: parseFloat(openingAmount),
         notes: openingNotes || null,
         type: "opening_balance",
+        contact_name: contactName,
       } as any);
       if (error) throw error;
       toast.success("Opening balance added");
       setShowAddOpening(false);
       setOpeningPartyId("");
+      setOpeningContactName("");
       setOpeningAmount("");
       setOpeningNotes("");
       loadData();
@@ -576,7 +594,7 @@ export default function Balance() {
               <Select value={addBalSupplierId} onValueChange={(v) => { setAddBalSupplierId(v); setAddBalContactName(""); }}>
                 <SelectTrigger><SelectValue placeholder="Select supplier (or leave blank)" /></SelectTrigger>
                 <SelectContent className="bg-popover z-50">
-                  {suppliers.map(s => (
+                  {supplierOptions.map(s => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -647,13 +665,16 @@ export default function Balance() {
                 {assigningPayment.notes && <span className="text-muted-foreground"> · {assigningPayment.notes}</span>}
               </div>
               <div className="space-y-1.5">
-                <Label>Assign to Supplier</Label>
+                <Label>Assign to existing balance</Label>
                 <Select value={assignSupplierId} onValueChange={setAssignSupplierId}>
-                  <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select supplier with balance" /></SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    {suppliers.map(s => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    {supplierBalances.map(b => (
+                      <SelectItem key={b.supplierId} value={b.supplierId}>{b.displayName}</SelectItem>
                     ))}
+                    {supplierBalances.length === 0 && (
+                      <div className="px-3 py-2 text-xs text-muted-foreground">No existing balances yet</div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -687,7 +708,7 @@ export default function Balance() {
       </Dialog>
 
       {/* Add Opening Balance dialog (from overview) */}
-      <Dialog open={showAddOpening} onOpenChange={setShowAddOpening}>
+      <Dialog open={showAddOpening} onOpenChange={(v) => { if (!v) { setShowAddOpening(false); setOpeningPartyId(""); setOpeningContactName(""); setOpeningAmount(""); setOpeningNotes(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><BookOpen className="h-4 w-4" /> Add Opening Balance</DialogTitle>
@@ -698,25 +719,31 @@ export default function Balance() {
             </p>
             <div className="space-y-1.5">
               <Label>Type</Label>
-              <Select value={openingPartyType} onValueChange={(v) => { setOpeningPartyType(v as any); setOpeningPartyId(""); }}>
+              <Select value={openingPartyType} onValueChange={(v) => { setOpeningPartyType(v as any); setOpeningPartyId(""); setOpeningContactName(""); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-popover z-50">
                   <SelectItem value="supplier">Supplier (I Owe)</SelectItem>
-                  <SelectItem value="platform">Platform (Owed to Me)</SelectItem>
+                  <SelectItem value="platform">Supplier (Owed to Me)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>{openingPartyType === "supplier" ? "Supplier" : "Platform"}</Label>
-              <Select value={openingPartyId} onValueChange={setOpeningPartyId}>
+              <Select value={openingPartyId} onValueChange={(v) => { setOpeningPartyId(v); setOpeningContactName(""); }}>
                 <SelectTrigger><SelectValue placeholder={`Select ${openingPartyType}`} /></SelectTrigger>
                 <SelectContent className="bg-popover z-50">
-                  {(openingPartyType === "supplier" ? suppliers : platforms).map(item => (
+                  {(openingPartyType === "supplier" ? supplierOptions : platforms).map(item => (
                     <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+            {openingPartyType === "supplier" && openingPartyId && supplierMap[openingPartyId]?.name?.toLowerCase() === "trade" && (
+              <div className="space-y-1.5">
+                <Label>Contact Name</Label>
+                <Input value={openingContactName} onChange={e => setOpeningContactName(e.target.value)} placeholder="e.g. John Smith" />
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Amount (£)</Label>
               <Input type="number" step="0.01" min="0" value={openingAmount} onChange={e => setOpeningAmount(e.target.value)} placeholder="0.00" />
