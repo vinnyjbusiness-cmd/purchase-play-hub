@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Scissors, Phone, CheckCircle2, Link2 } from "lucide-react";
+import { Search, Scissors, Phone, CheckCircle2, Link2, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import FilterSelect from "@/components/FilterSelect";
 import AddPurchaseDialog from "@/components/AddPurchaseDialog";
@@ -240,6 +240,7 @@ export default function Purchases() {
                       <TableHead className="text-[10px] uppercase tracking-wider">Date</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-center">Allocate</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-center">Split</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-center">Delete</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -313,6 +314,22 @@ export default function Purchases() {
                               <Scissors className="h-3.5 w-3.5" />
                             </Button>
                           )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            title="Delete purchase"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!confirm("Delete this purchase?")) return;
+                              await supabase.from("purchases").delete().eq("id", p.id);
+                              load();
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     )})}
