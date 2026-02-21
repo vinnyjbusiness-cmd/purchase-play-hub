@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Scissors, Phone, CheckCircle2 } from "lucide-react";
+import { Search, Scissors, Phone, CheckCircle2, Link2 } from "lucide-react";
 import { format } from "date-fns";
 import FilterSelect from "@/components/FilterSelect";
 import AddPurchaseDialog from "@/components/AddPurchaseDialog";
@@ -231,7 +231,6 @@ export default function Purchases() {
                       <TableHead className="text-[10px] uppercase tracking-wider">Source</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Supplier Name</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]"><Phone className="h-3.5 w-3.5 mx-auto" /></TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Order ID</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-right">Qty</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-right">Cost/Ticket</TableHead>
@@ -239,7 +238,8 @@ export default function Purchases() {
                       <TableHead className="text-[10px] uppercase tracking-wider">Allocated</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Paid</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Date</TableHead>
-                      <TableHead className="w-[50px]"></TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-center">Allocate</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-center">Split</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -255,7 +255,6 @@ export default function Purchases() {
                         <TableCell className="font-medium">{p.suppliers?.name || "—"}</TableCell>
                         <TableCell>{contact.name || p.suppliers?.contact_name || "—"}</TableCell>
                         <TableCell className="text-center text-xs text-muted-foreground">{contact.phone || p.suppliers?.contact_phone || "—"}</TableCell>
-                        <TableCell className="font-mono text-xs">{p.supplier_order_id || "—"}</TableCell>
                         <TableCell>{p.category}</TableCell>
                         <TableCell className="text-right">{p.quantity}</TableCell>
                         <TableCell className="text-right">£{Number(p.unit_cost).toFixed(2)}</TableCell>
@@ -287,7 +286,22 @@ export default function Purchases() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground text-xs">{format(new Date(p.purchase_date), "dd MMM yy, HH:mm")}</TableCell>
-                        <TableCell>
+                        <TableCell className="text-center">
+                          {fullyAllocated ? (
+                            <CheckCircle2 className="h-4 w-4 text-success mx-auto" />
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-primary hover:text-primary"
+                              title="Allocate tickets"
+                              onClick={(e) => { e.stopPropagation(); setSelectedPurchaseId(p.id); }}
+                            >
+                              <Link2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
                           {p.quantity > 1 && (
                             <Button
                               size="sm"
