@@ -55,18 +55,16 @@ export default function SplitPurchaseDialog({
 
       const availableInv = allInventory || [];
 
-      // 1. Update original purchase quantity
+      // 1. Update original purchase quantity (total_cost is auto-generated)
       const { error: updateErr } = await supabase
         .from("purchases")
         .update({
           quantity: remaining,
-          total_cost: remaining * unitCost,
-          total_cost_gbp: remaining * unitCost * (purchase.exchange_rate || 1),
         })
         .eq("id", purchaseId);
       if (updateErr) throw updateErr;
 
-      // 2. Create new purchase with the split amount
+      // 2. Create new purchase with the split amount (total_cost is auto-generated)
       const { data: newPurchase, error: insertErr } = await supabase
         .from("purchases")
         .insert({
@@ -78,8 +76,6 @@ export default function SplitPurchaseDialog({
           quantity: splitQty,
           unit_cost: purchase.unit_cost,
           fees: purchase.fees,
-          total_cost: splitQty * unitCost,
-          total_cost_gbp: splitQty * unitCost * (purchase.exchange_rate || 1),
           currency: purchase.currency,
           exchange_rate: purchase.exchange_rate,
           status: purchase.status,
