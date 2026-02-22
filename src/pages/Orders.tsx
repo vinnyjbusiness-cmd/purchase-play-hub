@@ -451,11 +451,24 @@ export default function Orders() {
                       {assignedCount} assigned
                     </Badge>
                   )}
-                  {pendingCount > 0 && (
-                    <Badge variant="outline" className="text-[10px] font-bold uppercase bg-warning/10 text-warning border-warning/20">
-                      {pendingCount} pending
-                    </Badge>
-                  )}
+                  {(() => {
+                    const deliveredCount = group.orders.filter(o => o.delivery_status === "delivered" || o.delivery_status === "completed").length;
+                    const outstandingCount = group.orders.length - deliveredCount;
+                    return (
+                      <>
+                        {deliveredCount > 0 && (
+                          <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">
+                            {deliveredCount} delivered
+                          </Badge>
+                        )}
+                        {outstandingCount > 0 && (
+                          <Badge variant="outline" className="text-[10px] font-bold uppercase bg-warning/10 text-warning border-warning/20">
+                            {outstandingCount} outstanding
+                          </Badge>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -473,8 +486,8 @@ export default function Orders() {
                       <TableHead className="text-[10px] uppercase tracking-wider w-[50px]">Cat</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">Qty</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-right w-[70px]">Sale</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider text-center w-[60px]">Device</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider text-center w-[30px]">📞</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-center w-[90px]">Device</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-center w-[70px]">Delivered</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[80px]">Status</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[75px]">Sold</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[100px]">Assigned From</TableHead>
@@ -491,68 +504,89 @@ export default function Orders() {
                         <TableRow
                           key={o.id}
                           className={`cursor-pointer text-xs h-10 transition-colors ${
-                            assigned
-                              ? "bg-success/8 hover:bg-success/15 border-l-2 border-l-success"
-                              : "hover:bg-muted/40"
+                            o.delivery_status === "delivered" || o.delivery_status === "completed"
+                              ? "bg-success/10 hover:bg-success/20 border-l-2 border-l-success"
+                              : assigned
+                                ? "bg-success/5 hover:bg-success/10 border-l-2 border-l-success/50"
+                                : "hover:bg-muted/40"
                           }`}
                           onClick={() => setSelectedOrderId(o.id)}
                         >
                           <TableCell className="font-mono font-bold text-xs py-2">
                             {o.order_ref ? <CopyText text={o.order_ref} className="font-mono font-bold text-foreground text-xs" /> : "—"}
                           </TableCell>
-                          <TableCell className="py-2 text-muted-foreground">{o.platforms?.name || "—"}</TableCell>
-                          <TableCell className="text-center text-base py-2">{flag || "—"}</TableCell>
+                          <TableCell className="py-2 text-muted-foreground">{o.platforms?.name || "NA"}</TableCell>
+                          <TableCell className="text-center text-base py-2">{flag || "NA"}</TableCell>
                           <TableCell className="py-2">
-                            <span className="font-medium">{o.buyer_name || "—"}</span>
+                            <span className="font-medium">{o.buyer_name || "NA"}</span>
                           </TableCell>
                           <TableCell className="py-2">
                             {o.buyer_phone ? (
                               <CopyText text={o.buyer_phone} className="text-muted-foreground text-xs" />
-                            ) : <span className="text-muted-foreground/50">—</span>}
+                            ) : <span className="text-muted-foreground/40 text-xs">NA</span>}
                           </TableCell>
                           <TableCell className="py-2">
                             {o.buyer_email ? (
                               <CopyText text={o.buyer_email} className="text-muted-foreground text-xs max-w-[140px]" />
-                            ) : <span className="text-muted-foreground/50">—</span>}
+                            ) : <span className="text-muted-foreground/40 text-xs">NA</span>}
                           </TableCell>
-                          <TableCell className="py-2 text-muted-foreground">{o.category}</TableCell>
+                          <TableCell className="py-2 text-muted-foreground">{o.category || "NA"}</TableCell>
                           <TableCell className="text-center font-mono font-bold py-2">{o.quantity}</TableCell>
                           <TableCell className="text-right font-mono py-2">
                             £{Number(o.sale_price).toFixed(0)}
                           </TableCell>
                           <TableCell className="py-2">
-                            <div className="flex gap-0.5 justify-center">
+                            <div className="flex gap-1 justify-center">
                               <button
                                 onClick={(e) => { e.stopPropagation(); updateField(o.id, 'device_type', o.device_type === 'ios' ? null : 'ios'); }}
-                                className={`p-1 rounded transition-colors ${o.device_type === 'ios' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/30 hover:text-muted-foreground'}`}
+                                className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-md border transition-all ${
+                                  o.device_type === 'ios'
+                                    ? 'bg-primary/15 text-primary border-primary/30 shadow-sm'
+                                    : 'text-muted-foreground/40 border-transparent hover:border-muted-foreground/20 hover:text-muted-foreground'
+                                }`}
                                 title="iOS"
                               >
-                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                                <span className="text-[9px] font-bold uppercase">iOS</span>
                               </button>
                               <button
                                 onClick={(e) => { e.stopPropagation(); updateField(o.id, 'device_type', o.device_type === 'android' ? null : 'android'); }}
-                                className={`p-1 rounded transition-colors ${o.device_type === 'android' ? 'bg-success/10 text-success' : 'text-muted-foreground/30 hover:text-muted-foreground'}`}
+                                className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-md border transition-all ${
+                                  o.device_type === 'android'
+                                    ? 'bg-success/15 text-success border-success/30 shadow-sm'
+                                    : 'text-muted-foreground/40 border-transparent hover:border-muted-foreground/20 hover:text-muted-foreground'
+                                }`}
                                 title="Android"
                               >
-                                <Smartphone className="h-3.5 w-3.5" />
+                                <Smartphone className="h-4 w-4" />
+                                <span className="text-[9px] font-bold uppercase">AND</span>
                               </button>
                             </div>
                           </TableCell>
                           <TableCell className="text-center py-2">
                             <Checkbox
-                              checked={o.contacted}
-                              onCheckedChange={(checked) => updateField(o.id, 'contacted', !!checked)}
+                              checked={o.delivery_status === "delivered" || o.delivery_status === "completed"}
+                              onCheckedChange={(checked) => {
+                                const newStatus = checked ? "delivered" : "pending";
+                                updateField(o.id, 'delivery_status', newStatus);
+                              }}
                               onClick={(e) => e.stopPropagation()}
-                              className="data-[state=checked]:bg-success data-[state=checked]:border-success"
+                              className="h-5 w-5 data-[state=checked]:bg-success data-[state=checked]:border-success"
                             />
                           </TableCell>
                           <TableCell className="py-2">
-                            <Badge variant="outline" className={`text-[10px] py-0 ${deliveryColor[(o.delivery_status || "pending")] || ""}`}>
-                              {(o.delivery_status || "pending").replace("_", " ")}
-                            </Badge>
+                            {o.delivery_status === "delivered" || o.delivery_status === "completed" ? (
+                              <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/20 font-bold">
+                                DELIVERED
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] py-0 bg-warning/10 text-warning border-warning/20 font-bold">
+                                OUTSTANDING
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-muted-foreground font-mono py-2 text-[11px]">
-                            {format(new Date(o.order_date), "dd MMM")}
+                            {o.order_date ? format(new Date(o.order_date), "dd MMM") : "NA"}
                           </TableCell>
                           <TableCell className="py-2">
                             {assigned ? (
@@ -565,7 +599,7 @@ export default function Orders() {
                                 {assignInfo.linked_count}/{o.quantity} · {assignInfo.supplier_contact_name || "—"}
                               </span>
                             ) : (
-                              <span className="text-muted-foreground/40 text-xs">—</span>
+                              <span className="text-muted-foreground/40 text-xs">NA</span>
                             )}
                           </TableCell>
                           <TableCell className="py-2">
