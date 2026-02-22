@@ -485,7 +485,7 @@ export default function Orders() {
                       <TableHead className="text-[10px] uppercase tracking-wider">Email</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[50px]">Cat</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">Qty</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider text-right w-[70px]">Sale</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-right w-[70px]">£ Each</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-center w-[90px]">Device</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-center w-[70px]">Delivered</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider w-[80px]">Status</TableHead>
@@ -533,7 +533,7 @@ export default function Orders() {
                           <TableCell className="py-2 text-muted-foreground">{o.category || "NA"}</TableCell>
                           <TableCell className="text-center font-mono font-bold py-2">{o.quantity}</TableCell>
                           <TableCell className="text-right font-mono py-2">
-                            £{Number(o.sale_price).toFixed(0)}
+                            £{(Number(o.sale_price) / (o.quantity || 1)).toFixed(0)}
                           </TableCell>
                           <TableCell className="py-2">
                             <div className="flex gap-1 justify-center">
