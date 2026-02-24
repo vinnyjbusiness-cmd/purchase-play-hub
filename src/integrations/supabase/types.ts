@@ -19,6 +19,7 @@ export type Database = {
           action: string
           created_at: string
           id: string
+          metadata: Json | null
           new_values: Json | null
           old_values: Json | null
           record_id: string | null
@@ -29,6 +30,7 @@ export type Database = {
           action: string
           created_at?: string
           id?: string
+          metadata?: Json | null
           new_values?: Json | null
           old_values?: Json | null
           record_id?: string | null
@@ -39,6 +41,7 @@ export type Database = {
           action?: string
           created_at?: string
           id?: string
+          metadata?: Json | null
           new_values?: Json | null
           old_values?: Json | null
           record_id?: string | null
