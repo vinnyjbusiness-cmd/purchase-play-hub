@@ -186,8 +186,26 @@ export default function Balance() {
 
   const unassignedBalances = useMemo(() => payments.filter(p => !p.party_id), [payments]);
 
-  const totalIOwOut = supplierBalances.reduce((s, b) => s + Math.max(0, b.totalOwed - b.totalPaid), 0);
-  const totalOwedIn = platformBalances.reduce((s, b) => s + Math.max(0, b.totalOwed - b.totalPaid), 0);
+  // Unified balances: combine suppliers + platforms, split by direction
+  const allBalances = useMemo(() => {
+    const items: { id: string; name: string; logoUrl: string | null; entityType: "supplier" | "platform"; balance: number; totalOwed: number; totalPaid: number; itemCount: number; lastActivity: string | null }[] = [];
+    supplierBalances.forEach(b => {
+      const supplier = suppliers.find(s => s.id === b.supplierId);
+      items.push({ id: b.supplierId, name: b.displayName, logoUrl: supplier?.logo_url || null, entityType: "supplier", balance: b.totalOwed - b.totalPaid, totalOwed: b.totalOwed, totalPaid: b.totalPaid, itemCount: b.purchases.length, lastActivity: b.lastActivity });
+    });
+    platformBalances.forEach(b => {
+      const platform = platforms.find(p => p.id === b.platformId);
+      items.push({ id: b.platformId, name: b.displayName, logoUrl: platform?.logo_url || null, entityType: "platform", balance: b.totalOwed - b.totalPaid, totalOwed: b.totalOwed, totalPaid: b.totalPaid, itemCount: b.orders.length, lastActivity: b.lastActivity });
+    });
+    return items;
+  }, [supplierBalances, platformBalances, suppliers, platforms]);
+
+  const iOweList = useMemo(() => allBalances.filter(b => b.balance > 0 && b.entityType === "supplier").sort((a, b) => b.balance - a.balance), [allBalances]);
+  const theyOweList = useMemo(() => allBalances.filter(b => b.balance > 0 && b.entityType === "platform").sort((a, b) => b.balance - a.balance), [allBalances]);
+  const settledList = useMemo(() => allBalances.filter(b => b.balance <= 0), [allBalances]);
+
+  const totalIOwe = iOweList.reduce((s, b) => s + b.balance, 0);
+  const totalTheyOwe = theyOweList.reduce((s, b) => s + b.balance, 0);
 
   // Detail data
   const selectedData = useMemo(() => {
@@ -621,13 +639,13 @@ export default function Balance() {
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {/* Summary cards */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs text-muted-foreground font-medium">Total I Owe (Suppliers)</p>
-            <p className="text-2xl font-bold text-destructive mt-1">{fmt(totalIOwOut)}</p>
+          <div className="rounded-lg border-2 border-destructive/20 bg-destructive/5 p-4">
+            <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5"><TrendingDown className="h-3.5 w-3.5 text-destructive" /> Total I Owe</p>
+            <p className="text-2xl font-bold text-destructive mt-1">{fmt(totalIOwe)}</p>
           </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs text-muted-foreground font-medium">Total Owed to Me (Platforms)</p>
-            <p className="text-2xl font-bold text-success mt-1">{fmt(totalOwedIn)}</p>
+          <div className="rounded-lg border-2 border-success/20 bg-success/5 p-4">
+            <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5"><TrendingUp className="h-3.5 w-3.5 text-success" /> Total I'm Owed</p>
+            <p className="text-2xl font-bold text-success mt-1">{fmt(totalTheyOwe)}</p>
           </div>
         </div>
 
@@ -666,108 +684,119 @@ export default function Balance() {
           </div>
         )}
 
-        {/* Suppliers — Card Grid (auto-populated from suppliers DB) */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <AlertCircle className="h-4 w-4 text-destructive" />
-            <h3 className="text-sm font-semibold">I Owe — Suppliers</h3>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {supplierBalances.map(b => {
-              const balance = b.totalOwed - b.totalPaid;
-              const isSettled = balance <= 0;
-              const supplier = suppliers.find(s => s.id === b.supplierId);
-              const age = getPaymentAge(b.lastActivity);
-              const hasBalance = balance > 0;
-              return (
-                <button
-                  key={b.supplierId}
-                  onClick={() => setSelectedParty({ type: "supplier", id: b.supplierId })}
-                  className={cn(
-                    "rounded-xl border bg-card p-4 flex flex-col items-center gap-3 hover:bg-muted/40 hover:border-primary/30 transition-all text-center group",
-                    hasBalance && age.isOverdue && "border-warning/40"
-                  )}
-                >
-                  <LogoAvatar name={b.displayName} logoUrl={supplier?.logo_url || null} entityType="supplier" entityId={supplier?.id || b.supplierId} size="lg" />
-                  <div className="w-full">
-                    <p className="text-sm font-semibold truncate">{b.displayName}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {b.purchases.length} purchase{b.purchases.length !== 1 ? "s" : ""}
-                    </p>
-                    {isSettled ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-success font-medium mt-2">
-                        <CheckCircle2 className="h-3 w-3" /> Settled
-                      </span>
-                    ) : (
-                      <>
-                        <p className="text-lg font-bold text-destructive mt-1">{fmt(balance)}</p>
-                        {age.isOverdue && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-warning mt-0.5">
-                            <AlertTriangle className="h-3 w-3" /> {age.days}d since activity
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Platforms — Card Grid */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <CheckCircle2 className="h-4 w-4 text-success" />
-            <h3 className="text-sm font-semibold">Owed to Me — Platforms</h3>
-          </div>
-          {platformBalances.length === 0 ? (
-            <div className="rounded-xl border bg-card p-8 text-center">
-              <p className="text-sm text-muted-foreground">No platform balances yet</p>
+        {/* Split Screen: I Owe | I'm Owed */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* LEFT: I Owe */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingDown className="h-4 w-4 text-destructive" />
+              <h3 className="text-sm font-semibold text-destructive">I Owe</h3>
+              <span className="text-xs text-muted-foreground ml-auto">{iOweList.length} active</span>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {platformBalances.map(b => {
-                const balance = b.totalOwed - b.totalPaid;
-                const isSettled = balance <= 0;
-                const platform = platforms.find(p => p.id === b.platformId);
+            <div className="space-y-2">
+              {iOweList.map(b => {
                 const age = getPaymentAge(b.lastActivity);
                 return (
                   <button
-                    key={b.platformId}
-                    onClick={() => setSelectedParty({ type: "platform", id: b.platformId })}
+                    key={b.id}
+                    onClick={() => setSelectedParty({ type: b.entityType, id: b.id })}
                     className={cn(
-                      "rounded-xl border bg-card p-4 flex flex-col items-center gap-3 hover:bg-muted/40 hover:border-primary/30 transition-all text-center group",
-                      balance > 0 && age.isOverdue && "border-warning/40"
+                      "w-full rounded-xl border bg-card p-4 flex items-center gap-3 hover:bg-muted/40 hover:border-destructive/30 transition-all text-left",
+                      age.isOverdue && "border-warning/40"
                     )}
                   >
-                    <LogoAvatar name={b.displayName} logoUrl={platform?.logo_url || null} entityType="platform" entityId={platform?.id || b.platformId} size="lg" />
-                    <div className="w-full">
-                      <p className="text-sm font-semibold truncate">{b.displayName}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {b.orders.length} order{b.orders.length !== 1 ? "s" : ""}
-                      </p>
-                      {isSettled ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-success font-medium mt-2">
-                          <CheckCircle2 className="h-3 w-3" /> Settled
+                    <LogoAvatar name={b.name} logoUrl={b.logoUrl} entityType={b.entityType} entityId={b.id} size="md" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{b.name}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{b.entityType} · {b.itemCount} item{b.itemCount !== 1 ? "s" : ""}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-base font-bold text-destructive">{fmt(b.balance)}</p>
+                      {age.isOverdue && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-warning">
+                          <AlertTriangle className="h-3 w-3" /> {age.days}d
                         </span>
-                      ) : (
-                        <>
-                          <p className="text-lg font-bold text-success mt-1">{fmt(balance)}</p>
-                          {age.isOverdue && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-warning mt-0.5">
-                              <AlertTriangle className="h-3 w-3" /> {age.days}d since activity
-                            </span>
-                          )}
-                        </>
                       )}
                     </div>
                   </button>
                 );
               })}
+              {iOweList.length === 0 && (
+                <div className="rounded-xl border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">
+                  You don't owe anyone 🎉
+                </div>
+              )}
             </div>
-          )}
+          </div>
+
+          {/* RIGHT: I'm Owed */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="h-4 w-4 text-success" />
+              <h3 className="text-sm font-semibold text-success">I'm Owed</h3>
+              <span className="text-xs text-muted-foreground ml-auto">{theyOweList.length} active</span>
+            </div>
+            <div className="space-y-2">
+              {theyOweList.map(b => {
+                const age = getPaymentAge(b.lastActivity);
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => setSelectedParty({ type: b.entityType, id: b.id })}
+                    className={cn(
+                      "w-full rounded-xl border bg-card p-4 flex items-center gap-3 hover:bg-muted/40 hover:border-success/30 transition-all text-left",
+                      age.isOverdue && "border-warning/40"
+                    )}
+                  >
+                    <LogoAvatar name={b.name} logoUrl={b.logoUrl} entityType={b.entityType} entityId={b.id} size="md" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{b.name}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{b.entityType} · {b.itemCount} item{b.itemCount !== 1 ? "s" : ""}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-base font-bold text-success">{fmt(b.balance)}</p>
+                      {age.isOverdue && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-warning">
+                          <AlertTriangle className="h-3 w-3" /> {age.days}d
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+              {theyOweList.length === 0 && (
+                <div className="rounded-xl border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">
+                  Nobody owes you right now
+                </div>
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* Settled */}
+        {settledList.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold text-muted-foreground">Settled</h3>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+              {settledList.map(b => (
+                <button
+                  key={b.id}
+                  onClick={() => setSelectedParty({ type: b.entityType, id: b.id })}
+                  className="rounded-xl border bg-card/50 p-3 flex items-center gap-2 hover:bg-muted/40 transition-all text-left opacity-70 hover:opacity-100"
+                >
+                  <LogoAvatar name={b.name} logoUrl={b.logoUrl} entityType={b.entityType} entityId={b.id} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium truncate">{b.name}</p>
+                    <span className="text-[10px] text-success">Settled</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Assign unassigned balance dialog */}
