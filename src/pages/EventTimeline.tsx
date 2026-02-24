@@ -233,7 +233,7 @@ export default function EventTimeline() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center gap-3">
         <CalendarClock className="h-6 w-6 text-primary" />
         <h1 className="text-2xl font-bold tracking-tight">Event Timeline</h1>

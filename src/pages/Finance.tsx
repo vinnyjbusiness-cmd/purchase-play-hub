@@ -329,7 +329,7 @@ export default function Finance() {
   const totalProfit = totalRevenue - totalCost;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Finance</h1>
         <p className="text-muted-foreground text-sm">

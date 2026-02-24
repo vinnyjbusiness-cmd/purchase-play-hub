@@ -243,7 +243,7 @@ export default function Cashflow() {
   }, [selectedPayouts]);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Cashflow Calendar</h1>
         <p className="text-muted-foreground text-sm">Platform-specific payout schedules & supplier payment deadlines</p>

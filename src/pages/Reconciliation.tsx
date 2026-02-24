@@ -206,7 +206,7 @@ export default function Health() {
   const isHealthy = totalIssues === 0 && overallSystem === "ok";
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 animate-fade-in">
       {/* ── TOP STATUS BANNER ── */}
       <div className={`rounded-xl p-5 flex items-center gap-4 ${
         isHealthy
