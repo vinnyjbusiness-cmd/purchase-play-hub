@@ -6,10 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus } from "lucide-react";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Plus, ChevronsUpDown, Check } from "lucide-react";
 import { toast } from "sonner";
 import { CLUBS, STANDARD_SECTIONS, HOSPITALITY_OPTIONS } from "@/lib/seatingSections";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface Props {
   onCreated: () => void;
@@ -21,13 +24,23 @@ interface EventRow {
   home_team: string;
   away_team: string;
   event_date: string;
+  competition: string;
+}
+
+interface SupplierRow {
+  id: string;
+  name: string;
+  display_id: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
 }
 
 export default function AddPurchaseDialog({ onCreated }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
   const [events, setEvents] = useState<EventRow[]>([]);
+  const [supplierOpen, setSupplierOpen] = useState(false);
 
   const [form, setForm] = useState({
     club: "",
@@ -47,29 +60,19 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
 
   const selectedSupplier = suppliers.find((s) => s.id === form.supplier_id);
   const isTrade = selectedSupplier?.name?.toLowerCase() === "trade";
-  const isWebsites = selectedSupplier?.name?.toLowerCase() === "websites";
 
   const selectedSection = STANDARD_SECTIONS.find((s) => s.label === form.section);
   const isWorldCup = form.club === "world-cup";
 
   useEffect(() => {
     if (open) {
-      supabase.from("suppliers").select("id, name").then(({ data }) => {
-        // Only keep one Website and one Trade supplier (dedup)
-        const seen = new Set<string>();
-        const filtered: { id: string; name: string }[] = [];
-        for (const s of data || []) {
-          const key = s.name.toLowerCase();
-          if ((key === "websites" || key === "trade") && !seen.has(key)) {
-            seen.add(key);
-            filtered.push(s);
-          }
-        }
-        setSuppliers(filtered);
+      supabase.from("suppliers").select("id, name, display_id, contact_name, contact_phone").then(({ data }) => {
+        // Filter out "websites" — suppliers only
+        setSuppliers((data || []).filter(s => s.name.toLowerCase() !== "websites"));
       });
       supabase
         .from("events")
-        .select("id, match_code, home_team, away_team, event_date")
+        .select("id, match_code, home_team, away_team, event_date, competition")
         .order("event_date", { ascending: true })
         .then(({ data }) => setEvents(data || []));
     }
@@ -83,29 +86,18 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
 
     return events.filter((e) => {
       if (club.value === "world-cup") {
-        const mc = e.match_code.toLowerCase();
-        return mc.includes("stadium") || e.home_team.includes("TBC") || e.away_team.includes("TBC") || mc.includes("world-cup") || mc.includes("world cup");
+        return e.competition?.toLowerCase().includes("world cup");
       }
-      const search = club.label.toLowerCase();
+      const search = club.label.split(" (")[0].toLowerCase();
       return e.home_team.toLowerCase().includes(search) || e.away_team.toLowerCase().includes(search);
     });
   }, [form.club, events]);
 
   const resetForm = () => {
     setForm({
-      club: "",
-      event_id: "",
-      supplier_id: "",
-      supplier_name: "",
-      supplier_number: "",
-      category_type: "",
-      section: "",
-      block: "",
-      hospitality_option: "",
-      supplier_order_id: "",
-      quantity: "1",
-      unit_cost: "",
-      notes: "",
+      club: "", event_id: "", supplier_id: "", supplier_name: "", supplier_number: "",
+      category_type: "", section: "", block: "", hospitality_option: "",
+      supplier_order_id: "", quantity: "1", unit_cost: "", notes: "",
     });
   };
 
@@ -117,20 +109,17 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
       const noteParts: string[] = [];
       if (isTrade && form.supplier_name.trim()) noteParts.push(`Name: ${form.supplier_name.trim()}`);
       if (isTrade && form.supplier_number.trim()) noteParts.push(`Phone: ${form.supplier_number.trim()}`);
-      if (isWebsites && form.supplier_name.trim()) noteParts.push(`Website: ${form.supplier_name.trim()}`);
       if (form.notes.trim()) noteParts.push(form.notes.trim());
 
-      // Build category string
       let category = "";
       if (isWorldCup) {
-        category = form.category_type; // "Cat 1", "Cat 2", etc.
+        category = form.category_type;
       } else if (form.category_type === "hospitality") {
         category = form.hospitality_option || "Hospitality";
       } else {
         category = form.section || "Standard Seating";
       }
 
-      // Store block in section field
       const section = form.category_type === "standard" ? form.block || null : null;
 
       const { error } = await supabase.from("purchases").insert({
@@ -161,7 +150,6 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
 
   const set = (key: string, value: string) => {
     const updates: Record<string, string> = { [key]: value };
-    // Reset dependent fields
     if (key === "club") updates.event_id = "";
     if (key === "category_type") {
       updates.section = "";
@@ -169,6 +157,14 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
       updates.hospitality_option = "";
     }
     if (key === "section") updates.block = "";
+    if (key === "supplier_id") {
+      // Auto-fill contact info from supplier
+      const sup = suppliers.find(s => s.id === value);
+      if (sup) {
+        updates.supplier_name = sup.contact_name || "";
+        updates.supplier_number = sup.contact_phone || "";
+      }
+    }
     setForm((f) => ({ ...f, ...updates }));
   };
 
@@ -182,7 +178,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
           <DialogTitle>Add Purchase</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Row 1: Club & Event */}
+          {/* Club & Event */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Club / Tournament *</Label>
@@ -213,17 +209,44 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             </div>
           </div>
 
-          {/* Row 2: Supplier */}
+          {/* Searchable Supplier dropdown */}
           <div className="space-y-1.5">
             <Label>Supplier *</Label>
-            <Select value={form.supplier_id} onValueChange={(v) => set("supplier_id", v)}>
-              <SelectTrigger><SelectValue placeholder="Website or Trade" /></SelectTrigger>
-              <SelectContent>
-                {suppliers.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={supplierOpen} onOpenChange={setSupplierOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                  {selectedSupplier
+                    ? `${selectedSupplier.name}${selectedSupplier.display_id ? ` (${selectedSupplier.display_id})` : ""}`
+                    : "Search suppliers..."
+                  }
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Type name or code..." />
+                  <CommandList>
+                    <CommandEmpty>No supplier found.</CommandEmpty>
+                    <CommandGroup>
+                      {suppliers.map((s) => (
+                        <CommandItem
+                          key={s.id}
+                          value={`${s.name} ${s.display_id || ""}`}
+                          onSelect={() => {
+                            set("supplier_id", s.id);
+                            setSupplierOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", form.supplier_id === s.id ? "opacity-100" : "opacity-0")} />
+                          <span className="font-medium">{s.name}</span>
+                          {s.display_id && <span className="ml-2 text-xs text-muted-foreground font-mono">{s.display_id}</span>}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Trade fields */}
@@ -240,15 +263,15 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             </div>
           )}
 
-          {/* Website field */}
-          {isWebsites && (
+          {/* Order ID — only for non-Trade */}
+          {!isTrade && selectedSupplier && (
             <div className="space-y-1.5">
-              <Label>Website Name</Label>
-              <Input value={form.supplier_name} onChange={(e) => set("supplier_name", e.target.value)} placeholder="e.g. Tixstock, FanPass" maxLength={100} />
+              <Label>Supplier Order ID</Label>
+              <Input value={form.supplier_order_id} onChange={(e) => set("supplier_order_id", e.target.value)} placeholder="Reference number" />
             </div>
           )}
 
-          {/* Category - differs by club */}
+          {/* Category */}
           {isWorldCup ? (
             <div className="space-y-1.5">
               <Label>Category *</Label>
@@ -274,7 +297,6 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
                 </Select>
               </div>
 
-              {/* Standard: Section + Block */}
               {form.category_type === "standard" && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -302,7 +324,6 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
                 </div>
               )}
 
-              {/* Hospitality: Package */}
               {form.category_type === "hospitality" && (
                 <div className="space-y-1.5">
                   <Label>Hospitality Package</Label>
@@ -319,7 +340,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             </>
           )}
 
-          {/* Row 4: Quantity & Cost */}
+          {/* Quantity & Cost */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Quantity *</Label>

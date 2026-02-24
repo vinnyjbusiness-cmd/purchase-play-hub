@@ -3,11 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Trash2 } from "lucide-react";
+import { Search, Plus, Trash2, Pencil, Download, Phone } from "lucide-react";
 import { toast } from "sonner";
 import LogoAvatar from "@/components/LogoAvatar";
 import AddSupplierDialog from "@/components/AddSupplierDialog";
 import SupplierDetailSheet from "@/components/SupplierDetailSheet";
+import EditSupplierDialog from "@/components/EditSupplierDialog";
 
 interface Supplier {
   id: string;
@@ -24,14 +25,16 @@ interface Supplier {
 
 interface SupplierStats {
   totalOwed: number;
-  activeOrders: number;
+  totalPaid: number;
   totalPurchases: number;
+  ticketsBought: number;
 }
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [stats, setStats] = useState<Record<string, SupplierStats>>({});
 
   const load = useCallback(async () => {
@@ -39,76 +42,42 @@ export default function SuppliersPage() {
       .from("suppliers")
       .select("*")
       .order("created_at", { ascending: true });
-    const list = (data as Supplier[]) || [];
+    // Filter out "websites" supplier type
+    const list = ((data as Supplier[]) || []).filter(
+      s => s.name.toLowerCase() !== "websites"
+    );
     setSuppliers(list);
 
     if (list.length > 0) {
       const ids = list.map(s => s.id);
 
-      const [purchRes, orderRes] = await Promise.all([
+      const [purchRes, balRes] = await Promise.all([
         supabase
           .from("purchases")
-          .select("supplier_id, quantity, unit_cost, total_cost_gbp, supplier_paid")
+          .select("id, supplier_id, quantity, unit_cost, total_cost_gbp, supplier_paid")
           .in("supplier_id", ids),
         supabase
-          .from("orders")
-          .select("id, event_id, status")
-          .in("status", ["pending", "fulfilled"]),
+          .from("balance_payments")
+          .select("party_id, amount, type")
+          .eq("party_type", "supplier")
+          .in("party_id", ids),
       ]);
 
-      // Build purchase-to-supplier mapping for orders via inventory
-      const { data: invData } = await supabase
-        .from("inventory")
-        .select("id, purchase_id")
-        .in("purchase_id", (purchRes.data || []).map(p => (p as any).supplier_id ? undefined : "").filter(Boolean));
-
       const statsMap: Record<string, SupplierStats> = {};
-      ids.forEach(id => { statsMap[id] = { totalOwed: 0, activeOrders: 0, totalPurchases: 0 }; });
+      ids.forEach(id => { statsMap[id] = { totalOwed: 0, totalPaid: 0, totalPurchases: 0, ticketsBought: 0 }; });
 
       (purchRes.data || []).forEach((p: any) => {
         if (!statsMap[p.supplier_id]) return;
         statsMap[p.supplier_id].totalPurchases++;
-        if (!p.supplier_paid) {
-          const cost = p.total_cost_gbp || (p.quantity * p.unit_cost);
-          statsMap[p.supplier_id].totalOwed += cost;
-        }
+        statsMap[p.supplier_id].ticketsBought += p.quantity;
+        const cost = p.total_cost_gbp || (p.quantity * p.unit_cost);
+        statsMap[p.supplier_id].totalOwed += cost;
+        if (p.supplier_paid) statsMap[p.supplier_id].totalPaid += cost;
       });
 
-      // Count active orders linked to each supplier via inventory -> purchase
-      const { data: orderInvData } = await supabase
-        .from("inventory")
-        .select("purchase_id, status")
-        .in("purchase_id", (purchRes.data || []).map((p: any) => p.supplier_id).filter(Boolean));
-
-      // Simpler: count orders by supplier through purchases' events
-      const purchBySupplier: Record<string, Set<string>> = {};
-      (purchRes.data || []).forEach((p: any) => {
-        if (!purchBySupplier[p.supplier_id]) purchBySupplier[p.supplier_id] = new Set();
-      });
-
-      // For active orders, we count inventory items that are 'sold' or 'reserved' per supplier
-      const { data: soldInv } = await supabase
-        .from("inventory")
-        .select("purchase_id")
-        .in("status", ["sold", "reserved"]);
-
-      const purchSupplierMap: Record<string, string> = {};
-      (purchRes.data || []).forEach((p: any) => {
-        // We need purchase id -> supplier id mapping
-      });
-
-      // Re-fetch with purchase IDs
-      const { data: purchFull } = await supabase
-        .from("purchases")
-        .select("id, supplier_id")
-        .in("supplier_id", ids);
-
-      const pidToSid: Record<string, string> = {};
-      (purchFull || []).forEach((p: any) => { pidToSid[p.id] = p.supplier_id; });
-
-      (soldInv || []).forEach((inv: any) => {
-        const sid = pidToSid[inv.purchase_id];
-        if (sid && statsMap[sid]) statsMap[sid].activeOrders++;
+      (balRes.data || []).forEach((b: any) => {
+        if (!statsMap[b.party_id]) return;
+        if (b.type === "payment") statsMap[b.party_id].totalPaid += b.amount;
       });
 
       setStats(statsMap);
@@ -124,7 +93,7 @@ export default function SuppliersPage() {
       s.name.toLowerCase().includes(q) ||
       (s.display_id || "").toLowerCase().includes(q) ||
       (s.contact_name || "").toLowerCase().includes(q) ||
-      (s.contact_email || "").toLowerCase().includes(q)
+      (s.contact_phone || "").toLowerCase().includes(q)
     );
   }, [suppliers, search]);
 
@@ -137,7 +106,40 @@ export default function SuppliersPage() {
     load();
   };
 
+  const handleExportCSV = () => {
+    const headers = ["ID", "Name", "Contact", "Phone", "Total Owed", "Total Paid", "Balance", "Purchases", "Tickets Bought"];
+    const rows = suppliers.map(s => {
+      const st = stats[s.id] || { totalOwed: 0, totalPaid: 0, totalPurchases: 0, ticketsBought: 0 };
+      return [
+        s.display_id || "",
+        s.name,
+        s.contact_name || "",
+        s.contact_phone || "",
+        st.totalOwed.toFixed(2),
+        st.totalPaid.toFixed(2),
+        (st.totalOwed - st.totalPaid).toFixed(2),
+        st.totalPurchases.toString(),
+        st.ticketsBought.toString(),
+      ];
+    });
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `suppliers-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("CSV exported");
+  };
+
   const selected = suppliers.find(s => s.id === selectedId) || null;
+
+  // Generate a premium-style display code
+  const getDisplayCode = (s: Supplier, index: number) => {
+    if (s.display_id) return s.display_id;
+    return `VJX-${String(index + 1).padStart(3, "0")}`;
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -148,7 +150,12 @@ export default function SuppliersPage() {
             {suppliers.length} supplier{suppliers.length !== 1 ? "s" : ""} in database
           </p>
         </div>
-        <AddSupplierDialog onCreated={load} />
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleExportCSV}>
+            <Download className="h-4 w-4 mr-1" /> Export CSV
+          </Button>
+          <AddSupplierDialog onCreated={load} />
+        </div>
       </div>
 
       <div className="relative max-w-sm">
@@ -167,25 +174,39 @@ export default function SuppliersPage() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map(s => {
-            const st = stats[s.id] || { totalOwed: 0, activeOrders: 0, totalPurchases: 0 };
+          {filtered.map((s, idx) => {
+            const st = stats[s.id] || { totalOwed: 0, totalPaid: 0, totalPurchases: 0, ticketsBought: 0 };
+            const balance = st.totalOwed - st.totalPaid;
+            const code = getDisplayCode(s, suppliers.indexOf(s));
             return (
               <div
                 key={s.id}
                 onClick={() => setSelectedId(s.id)}
                 className="group relative rounded-xl border bg-card p-5 cursor-pointer hover:shadow-md hover:border-primary/30 transition-all"
               >
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="absolute top-3 right-3 h-7 w-7 p-0 text-destructive opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10"
-                  onClick={(e) => handleDelete(s.id, e)}
-                  title="Delete supplier"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                {/* Action buttons */}
+                <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={(e) => { e.stopPropagation(); setEditingSupplier(s); }}
+                    title="Edit supplier"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                    onClick={(e) => handleDelete(s.id, e)}
+                    title="Delete supplier"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
 
-                <div className="flex items-center gap-3 mb-4">
+                <div className="flex items-center gap-3 mb-3">
                   <LogoAvatar
                     name={s.name}
                     logoUrl={s.logo_url}
@@ -193,22 +214,31 @@ export default function SuppliersPage() {
                     entityId={s.id}
                     size="md"
                   />
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-sm truncate">{s.name}</h3>
-                    <p className="text-xs text-muted-foreground font-mono">{s.display_id || "—"}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-sm truncate">{s.name}</h3>
+                      {s.contact_phone && (
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                          <Phone className="h-2.5 w-2.5" /> {s.contact_phone}
+                        </span>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="mt-0.5 text-[10px] font-mono font-bold tracking-wider bg-primary/5 text-primary border-primary/20">
+                      {code}
+                    </Badge>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
                   <div className="text-center rounded-lg bg-muted/50 p-2">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Owed</p>
-                    <p className="text-sm font-bold font-mono">
-                      £{st.totalOwed.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Balance</p>
+                    <p className={`text-sm font-bold font-mono ${balance > 0 ? "text-destructive" : "text-success"}`}>
+                      £{Math.abs(balance).toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </p>
                   </div>
                   <div className="text-center rounded-lg bg-muted/50 p-2">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Active</p>
-                    <p className="text-sm font-bold font-mono">{st.activeOrders}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tickets</p>
+                    <p className="text-sm font-bold font-mono">{st.ticketsBought}</p>
                   </div>
                   <div className="text-center rounded-lg bg-muted/50 p-2">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Purchases</p>
@@ -223,10 +253,18 @@ export default function SuppliersPage() {
 
       <SupplierDetailSheet
         supplier={selected}
-        stats={stats[selectedId || ""] || { totalOwed: 0, activeOrders: 0, totalPurchases: 0 }}
+        stats={stats[selectedId || ""] || { totalOwed: 0, totalPaid: 0, totalPurchases: 0, ticketsBought: 0 }}
         onClose={() => setSelectedId(null)}
         onUpdated={load}
       />
+
+      {editingSupplier && (
+        <EditSupplierDialog
+          supplier={editingSupplier}
+          onClose={() => setEditingSupplier(null)}
+          onUpdated={() => { setEditingSupplier(null); load(); }}
+        />
+      )}
     </div>
   );
 }
