@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Package, Ticket, ArrowLeft } from "lucide-react";
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Ticket, Download, Apple, Smartphone } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import FilterSelect from "@/components/FilterSelect";
@@ -20,12 +20,16 @@ interface InventoryItem {
   row_name: string | null;
   seat: string | null;
   face_value: number | null;
+  ticket_name: string | null;
+  supporter_id: string | null;
+  iphone_pass_link: string | null;
+  android_pass_link: string | null;
+  pk_pass_url: string | null;
   status: string;
   created_at: string;
   event_id: string;
-  purchase_id: string;
+  purchase_id: string | null;
   events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
-  purchases: { unit_cost: number; currency: string; supplier_order_id: string | null; suppliers: { name: string } | null } | null;
 }
 
 interface OrderLine {
@@ -40,6 +44,36 @@ const statusColor: Record<string, string> = {
   cancelled: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
+function exportToCSV(items: InventoryItem[]) {
+  const headers = ["Event", "Match Code", "Date", "Name", "Supporter ID", "Category", "Section", "Block", "Row", "Seat", "Face Value", "Status", "iPhone Pass", "Android Pass", "PK Pass"];
+  const rows = items.map(i => [
+    i.events ? `${i.events.home_team} vs ${i.events.away_team}` : "",
+    i.events?.match_code || "",
+    i.events?.event_date ? format(new Date(i.events.event_date), "dd/MM/yyyy HH:mm") : "",
+    i.ticket_name || "",
+    i.supporter_id || "",
+    i.category || "",
+    i.section || "",
+    i.block || "",
+    i.row_name || "",
+    i.seat || "",
+    i.face_value != null ? i.face_value.toFixed(2) : "",
+    i.status || "",
+    i.iphone_pass_link || "",
+    i.android_pass_link || "",
+    i.pk_pass_url || "",
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `inventory-export-${format(new Date(), "yyyy-MM-dd")}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast.success("Exported to CSV (Google Sheets compatible)");
+}
+
 export default function Inventory() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [orderLines, setOrderLines] = useState<OrderLine[]>([]);
@@ -53,7 +87,7 @@ export default function Inventory() {
     const [invRes, olRes] = await Promise.all([
       supabase
         .from("inventory")
-        .select("*, events(match_code, home_team, away_team, event_date), purchases(unit_cost, currency, supplier_order_id, suppliers(name))")
+        .select("*, events(match_code, home_team, away_team, event_date)")
         .order("created_at", { ascending: false }),
       supabase.from("order_lines").select("inventory_id, order_id"),
     ]);
@@ -75,15 +109,15 @@ export default function Inventory() {
         (i.block || "").toLowerCase().includes(q) ||
         (i.row_name || "").toLowerCase().includes(q) ||
         (i.seat || "").toLowerCase().includes(q) ||
+        (i.ticket_name || "").toLowerCase().includes(q) ||
+        (i.supporter_id || "").toLowerCase().includes(q) ||
         (i.events?.home_team || "").toLowerCase().includes(q) ||
-        (i.events?.away_team || "").toLowerCase().includes(q) ||
-        ((i.purchases as any)?.suppliers?.name || "").toLowerCase().includes(q)
+        (i.events?.away_team || "").toLowerCase().includes(q)
       );
     }
     return true;
   });
 
-  // Group by event
   const grouped = useMemo(() => {
     const map: Record<string, { event: InventoryItem["events"]; eventId: string; items: InventoryItem[] }> = {};
     filtered.forEach(i => {
@@ -108,8 +142,6 @@ export default function Inventory() {
     load();
   };
 
-  const sym = (c: string) => (c === "GBP" ? "£" : c === "USD" ? "$" : "€");
-
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -119,9 +151,14 @@ export default function Inventory() {
             {filtered.length} ticket{filtered.length !== 1 ? "s" : ""} across {grouped.length} event{grouped.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <Button onClick={() => setShowAdd(true)}>
-          <Plus className="h-4 w-4 mr-1" /> Add Inventory
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => exportToCSV(filtered)}>
+            <Download className="h-4 w-4 mr-1" /> Export CSV
+          </Button>
+          <Button onClick={() => setShowAdd(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Add Inventory
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -140,7 +177,6 @@ export default function Inventory() {
         ]} />
       </div>
 
-      {/* Event Cards */}
       <div className="space-y-3">
         {grouped.length === 0 && (
           <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No inventory items found</div>
@@ -151,14 +187,12 @@ export default function Inventory() {
           const sold = group.items.filter(i => i.status === "sold").length;
           const reserved = group.items.filter(i => i.status === "reserved").length;
           const assigned = group.items.filter(i => assignedSet.has(i.id)).length;
-          const unassigned = total - assigned;
           const isExpanded = expandedEvent === group.eventId;
           const eventDate = group.event?.event_date ? new Date(group.event.event_date) : null;
           const isPast = eventDate ? eventDate < new Date() : false;
 
           return (
             <div key={group.eventId} className="rounded-xl border bg-card overflow-hidden shadow-sm">
-              {/* Collapsible header — the "credit card" style */}
               <button
                 onClick={() => setExpandedEvent(isExpanded ? null : group.eventId)}
                 className={cn(
@@ -167,10 +201,7 @@ export default function Inventory() {
                 )}
               >
                 <div className="flex items-center gap-4">
-                  <div className={cn(
-                    "flex items-center justify-center h-11 w-11 rounded-lg",
-                    "bg-primary/10 text-primary"
-                  )}>
+                  <div className="flex items-center justify-center h-11 w-11 rounded-lg bg-primary/10 text-primary">
                     <Ticket className="h-5 w-5" />
                   </div>
                   <div>
@@ -189,7 +220,6 @@ export default function Inventory() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                  {/* Stats pills */}
                   <div className="hidden sm:flex items-center gap-2">
                     <div className="text-center px-3 py-1 rounded-md bg-muted/60">
                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</p>
@@ -219,7 +249,6 @@ export default function Inventory() {
                 </div>
               </button>
 
-              {/* Mobile stats row */}
               {!isExpanded && (
                 <div className="flex sm:hidden items-center gap-2 px-5 pb-3 flex-wrap">
                   <Badge variant="outline" className="text-[10px]">{total} total</Badge>
@@ -229,66 +258,80 @@ export default function Inventory() {
                 </div>
               )}
 
-              {/* Expanded detail table */}
               {isExpanded && (
                 <div className="border-t overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Supplier</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider">Name</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider">Supporter ID</TableHead>
                         <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
                         <TableHead className="text-[10px] uppercase tracking-wider">Section</TableHead>
                         <TableHead className="text-[10px] uppercase tracking-wider">Block</TableHead>
                         <TableHead className="text-[10px] uppercase tracking-wider">Row</TableHead>
                         <TableHead className="text-[10px] uppercase tracking-wider">Seat</TableHead>
                         <TableHead className="text-[10px] uppercase tracking-wider text-right">Face Value</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider text-right">Cost</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider">Passes</TableHead>
                         <TableHead className="text-[10px] uppercase tracking-wider">Status</TableHead>
                         <TableHead className="text-[10px] uppercase tracking-wider">Assigned</TableHead>
                         <TableHead className="text-[10px] uppercase tracking-wider text-center">Delete</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {group.items.map((item) => {
-                        const purchase = item.purchases as any;
-                        const isAssigned = assignedSet.has(item.id);
-                        return (
-                          <TableRow key={item.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedId(item.id)}>
-                            <TableCell className="font-medium text-sm">{purchase?.suppliers?.name || "—"}</TableCell>
-                            <TableCell className="text-sm">{item.category}</TableCell>
-                            <TableCell className="text-sm">{item.section || "—"}</TableCell>
-                            <TableCell className="text-sm">{item.block || "—"}</TableCell>
-                            <TableCell className="text-sm">{item.row_name || "—"}</TableCell>
-                            <TableCell className="text-sm">{item.seat || "—"}</TableCell>
-                            <TableCell className="text-right text-sm font-medium">
-                              {item.face_value != null ? `£${Number(item.face_value).toFixed(2)}` : "—"}
-                            </TableCell>
-                            <TableCell className="text-right text-sm font-medium">
-                              {purchase ? `${sym(purchase.currency)}${Number(purchase.unit_cost).toFixed(2)}` : "—"}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={statusColor[item.status] || ""}>
-                                {item.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={isAssigned ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground"}>
-                                {isAssigned ? "Yes" : "No"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                onClick={(e) => handleDelete(e, item)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
+                      {group.items.map((item) => (
+                        <TableRow key={item.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedId(item.id)}>
+                          <TableCell className="font-medium text-sm">{item.ticket_name || "—"}</TableCell>
+                          <TableCell className="text-sm font-mono">{item.supporter_id || "—"}</TableCell>
+                          <TableCell className="text-sm">{item.category}</TableCell>
+                          <TableCell className="text-sm">{item.section || "—"}</TableCell>
+                          <TableCell className="text-sm">{item.block || "—"}</TableCell>
+                          <TableCell className="text-sm">{item.row_name || "—"}</TableCell>
+                          <TableCell className="text-sm">{item.seat || "—"}</TableCell>
+                          <TableCell className="text-right text-sm font-medium">
+                            {item.face_value != null ? `£${Number(item.face_value).toFixed(2)}` : "—"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              {item.iphone_pass_link && (
+                                <a href={item.iphone_pass_link} target="_blank" rel="noopener" onClick={e => e.stopPropagation()} title="iPhone Pass">
+                                  <Apple className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                                </a>
+                              )}
+                              {item.android_pass_link && (
+                                <a href={item.android_pass_link} target="_blank" rel="noopener" onClick={e => e.stopPropagation()} title="Android Pass">
+                                  <Smartphone className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                                </a>
+                              )}
+                              {item.pk_pass_url && (
+                                <a href={item.pk_pass_url} target="_blank" rel="noopener" onClick={e => e.stopPropagation()} title="Download PK Pass">
+                                  <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                                </a>
+                              )}
+                              {!item.iphone_pass_link && !item.android_pass_link && !item.pk_pass_url && "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={statusColor[item.status] || ""}>
+                              {item.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={assignedSet.has(item.id) ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground"}>
+                              {assignedSet.has(item.id) ? "Yes" : "No"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={(e) => handleDelete(e, item)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 </div>
