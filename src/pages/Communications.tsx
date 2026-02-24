@@ -209,22 +209,29 @@ export default function Communications() {
             <CardContent className="pt-6 space-y-4">
               <div className="space-y-2">
                 <Label>Recipients</Label>
-                <div className="flex flex-wrap gap-2">
-                  {members.map(m => (
-                    <label
-                      key={m.user_id}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm cursor-pointer transition-colors ${
-                        selectedRecipients.has(m.user_id) ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-                      }`}
-                    >
-                      <Checkbox
-                        checked={selectedRecipients.has(m.user_id)}
-                        onCheckedChange={() => toggleRecipient(m.user_id, selectedRecipients, setSelectedRecipients)}
-                      />
-                      {m.display_name}
-                    </label>
-                  ))}
-                </div>
+                {members.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-4 text-center">
+                    <p className="text-sm text-muted-foreground">No team members found.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Add members on the Team page to send emails.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {members.map(m => (
+                      <label
+                        key={m.user_id}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm cursor-pointer transition-colors ${
+                          selectedRecipients.has(m.user_id) ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                        }`}
+                      >
+                        <Checkbox
+                          checked={selectedRecipients.has(m.user_id)}
+                          onCheckedChange={() => toggleRecipient(m.user_id, selectedRecipients, setSelectedRecipients)}
+                        />
+                        {m.display_name}
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -257,10 +264,15 @@ export default function Communications() {
 
           {rules.length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <Zap className="h-8 w-8 mx-auto mb-3 opacity-40" />
-                <p>No automated rules yet</p>
-                <p className="text-xs mt-1">Create a rule to automatically send email alerts to your team.</p>
+              <CardContent className="py-12 text-center">
+                <Zap className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
+                <p className="font-medium text-sm">No automated rules yet</p>
+                <p className="text-xs text-muted-foreground mt-1.5 max-w-sm mx-auto">
+                  Automated rules send email alerts to your team based on triggers — for example, notifying when orders remain unactioned for a set number of days, or sending a weekly summary.
+                </p>
+                <Button size="sm" className="mt-4" onClick={openAddRule}>
+                  <Plus className="h-4 w-4 mr-1" /> Add Your First Rule
+                </Button>
               </CardContent>
             </Card>
           ) : (

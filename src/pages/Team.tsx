@@ -107,9 +107,6 @@ export default function Team() {
         </div>
         {isAdmin && (
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setShowTour(true)}>
-              <Compass className="h-4 w-4 mr-1" /> Start Tour
-            </Button>
             <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
               <DialogTrigger asChild>
                 <Button size="sm">
@@ -180,7 +177,13 @@ export default function Team() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.map((m) => (
+              {members.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={isAdmin ? 4 : 3} className="text-center py-8 text-muted-foreground">
+                    No members yet. Invite someone to get started.
+                  </TableCell>
+                </TableRow>
+              ) : members.map((m) => (
                 <TableRow key={m.id}>
                   <TableCell className="font-medium">
                     {(m as any).profiles?.display_name || "Unknown"}
@@ -282,6 +285,46 @@ export default function Team() {
           </CardContent>
         </Card>
       )}
+
+      {/* Roles Reference */}
+      <div>
+        <h2 className="text-sm font-semibold mb-3">Platform Roles</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="rounded-xl border bg-card p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10">
+                <Shield className="h-4 w-4 text-primary" />
+              </div>
+              <h3 className="font-semibold text-sm">Admin</h3>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Full access — can manage purchases, orders, inventory, suppliers, finances, team members, and all platform settings.
+            </p>
+          </div>
+          <div className="rounded-xl border bg-card p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-muted">
+                <Eye className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <h3 className="font-semibold text-sm">Viewer</h3>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Read-only access — can view orders, inventory, and analytics but cannot create, edit, or delete any records.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Start Tour CTA */}
+      <div className="rounded-xl border bg-card p-5 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold">New to the platform?</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Take a guided walkthrough to learn how everything works.</p>
+        </div>
+        <Button variant="secondary" onClick={() => setShowTour(true)}>
+          <Compass className="h-4 w-4 mr-1.5" /> Start Tour
+        </Button>
+      </div>
 
       {showTour && <GuidedTour onEnd={() => setShowTour(false)} />}
     </div>
