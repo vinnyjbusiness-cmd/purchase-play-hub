@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Ticket, Download, Apple, Smartphone, Copy, Check, Users, User } from "lucide-react";
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Ticket, Download, Apple, Smartphone, Copy, Check, Users, User, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import FilterSelect from "@/components/FilterSelect";
@@ -99,16 +99,23 @@ function CopyButton({ text }: { text: string }) {
 
 /** Group items by matching seating info into quantity groups */
 function groupByQuantity(items: InventoryItem[]): { key: string; items: InventoryItem[]; qty: number }[] {
-  // Group by purchase_id first (if exists), then by seating signature
+  // Group by purchase_id if exists, otherwise by seating signature (section+block+row)
   const groups: Map<string, InventoryItem[]> = new Map();
   items.forEach(item => {
-    const key = item.purchase_id || `solo_${item.id}`;
+    let key: string;
+    if (item.purchase_id) {
+      key = `purchase_${item.purchase_id}`;
+    } else {
+      // Group by seating signature so adjacent seats pair up
+      const sig = [item.section || item.category || "", item.block || "", item.row_name || ""].join("|");
+      key = `seat_${item.event_id}_${sig}`;
+    }
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(item);
   });
   return Array.from(groups.entries()).map(([key, items]) => ({
     key,
-    items,
+    items: items.sort((a, b) => (a.seat || "").localeCompare(b.seat || "", undefined, { numeric: true })),
     qty: items.length,
   }));
 }
@@ -138,8 +145,7 @@ export default function Inventory() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
-  const [expandedTicketDetails, setExpandedTicketDetails] = useState<Set<string>>(new Set());
-  const [expandedLoginDetails, setExpandedLoginDetails] = useState<Set<string>>(new Set());
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [invRes, olRes] = await Promise.all([
@@ -212,16 +218,8 @@ export default function Inventory() {
     load();
   };
 
-  const toggleTicketDetails = (id: string) => {
-    setExpandedTicketDetails(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const toggleLoginDetails = (id: string) => {
-    setExpandedLoginDetails(prev => {
+  const toggleItemExpanded = (id: string) => {
+    setExpandedItems(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
@@ -406,156 +404,155 @@ export default function Inventory() {
                         {qg.items.map(item => {
                           const hasPassLinks = item.iphone_pass_link || item.android_pass_link || item.pk_pass_url;
                           const hasLoginDetails = item.first_name || item.last_name || item.email || item.password || item.supporter_id;
-                          const isTicketExpanded = expandedTicketDetails.has(item.id);
-                          const isLoginExpanded = expandedLoginDetails.has(item.id);
+                          const isExpanded = expandedItems.has(item.id);
 
                           return (
-                            <div key={item.id} className="px-5 py-3 hover:bg-muted/20 transition-colors">
-                              {/* Main row — all key seating info visible */}
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-4 flex-1 min-w-0">
-                                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                                    {/* Seating info — always visible */}
-                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1 flex-1 text-sm">
-                                      <div>
-                                        <span className="text-[10px] uppercase text-muted-foreground block">Section</span>
-                                        <span className="font-medium truncate">{item.section || item.category || "—"}</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-[10px] uppercase text-muted-foreground block">Block</span>
-                                        <span className="font-medium">{item.block || "—"}</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-[10px] uppercase text-muted-foreground block">Row</span>
-                                        <span className="font-medium">{item.row_name || "—"}</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-[10px] uppercase text-muted-foreground block">Seat</span>
-                                        <span className="font-medium">{item.seat || "—"}</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-[10px] uppercase text-muted-foreground block">Face Value</span>
-                                        <span className="font-medium">{item.face_value != null ? `£${Number(item.face_value).toFixed(2)}` : "—"}</span>
-                                      </div>
+                            <div key={item.id} className="border-b border-border last:border-b-0">
+                              {/* Clickable main row */}
+                              <button
+                                onClick={() => toggleItemExpanded(item.id)}
+                                className="w-full px-5 py-3 hover:bg-muted/20 transition-colors text-left"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1 flex-1 text-sm">
+                                    <div>
+                                      <span className="text-[10px] uppercase text-muted-foreground block">Section</span>
+                                      <span className="font-medium truncate">{item.section || item.category || "—"}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-[10px] uppercase text-muted-foreground block">Block</span>
+                                      <span className="font-medium">{item.block || "—"}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-[10px] uppercase text-muted-foreground block">Row</span>
+                                      <span className="font-medium">{item.row_name || "—"}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-[10px] uppercase text-muted-foreground block">Seat</span>
+                                      <span className="font-medium">{item.seat || "—"}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-[10px] uppercase text-muted-foreground block">Face Value</span>
+                                      <span className="font-medium">{item.face_value != null ? `£${Number(item.face_value).toFixed(2)}` : "—"}</span>
                                     </div>
                                   </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <Badge variant="outline" className={cn("text-[10px]", statusColor[item.status] || "")}>
+                                      {item.status}
+                                    </Badge>
+                                    <Badge variant="outline" className={cn("text-[10px]", assignedSet.has(item.id) ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground")}>
+                                      {assignedSet.has(item.id) ? "Assigned" : "Unassigned"}
+                                    </Badge>
+                                    {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                                  </div>
                                 </div>
+                              </button>
 
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <Badge variant="outline" className={cn("text-[10px]", statusColor[item.status] || "")}>
-                                    {item.status}
-                                  </Badge>
-                                  <Badge variant="outline" className={cn("text-[10px]", assignedSet.has(item.id) ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground")}>
-                                    {assignedSet.has(item.id) ? "Assigned" : "Unassigned"}
-                                  </Badge>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                                    onClick={() => setSelectedId(item.id)}
-                                  >
-                                    <ChevronRight className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                    onClick={(e) => handleDelete(e, item)}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
+                              {/* Expanded details */}
+                              {isExpanded && (
+                                <div className="px-5 pb-4 space-y-3">
+                                  {/* Login Details */}
+                                  {hasLoginDetails && (
+                                    <div className="rounded-lg bg-muted/30 p-3">
+                                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Login Details</p>
+                                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                        {(item.first_name || item.last_name) && (
+                                          <div>
+                                            <span className="text-muted-foreground block">Name</span>
+                                            <span className="font-medium">{[item.first_name, item.last_name].filter(Boolean).join(" ")}</span>
+                                          </div>
+                                        )}
+                                        {item.supporter_id && (
+                                          <div className="flex items-center gap-1">
+                                            <div>
+                                              <span className="text-muted-foreground block">Supporter ID</span>
+                                              <span className="font-mono font-medium">{item.supporter_id}</span>
+                                            </div>
+                                            <CopyButton text={item.supporter_id} />
+                                          </div>
+                                        )}
+                                        {item.email && (
+                                          <div className="flex items-center gap-1">
+                                            <div>
+                                              <span className="text-muted-foreground block">Email</span>
+                                              <span className="font-medium">{item.email}</span>
+                                            </div>
+                                            <CopyButton text={item.email} />
+                                          </div>
+                                        )}
+                                        {item.password && (
+                                          <div className="flex items-center gap-1">
+                                            <div>
+                                              <span className="text-muted-foreground block">Password</span>
+                                              <span className="font-mono font-medium">{item.password}</span>
+                                            </div>
+                                            <CopyButton text={item.password} />
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Ticket Details */}
+                                  {hasPassLinks && (
+                                    <div className="rounded-lg bg-muted/30 p-3">
+                                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Ticket Details</p>
+                                      <div className="space-y-2">
+                                        {item.iphone_pass_link && (
+                                          <div className="flex items-center gap-2 text-xs">
+                                            <Apple className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                            <span className="text-muted-foreground shrink-0">iPhone:</span>
+                                            <a href={item.iphone_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
+                                              {item.iphone_pass_link}
+                                            </a>
+                                            <CopyButton text={item.iphone_pass_link} />
+                                          </div>
+                                        )}
+                                        {item.android_pass_link && (
+                                          <div className="flex items-center gap-2 text-xs">
+                                            <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                            <span className="text-muted-foreground shrink-0">Android:</span>
+                                            <a href={item.android_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
+                                              {item.android_pass_link}
+                                            </a>
+                                            <CopyButton text={item.android_pass_link} />
+                                          </div>
+                                        )}
+                                        {item.pk_pass_url && (
+                                          <div className="flex items-center gap-2 text-xs">
+                                            <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                            <span className="text-muted-foreground shrink-0">PK Pass:</span>
+                                            <a href={item.pk_pass_url} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
+                                              Download
+                                            </a>
+                                            <CopyButton text={item.pk_pass_url} />
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Action buttons */}
+                                  <div className="flex items-center gap-2 pt-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs"
+                                      onClick={() => setSelectedId(item.id)}
+                                    >
+                                      <Pencil className="h-3 w-3 mr-1" /> Edit
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={(e) => handleDelete(e, item)}
+                                    >
+                                      <Trash2 className="h-3 w-3 mr-1" /> Delete
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
-
-                              {/* Login Details — collapsible */}
-                              {hasLoginDetails && (
-                                <Collapsible open={isLoginExpanded} onOpenChange={() => toggleLoginDetails(item.id)}>
-                                  <CollapsibleTrigger className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                                    {isLoginExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                                    Login Details
-                                  </CollapsibleTrigger>
-                                  <CollapsibleContent>
-                                    <div className="mt-2 rounded-lg bg-muted/30 p-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                                      {(item.first_name || item.last_name) && (
-                                        <div>
-                                          <span className="text-muted-foreground block">Name</span>
-                                          <span className="font-medium">{[item.first_name, item.last_name].filter(Boolean).join(" ")}</span>
-                                        </div>
-                                      )}
-                                      {item.supporter_id && (
-                                        <div className="flex items-center gap-1">
-                                          <div>
-                                            <span className="text-muted-foreground block">Supporter ID</span>
-                                            <span className="font-mono font-medium">{item.supporter_id}</span>
-                                          </div>
-                                          <CopyButton text={item.supporter_id} />
-                                        </div>
-                                      )}
-                                      {item.email && (
-                                        <div className="flex items-center gap-1">
-                                          <div>
-                                            <span className="text-muted-foreground block">Email</span>
-                                            <span className="font-medium">{item.email}</span>
-                                          </div>
-                                          <CopyButton text={item.email} />
-                                        </div>
-                                      )}
-                                      {item.password && (
-                                        <div className="flex items-center gap-1">
-                                          <div>
-                                            <span className="text-muted-foreground block">Password</span>
-                                            <span className="font-mono font-medium">{item.password}</span>
-                                          </div>
-                                          <CopyButton text={item.password} />
-                                        </div>
-                                      )}
-                                    </div>
-                                  </CollapsibleContent>
-                                </Collapsible>
-                              )}
-
-                              {/* Ticket Details — collapsible with copy buttons */}
-                              {hasPassLinks && (
-                                <Collapsible open={isTicketExpanded} onOpenChange={() => toggleTicketDetails(item.id)}>
-                                  <CollapsibleTrigger className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                                    {isTicketExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                                    Ticket Details
-                                  </CollapsibleTrigger>
-                                  <CollapsibleContent>
-                                    <div className="mt-2 rounded-lg bg-muted/30 p-3 space-y-2">
-                                      {item.iphone_pass_link && (
-                                        <div className="flex items-center gap-2 text-xs">
-                                          <Apple className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                          <span className="text-muted-foreground shrink-0">iPhone:</span>
-                                          <a href={item.iphone_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
-                                            {item.iphone_pass_link}
-                                          </a>
-                                          <CopyButton text={item.iphone_pass_link} />
-                                        </div>
-                                      )}
-                                      {item.android_pass_link && (
-                                        <div className="flex items-center gap-2 text-xs">
-                                          <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                          <span className="text-muted-foreground shrink-0">Android:</span>
-                                          <a href={item.android_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
-                                            {item.android_pass_link}
-                                          </a>
-                                          <CopyButton text={item.android_pass_link} />
-                                        </div>
-                                      )}
-                                      {item.pk_pass_url && (
-                                        <div className="flex items-center gap-2 text-xs">
-                                          <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                          <span className="text-muted-foreground shrink-0">PK Pass:</span>
-                                          <a href={item.pk_pass_url} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
-                                            Download
-                                          </a>
-                                          <CopyButton text={item.pk_pass_url} />
-                                        </div>
-                                      )}
-                                    </div>
-                                  </CollapsibleContent>
-                                </Collapsible>
                               )}
                             </div>
                           );
