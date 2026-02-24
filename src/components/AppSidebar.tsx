@@ -22,6 +22,7 @@ import {
   ListTodo,
   CalendarClock,
   FileText,
+  Mail,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -152,6 +153,7 @@ export default function AppSidebar() {
     { to: "/health", icon: HeartPulse, label: "Health" },
     { to: "/todos", icon: ListTodo, label: "To-Do List" },
     { to: "/team", icon: Users, label: "Team" },
+    { to: "/team/communications", icon: Mail, label: "Communications" },
     { to: "/activity", icon: ClipboardList, label: "Activity Log" },
   ];
 

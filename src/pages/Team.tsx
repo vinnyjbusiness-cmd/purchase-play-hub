@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, UserPlus, Mail, Shield, Eye, Clock, Check, X } from "lucide-react";
+import { Users, UserPlus, Mail, Shield, Eye, Clock, Check, X, Compass } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import GuidedTour from "@/components/GuidedTour";
 
 interface Member {
   id: string;
@@ -37,6 +38,7 @@ export default function Team() {
   const [inviteRole, setInviteRole] = useState<"admin" | "viewer">("viewer");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  const [showTour, setShowTour] = useState(false);
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -104,12 +106,16 @@ export default function Team() {
           </p>
         </div>
         {isAdmin && (
-          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <UserPlus className="h-4 w-4 mr-1" /> Invite Member
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setShowTour(true)}>
+              <Compass className="h-4 w-4 mr-1" /> Start Tour
+            </Button>
+            <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm">
+                  <UserPlus className="h-4 w-4 mr-1" /> Invite Member
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Invite Team Member</DialogTitle>
@@ -153,6 +159,7 @@ export default function Team() {
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         )}
       </div>
 
@@ -275,6 +282,8 @@ export default function Team() {
           </CardContent>
         </Card>
       )}
+
+      {showTour && <GuidedTour onEnd={() => setShowTour(false)} />}
     </div>
   );
 }

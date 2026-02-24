@@ -97,6 +97,56 @@ export type Database = {
           },
         ]
       }
+      email_rules: {
+        Row: {
+          body_template: string
+          created_at: string
+          enabled: boolean
+          id: string
+          name: string
+          org_id: string
+          recipient_user_ids: string[]
+          subject_template: string
+          trigger_config: Json
+          trigger_type: string
+          updated_at: string
+        }
+        Insert: {
+          body_template: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          name: string
+          org_id: string
+          recipient_user_ids?: string[]
+          subject_template: string
+          trigger_config?: Json
+          trigger_type: string
+          updated_at?: string
+        }
+        Update: {
+          body_template?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          name?: string
+          org_id?: string
+          recipient_user_ids?: string[]
+          subject_template?: string
+          trigger_config?: Json
+          trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_rules_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       events: {
         Row: {
           away_team: string
