@@ -99,8 +99,7 @@ export default function InvoiceGenerator() {
     setInvoiceDate(format(new Date(), "yyyy-MM-dd"));
   };
 
-  const openCreate = () => {
-    setEditing(null); setCreating(true); resetForm();
+  const applyDefaults = () => {
     if (settings) {
       setSenderAccountHolder(settings.business_name || "");
       setSenderAddress(settings.business_address || "");
@@ -110,6 +109,18 @@ export default function InvoiceGenerator() {
       setRecipientIban(settings.iban || "");
     }
   };
+
+  const openCreate = () => {
+    setEditing(null); setCreating(true); resetForm();
+    applyDefaults();
+  };
+
+  // Auto-open create with defaults when no invoices exist and settings are loaded
+  useEffect(() => {
+    if (invoices.length === 0 && settings && !creating && !editing) {
+      openCreate();
+    }
+  }, [invoices, settings]);
 
   const openEdit = (inv: Invoice) => {
     setEditing(inv); setCreating(true);
