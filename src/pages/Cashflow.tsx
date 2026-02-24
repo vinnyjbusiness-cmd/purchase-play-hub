@@ -5,12 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ChevronLeft, ChevronRight, Calendar, ArrowDownLeft, ArrowUpRight,
-  Banknote, Clock, TrendingUp,
+  Banknote, Clock, TrendingUp, AlertTriangle,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths,
   isSameDay, addDays, isToday, getDay, differenceInDays, isBefore, isAfter,
-  startOfDay,
+  startOfDay, endOfWeek, startOfWeek, isWithinInterval, isMonday,
 } from "date-fns";
 import {
   calculatePayoutDate, getPlatformRule, PLATFORM_COLORS,
@@ -175,6 +175,31 @@ export default function Cashflow() {
     .filter(o => o.estimated_payout_date >= today && o.estimated_payout_date <= next7)
     .reduce((s, o) => s + netAmount(o), 0);
 
+  /* ── This Week summary ── */
+  const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+
+  const thisWeekPayouts = useMemo(() => {
+    const byPlatform: Record<string, { name: string; amount: number; date: Date | null; rule: PlatformPayoutRule }> = {};
+    orders.filter(o =>
+      !o.payment_received &&
+      isWithinInterval(o.estimated_payout_date, { start: weekStart, end: weekEnd })
+    ).forEach(o => {
+      const key = o.platform_rule;
+      if (!byPlatform[key]) {
+        const c = PLATFORM_COLORS[key];
+        byPlatform[key] = { name: c.label, amount: 0, date: null, rule: key };
+      }
+      byPlatform[key].amount += netAmount(o);
+      if (!byPlatform[key].date || o.estimated_payout_date < byPlatform[key].date!) {
+        byPlatform[key].date = o.estimated_payout_date;
+      }
+    });
+    return Object.values(byPlatform);
+  }, [orders, weekStart, weekEnd]);
+
+  const thisWeekTotal = thisWeekPayouts.reduce((s, p) => s + p.amount, 0);
+
   /* ── next payout per platform ── */
   const TRACKED_PLATFORMS: PlatformPayoutRule[] = ["tixstock", "footballticketnet", "fanpass"];
 
@@ -209,7 +234,6 @@ export default function Cashflow() {
   const selectedPayouts = selectedKey ? payoutsByDate[selectedKey] || [] : [];
   const selectedExpenses = selectedKey ? expensesByDate[selectedKey] || [] : [];
 
-  // Group selected payouts by platform
   const selectedByPlatform = useMemo(() => {
     const map: Record<PlatformPayoutRule, OrderPayout[]> = {
       tixstock: [], footballticketnet: [], fanpass: [], default: [],
@@ -223,6 +247,44 @@ export default function Cashflow() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Cashflow Calendar</h1>
         <p className="text-muted-foreground text-sm">Platform-specific payout schedules & supplier payment deadlines</p>
+      </div>
+
+      {/* ── This Week Summary Panel ── */}
+      <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Calendar className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-bold text-primary uppercase tracking-wider">This Week — {format(weekStart, "d MMM")} to {format(weekEnd, "d MMM")}</h2>
+          <Badge variant="secondary" className="ml-auto text-xs font-mono">
+            £{fmt(thisWeekTotal)} incoming
+          </Badge>
+        </div>
+        {thisWeekPayouts.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No payouts scheduled this week</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {thisWeekPayouts.map(p => {
+              const c = PLATFORM_COLORS[p.rule];
+              return (
+                <div key={p.rule} className={`rounded-lg p-3 ${c.bg} border ${c.border}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`h-2 w-2 rounded-full ${c.dot}`} />
+                    <span className={`text-xs font-bold uppercase ${c.text}`}>{p.name}</span>
+                  </div>
+                  <p className={`text-lg font-bold font-mono ${c.text}`}>£{fmt(p.amount)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {p.date ? format(p.date, "EEEE d MMM") : "—"}
+                  </p>
+                  {p.rule === "fanpass" && (
+                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-warning">
+                      <AlertTriangle className="h-3 w-3" />
+                      <span>Ensure bank details are updated</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── Top summary cards ── */}
@@ -261,6 +323,15 @@ export default function Cashflow() {
               ) : (
                 <p className="text-xs text-muted-foreground">No upcoming payouts</p>
               )}
+              {rule === "footballticketnet" && (
+                <p className="text-[10px] text-muted-foreground mt-1 italic">Pays out every Monday</p>
+              )}
+              {rule === "fanpass" && (
+                <div className="mt-1.5 flex items-center gap-1 text-[10px] text-warning">
+                  <AlertTriangle className="h-3 w-3" />
+                  <span>Bank details need updating</span>
+                </div>
+              )}
             </div>
           );
         })}
@@ -296,7 +367,9 @@ export default function Cashflow() {
             const isSelected = selectedDate && isSameDay(day, selectedDate);
             const hasData = dayPayouts.length > 0 || dayExpenses.length > 0;
 
-            // Group payouts by platform
+            // FTN Monday recurring marker
+            const isFTNMonday = isMonday(day) && isCurrentMonth;
+
             const byPlatform: Partial<Record<PlatformPayoutRule, number>> = {};
             dayPayouts.forEach(o => {
               byPlatform[o.platform_rule] = (byPlatform[o.platform_rule] || 0) + netAmount(o);
@@ -306,10 +379,10 @@ export default function Cashflow() {
             return (
               <div
                 key={i}
-                onClick={() => hasData && setSelectedDate(day)}
+                onClick={() => (hasData || isFTNMonday) && setSelectedDate(day)}
                 className={`min-h-[90px] border-b border-r p-1.5 transition-colors ${
                   !isCurrentMonth ? "opacity-30" : ""
-                } ${hasData ? "cursor-pointer hover:bg-muted/50" : ""} ${
+                } ${hasData || isFTNMonday ? "cursor-pointer hover:bg-muted/50" : ""} ${
                   isSelected ? "bg-primary/5 ring-1 ring-primary/30" : ""
                 } ${isToday(day) ? "bg-accent/50" : ""}`}
               >
@@ -317,8 +390,10 @@ export default function Cashflow() {
                   <span className={`text-xs font-mono ${isToday(day) ? "font-bold text-primary" : "text-muted-foreground"}`}>
                     {format(day, "d")}
                   </span>
+                  {isFTNMonday && !byPlatform.footballticketnet && (
+                    <span className="text-[7px] font-bold text-amber-400 bg-amber-500/10 rounded px-1">FTN</span>
+                  )}
                 </div>
-                {/* Platform payout blocks */}
                 {(Object.entries(byPlatform) as [PlatformPayoutRule, number][]).map(([rule, total]) => {
                   const c = PLATFORM_COLORS[rule];
                   return (
@@ -348,7 +423,6 @@ export default function Cashflow() {
             <span className="font-semibold text-sm">{format(selectedDate, "EEEE, d MMMM yyyy")}</span>
           </div>
           <CardContent className="space-y-4">
-            {/* Payouts grouped by platform */}
             {(Object.entries(selectedByPlatform) as [PlatformPayoutRule, OrderPayout[]][])
               .filter(([, arr]) => arr.length > 0)
               .map(([rule, arr]) => {
@@ -389,7 +463,6 @@ export default function Cashflow() {
                   </div>
                 );
               })}
-            {/* Expenses */}
             {selectedExpenses.length > 0 && (
               <div>
                 <p className="text-xs uppercase tracking-wider font-semibold text-destructive mb-2 flex items-center gap-1">
@@ -419,6 +492,7 @@ export default function Cashflow() {
           return (
             <span key={rule} className="flex items-center gap-1.5">
               <span className={`h-3 w-3 rounded ${c.dot}`} /> {c.label}
+              {rule === "footballticketnet" && <span className="italic">(Mondays)</span>}
             </span>
           );
         })}

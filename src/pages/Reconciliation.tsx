@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Activity, CheckCircle, XCircle, Clock, RefreshCw,
   Globe, Bot, CreditCard, Send, Database, Terminal,
+  ShieldCheck, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -49,6 +50,7 @@ export default function Health() {
   const [systemChecks, setSystemChecks] = useState<ScriptCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [checking, setChecking] = useState(false);
   const logEndRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const addLog = (siteKey: string, log: LogEntry) => {
@@ -62,9 +64,9 @@ export default function Health() {
   };
 
   const runChecks = async () => {
+    setChecking(true);
     setLoading(true);
 
-    // System checks
     const sysChecks: ScriptCheck[] = [];
 
     const dbStart = Date.now();
@@ -95,7 +97,6 @@ export default function Health() {
 
     setSystemChecks(sysChecks);
 
-    // Build website configs with placeholder scripts and initial logs
     const websiteConfigs: WebsiteConfig[] = WEBSITES.map(w => {
       const initialLogs: LogEntry[] = [
         makeLog("info", `[${w.name}] Initialising health check...`),
@@ -129,10 +130,19 @@ export default function Health() {
     setSites(websiteConfigs);
     setLastChecked(now());
     setLoading(false);
+    setChecking(false);
   };
 
   useEffect(() => {
     runChecks();
+  }, []);
+
+  // Auto-recheck every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      runChecks();
+    }, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   // Simulate periodic log entries
@@ -184,8 +194,64 @@ export default function Health() {
     ? systemChecks.every(c => c.status === "ok") ? "ok" : systemChecks.some(c => c.status === "error") ? "error" : "pending"
     : "pending";
 
+  // Count issues across all sites
+  const allScriptIssues = sites.reduce((count, s) => {
+    return count + s.scripts.filter(sc => sc.status === "error").length;
+  }, 0);
+  const allPendingScripts = sites.reduce((count, s) => {
+    return count + s.scripts.filter(sc => sc.status === "pending").length;
+  }, 0);
+  const systemErrors = systemChecks.filter(c => c.status === "error").length;
+  const totalIssues = systemErrors + allScriptIssues;
+  const isHealthy = totalIssues === 0 && overallSystem === "ok";
+
   return (
     <div className="p-6 space-y-6">
+      {/* ── TOP STATUS BANNER ── */}
+      <div className={`rounded-xl p-5 flex items-center gap-4 ${
+        isHealthy
+          ? "bg-gradient-to-r from-emerald-500/20 via-green-500/15 to-teal-500/20 border-2 border-emerald-500/30"
+          : "bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-red-500/20 border-2 border-amber-500/30"
+      }`}>
+        <div className={`h-14 w-14 rounded-xl flex items-center justify-center ${
+          isHealthy ? "bg-emerald-500/20" : "bg-amber-500/20"
+        }`}>
+          {isHealthy
+            ? <ShieldCheck className="h-8 w-8 text-emerald-400" />
+            : <AlertTriangle className="h-8 w-8 text-amber-400" />
+          }
+        </div>
+        <div className="flex-1">
+          <h2 className={`text-xl font-bold ${isHealthy ? "text-emerald-400" : "text-amber-400"}`}>
+            {isHealthy ? "All Systems Healthy — No Action Needed" : `${totalIssues > 0 ? totalIssues : allPendingScripts} Item${(totalIssues || allPendingScripts) !== 1 ? "s" : ""} Need Attention`}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {isHealthy
+              ? "Database, authentication, and data integrity are all operational."
+              : `${systemErrors > 0 ? `${systemErrors} system error${systemErrors > 1 ? "s" : ""}. ` : ""}${allPendingScripts > 0 ? `${allPendingScripts} script${allPendingScripts > 1 ? "s" : ""} awaiting integration.` : ""}`
+            }
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Pulsing indicator while checking */}
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-3 w-3">
+              {checking ? (
+                <>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: isHealthy ? "rgb(52, 211, 153)" : "rgb(251, 191, 36)" }} />
+                  <span className="relative inline-flex rounded-full h-3 w-3" style={{ backgroundColor: isHealthy ? "rgb(52, 211, 153)" : "rgb(251, 191, 36)" }} />
+                </>
+              ) : (
+                <span className="relative inline-flex rounded-full h-3 w-3" style={{ backgroundColor: isHealthy ? "rgb(52, 211, 153)" : "rgb(251, 191, 36)" }} />
+              )}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {checking ? "Checking..." : "Auto-checks every 60s"}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Health Check</h1>
@@ -197,9 +263,9 @@ export default function Health() {
               Last checked: {lastChecked.toLocaleTimeString()}
             </p>
           )}
-          <Button variant="outline" size="sm" onClick={runChecks} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            {loading ? "Checking..." : "Re-check"}
+          <Button variant="outline" size="sm" onClick={runChecks} disabled={checking}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${checking ? "animate-spin" : ""}`} />
+            {checking ? "Checking..." : "Re-check"}
           </Button>
         </div>
       </div>
