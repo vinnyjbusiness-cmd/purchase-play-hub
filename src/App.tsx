@@ -28,6 +28,7 @@ import Wallet from "./pages/Wallet";
 import TodoList from "./pages/TodoList";
 import EventTimeline from "./pages/EventTimeline";
 import InvoiceGenerator from "./pages/InvoiceGenerator";
+import InventoryPage from "./pages/Inventory";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -99,6 +100,7 @@ const App = () => (
               <Route path="/orders" element={<Orders />} />
               <Route path="/orders/:club" element={<Orders />} />
               <Route path="/purchases" element={<Purchases />} />
+              <Route path="/inventory" element={<InventoryPage />} />
               <Route path="/platforms" element={<AdminOnly><Platforms /></AdminOnly>} />
               <Route path="/finance" element={<PinProtected><Finance /></PinProtected>} />
               <Route path="/finance/:club" element={<PinProtected><Finance /></PinProtected>} />

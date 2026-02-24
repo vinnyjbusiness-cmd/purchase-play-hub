@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, Trash2, ArrowRight, Package, TrendingUp, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 import LinkInventoryDialog from "./LinkInventoryDialog";
+import OrderMiniTimeline from "./OrderMiniTimeline";
 
 interface OrderDetailProps {
   orderId: string | null;
@@ -333,13 +334,18 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
                 </div>
               )}
 
-              {linkedTickets.length > 0 && (
+            {linkedTickets.length > 0 && (
                 <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
                   <ArrowRight className="h-3 w-3" />
                   Chain: Supplier → Purchase → Inventory → This Order
                 </div>
               )}
             </div>
+
+            <Separator />
+
+            {/* Mini Timeline */}
+            <OrderMiniTimeline orderId={order.id} />
           </div>
         </SheetContent>
       </Sheet>
