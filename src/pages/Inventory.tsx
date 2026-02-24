@@ -390,14 +390,16 @@ export default function Inventory() {
                             <span className="text-xs text-muted-foreground ml-2">({sectionItems.length} ticket{sectionItems.length !== 1 ? "s" : ""})</span>
                           </div>
                           {allGroups.map(qg => (
-                      <div key={qg.key}>
+                      <div key={qg.key} className="mx-3 my-3 rounded-xl border-2 border-dashed border-border bg-muted/10 overflow-hidden">
                         {/* Quantity group header */}
-                        <div className="px-5 py-2 bg-muted/10 flex items-center gap-2">
+                        <div className="px-4 py-2 bg-muted/30 flex items-center gap-2 rounded-t-lg">
                           <Badge variant="outline" className={cn("text-[10px] font-bold", getQtyColor(qg.qty))}>
                             {getQtyLabel(qg.qty)} ({qg.qty})
                           </Badge>
                           <span className="text-xs text-muted-foreground">
                             {qg.items[0]?.block ? `Block ${qg.items[0].block}` : ""}
+                            {qg.items[0]?.row_name ? ` · Row ${qg.items[0].row_name}` : ""}
+                            {qg.qty > 1 ? ` · Seats ${qg.items.map(i => i.seat).filter(Boolean).join(", ")}` : ""}
                           </span>
                         </div>
                         {/* Individual tickets in group */}
@@ -407,7 +409,7 @@ export default function Inventory() {
                           const isExpanded = expandedItems.has(item.id);
 
                           return (
-                            <div key={item.id} className="border-b border-border last:border-b-0">
+                            <div key={item.id} className="border-t border-border/50 last:border-b-0">
                               {/* Clickable main row */}
                               <button
                                 onClick={() => toggleItemExpanded(item.id)}

@@ -69,6 +69,7 @@ export default function Balance() {
   const [showAddBalance, setShowAddBalance] = useState(false);
   const [addBalPartyType, setAddBalPartyType] = useState<"supplier" | "platform">("supplier");
   const [addBalPartyId, setAddBalPartyId] = useState("");
+  const [addBalDirection, setAddBalDirection] = useState<"i_owe" | "they_owe">("i_owe");
   const [addBalAmount, setAddBalAmount] = useState("");
   const [addBalNotes, setAddBalNotes] = useState("");
   const [addBalLoading, setAddBalLoading] = useState(false);
@@ -303,19 +304,23 @@ export default function Balance() {
     if (!addBalPartyId || !addBalAmount) return;
     setAddBalLoading(true);
     try {
+      // direction: "i_owe" means I owe them (record as opening_balance to increase what I owe)
+      // "they_owe" means they owe me (record as payment — they paid me, or I received from them)
+      const type = addBalDirection === "i_owe" ? "opening_balance" : "payment";
       const { error } = await supabase.from("balance_payments").insert({
         party_type: addBalPartyType,
         party_id: addBalPartyId,
         amount: parseFloat(addBalAmount),
-        notes: addBalNotes || null,
-        type: "payment",
+        notes: addBalNotes || `${addBalDirection === "i_owe" ? "I owe them" : "They owe me"}`,
+        type,
       } as any);
       if (error) throw error;
-      toast.success("Balance added");
+      toast.success(addBalDirection === "i_owe" ? "Recorded: I owe them" : "Recorded: They owe me");
       setShowAddBalance(false);
       setAddBalPartyId("");
       setAddBalAmount("");
       setAddBalNotes("");
+      setAddBalDirection("i_owe");
       loadData();
     } catch (err: any) {
       toast.error(err.message);
@@ -878,12 +883,12 @@ export default function Balance() {
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label>Type</Label>
+              <Label>Who</Label>
               <Select value={addBalPartyType} onValueChange={(v) => { setAddBalPartyType(v as any); setAddBalPartyId(""); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-popover z-50">
-                  <SelectItem value="supplier">Supplier Payment</SelectItem>
-                  <SelectItem value="platform">Platform Payment</SelectItem>
+                  <SelectItem value="supplier">Supplier</SelectItem>
+                  <SelectItem value="platform">Platform</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -899,6 +904,21 @@ export default function Balance() {
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label>Direction</Label>
+              <Select value={addBalDirection} onValueChange={(v) => setAddBalDirection(v as any)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-popover z-50">
+                  <SelectItem value="i_owe">I Owe Them</SelectItem>
+                  <SelectItem value="they_owe">They Owe Me</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {addBalDirection === "i_owe"
+                  ? "You owe this person/company money"
+                  : "This person/company owes you money"}
+              </p>
+            </div>
+            <div className="space-y-1.5">
               <Label>Amount (£)</Label>
               <Input type="number" step="0.01" min="0" value={addBalAmount} onChange={e => setAddBalAmount(e.target.value)} placeholder="0.00" />
             </div>
@@ -906,8 +926,8 @@ export default function Balance() {
               <Label>Notes (optional)</Label>
               <Textarea value={addBalNotes} onChange={e => setAddBalNotes(e.target.value)} placeholder="Payment reference, notes..." rows={2} maxLength={200} />
             </div>
-            <Button onClick={handleAddBalance} disabled={addBalLoading || !addBalPartyId || !addBalAmount} className="w-full">
-              {addBalLoading ? "Saving..." : "Add Balance"}
+            <Button onClick={handleAddBalance} disabled={addBalLoading || !addBalPartyId || !addBalAmount} className={cn("w-full", addBalDirection === "i_owe" ? "bg-destructive hover:bg-destructive/90" : "bg-success hover:bg-success/90")}>
+              {addBalLoading ? "Saving..." : addBalDirection === "i_owe" ? "Record: I Owe Them" : "Record: They Owe Me"}
             </Button>
           </div>
         </DialogContent>

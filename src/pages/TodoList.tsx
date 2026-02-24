@@ -108,7 +108,7 @@ export default function TodoList() {
         title: title.trim(),
         description: description.trim() || null,
         priority,
-        assigned_to: assignedTo || null,
+        assigned_to: assignedTo && assignedTo !== "none" ? assignedTo : null,
         org_id: orgId,
         due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
       };
