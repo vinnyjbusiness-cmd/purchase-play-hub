@@ -187,25 +187,34 @@ export default function Balance() {
   const unassignedBalances = useMemo(() => payments.filter(p => !p.party_id), [payments]);
 
   // Unified balances: combine suppliers + platforms, split by direction
+  // netPosition: positive = they owe me, negative = I owe them
   const allBalances = useMemo(() => {
-    const items: { id: string; name: string; logoUrl: string | null; entityType: "supplier" | "platform"; balance: number; totalOwed: number; totalPaid: number; itemCount: number; lastActivity: string | null }[] = [];
+    const items: { id: string; name: string; logoUrl: string | null; entityType: "supplier" | "platform"; rawBalance: number; netPosition: number; totalOwed: number; totalPaid: number; itemCount: number; lastActivity: string | null }[] = [];
     supplierBalances.forEach(b => {
       const supplier = suppliers.find(s => s.id === b.supplierId);
-      items.push({ id: b.supplierId, name: b.displayName, logoUrl: supplier?.logo_url || null, entityType: "supplier", balance: b.totalOwed - b.totalPaid, totalOwed: b.totalOwed, totalPaid: b.totalPaid, itemCount: b.purchases.length, lastActivity: b.lastActivity });
+      const rawBal = b.totalOwed - b.totalPaid;
+      // For suppliers: totalOwed = what I owe them. If I paid more than owed, they owe me the diff.
+      const net = b.totalPaid - b.totalOwed; // positive = they owe me (overpaid)
+      items.push({ id: b.supplierId, name: b.displayName, logoUrl: supplier?.logo_url || null, entityType: "supplier", rawBalance: rawBal, netPosition: net, totalOwed: b.totalOwed, totalPaid: b.totalPaid, itemCount: b.purchases.length, lastActivity: b.lastActivity });
     });
     platformBalances.forEach(b => {
       const platform = platforms.find(p => p.id === b.platformId);
-      items.push({ id: b.platformId, name: b.displayName, logoUrl: platform?.logo_url || null, entityType: "platform", balance: b.totalOwed - b.totalPaid, totalOwed: b.totalOwed, totalPaid: b.totalPaid, itemCount: b.orders.length, lastActivity: b.lastActivity });
+      const rawBal = b.totalOwed - b.totalPaid;
+      // For platforms: totalOwed = what they owe me. Positive rawBal = they still owe me.
+      const net = rawBal; // positive = they owe me
+      items.push({ id: b.platformId, name: b.displayName, logoUrl: platform?.logo_url || null, entityType: "platform", rawBalance: rawBal, netPosition: net, totalOwed: b.totalOwed, totalPaid: b.totalPaid, itemCount: b.orders.length, lastActivity: b.lastActivity });
     });
     return items;
   }, [supplierBalances, platformBalances, suppliers, platforms]);
 
-  const iOweList = useMemo(() => allBalances.filter(b => b.balance > 0 && b.entityType === "supplier").sort((a, b) => b.balance - a.balance), [allBalances]);
-  const theyOweList = useMemo(() => allBalances.filter(b => b.balance > 0 && b.entityType === "platform").sort((a, b) => b.balance - a.balance), [allBalances]);
-  const settledList = useMemo(() => allBalances.filter(b => b.balance <= 0), [allBalances]);
+  // I Owe: netPosition < 0 (I owe them money)
+  const iOweList = useMemo(() => allBalances.filter(b => b.netPosition < 0).sort((a, b) => a.netPosition - b.netPosition), [allBalances]);
+  // They Owe Me: netPosition > 0 (they owe me money)
+  const theyOweList = useMemo(() => allBalances.filter(b => b.netPosition > 0).sort((a, b) => b.netPosition - a.netPosition), [allBalances]);
+  const settledList = useMemo(() => allBalances.filter(b => b.netPosition === 0), [allBalances]);
 
-  const totalIOwe = iOweList.reduce((s, b) => s + b.balance, 0);
-  const totalTheyOwe = theyOweList.reduce((s, b) => s + b.balance, 0);
+  const totalIOwe = iOweList.reduce((s, b) => s + Math.abs(b.netPosition), 0);
+  const totalTheyOwe = theyOweList.reduce((s, b) => s + b.netPosition, 0);
 
   // Detail data
   const selectedData = useMemo(() => {
@@ -404,10 +413,20 @@ export default function Balance() {
 
   // ─── DETAIL VIEW ───
   if (selectedParty && selectedData) {
-    const balance = selectedData.totalOwed - selectedData.totalPaid;
-    const isSettled = balance <= 0;
+    const rawBalance = selectedData.totalOwed - selectedData.totalPaid;
+    // For suppliers: netPosition = totalPaid - totalOwed (positive = they owe me)
+    // For platforms: netPosition = totalOwed - totalPaid (positive = they owe me)
+    const netPosition = selectedData.type === "supplier" 
+      ? selectedData.totalPaid - selectedData.totalOwed 
+      : rawBalance;
+    const isSettled = netPosition === 0;
+    const theyOweMe = netPosition > 0;
+    const iOweThem = netPosition < 0;
     const supplier = selectedData.type === "supplier" ? suppliers.find(s => s.id === selectedData.supplierId || s.id === selectedParty.id) : null;
     const platform = selectedData.type === "platform" ? platforms.find(p => p.id === (selectedData as any).platformId || p.id === selectedParty.id) : null;
+
+    const balanceLabel = isSettled ? "Settled" : theyOweMe ? `They owe me ${fmt(netPosition)}` : `I owe them ${fmt(Math.abs(netPosition))}`;
+    const balanceColor = isSettled ? "text-muted-foreground" : theyOweMe ? "text-success" : "text-destructive";
 
     return (
       <div className="flex flex-col h-full overflow-hidden">
@@ -424,16 +443,16 @@ export default function Balance() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
             <div className="rounded-lg border bg-muted/30 p-3">
-              <span className="text-xs text-muted-foreground">Total {selectedData.type === "supplier" ? "Owed" : "Owed to Me"}</span>
+              <span className="text-xs text-muted-foreground">{selectedData.type === "supplier" ? "I Owe (Total)" : "They Owe (Total)"}</span>
               <p className="text-lg font-bold">{fmt(selectedData.totalOwed)}</p>
             </div>
             <div className="rounded-lg border bg-muted/30 p-3">
-              <span className="text-xs text-muted-foreground">Paid</span>
+              <span className="text-xs text-muted-foreground">{selectedData.type === "supplier" ? "They Owe Me" : "Paid to Me"}</span>
               <p className="text-lg font-bold text-success">{fmt(selectedData.totalPaid)}</p>
             </div>
-            <div className="rounded-lg border bg-muted/30 p-3">
-              <span className="text-xs text-muted-foreground">Balance</span>
-              <p className={cn("text-lg font-bold", isSettled ? "text-success" : "text-destructive")}>{isSettled ? "Settled" : fmt(balance)}</p>
+            <div className={cn("rounded-lg border p-3", theyOweMe ? "border-success/30 bg-success/5" : iOweThem ? "border-destructive/30 bg-destructive/5" : "bg-muted/30")}>
+              <span className="text-xs text-muted-foreground">Net Balance</span>
+              <p className={cn("text-lg font-bold", balanceColor)}>{balanceLabel}</p>
             </div>
             <div className="rounded-lg border bg-muted/30 p-3">
               <span className="text-xs text-muted-foreground">Avg / Transaction</span>
@@ -711,7 +730,7 @@ export default function Balance() {
                       <p className="text-xs text-muted-foreground capitalize">{b.entityType} · {b.itemCount} item{b.itemCount !== 1 ? "s" : ""}</p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-base font-bold text-destructive">{fmt(b.balance)}</p>
+                      <p className="text-base font-bold text-destructive">{fmt(Math.abs(b.netPosition))}</p>
                       {age.isOverdue && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] text-warning">
                           <AlertTriangle className="h-3 w-3" /> {age.days}d
@@ -754,7 +773,7 @@ export default function Balance() {
                       <p className="text-xs text-muted-foreground capitalize">{b.entityType} · {b.itemCount} item{b.itemCount !== 1 ? "s" : ""}</p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-base font-bold text-success">{fmt(b.balance)}</p>
+                      <p className="text-base font-bold text-success">{fmt(b.netPosition)}</p>
                       {age.isOverdue && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] text-warning">
                           <AlertTriangle className="h-3 w-3" /> {age.days}d
