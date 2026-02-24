@@ -23,6 +23,7 @@ import {
   CalendarClock,
   FileText,
   Mail,
+  Siren,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -137,6 +138,7 @@ export default function AppSidebar() {
 
   const adminNavItems = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+    { to: "/warroom", icon: Siren, label: "War Room" },
     { to: "/events", icon: CalendarDays, label: "Events" },
   ];
 
