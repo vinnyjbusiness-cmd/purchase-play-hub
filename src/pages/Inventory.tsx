@@ -459,7 +459,10 @@ export default function Inventory() {
                                       <button
                                         key={item.id}
                                         onClick={() => toggleItemExpanded(item.id)}
-                                        className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 hover:bg-muted/60 transition-colors text-left"
+                                        className={cn(
+                                          "flex items-center gap-2 rounded-lg border px-3 py-2 hover:bg-muted/60 transition-colors text-left",
+                                          expandedItems.has(item.id) ? "bg-muted/60 border-primary/30" : "bg-muted/30"
+                                        )}
                                       >
                                         <span className="flex items-center justify-center h-7 w-7 rounded bg-destructive/10 text-destructive text-xs font-bold font-mono">
                                           {item.seat || (idx + 1)}
@@ -471,9 +474,10 @@ export default function Inventory() {
                                         {item.row_name && (
                                           <Badge variant="outline" className="text-[9px] ml-1 font-mono">R{item.row_name}</Badge>
                                         )}
-                                        <Badge variant="outline" className={cn("text-[9px] ml-auto", statusColor[item.status] || "")}>
+                                        <Badge variant="outline" className={cn("text-[9px]", statusColor[item.status] || "")}>
                                           {item.status}
                                         </Badge>
+                                        {expandedItems.has(item.id) ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                                       </button>
                                     ))}
                                   </div>
