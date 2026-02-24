@@ -1,13 +1,16 @@
 import { useEffect, useState, useMemo } from "react";
-import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Switch } from "@/components/ui/switch";
-import { CalendarDays, Package, ShoppingCart, CheckCircle2, Clock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ArrowLeft, CalendarDays, Package, ShoppingCart, CheckCircle2, TrendingUp, Percent, Ticket } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { CLUBS } from "@/lib/seatingSections";
 import { cn } from "@/lib/utils";
 import { deduplicateEvents } from "@/lib/eventDedup";
+import LogoAvatar from "@/components/LogoAvatar";
 
 interface Purchase {
   id: string;
@@ -41,7 +44,7 @@ interface Order {
   category: string;
 }
 
-interface EventInfo { id: string; match_code: string; home_team: string; away_team: string; event_date: string; competition: string; }
+interface EventInfo { id: string; match_code: string; home_team: string; away_team: string; event_date: string; competition: string; venue?: string | null; }
 interface SupplierInfo { id: string; name: string; }
 interface PlatformInfo { id: string; name: string; }
 
@@ -50,28 +53,34 @@ function matchesClub(event: EventInfo, clubValue: string): boolean {
   const clubLabel = CLUBS.find(c => c.value === clubValue)?.label.toLowerCase() || "";
   if (clubValue === "world-cup") return event.competition.toLowerCase().includes("world cup");
   return (
-    event.home_team.toLowerCase().includes(clubLabel) ||
-    event.away_team.toLowerCase().includes(clubLabel)
+    event.home_team.toLowerCase().includes(clubLabel.split(" (")[0].toLowerCase()) ||
+    event.away_team.toLowerCase().includes(clubLabel.split(" (")[0].toLowerCase())
   );
 }
 
 const fmt = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
 
-export default function Finance() {
-  const { club } = useParams<{ club?: string }>();
+// Club card gradient/icon configs
+const CLUB_STYLES: Record<string, { gradient: string; accent: string }> = {
+  liverpool: { gradient: "from-red-600 to-red-800", accent: "text-red-400" },
+  arsenal: { gradient: "from-red-500 to-red-700", accent: "text-red-400" },
+  "manchester-united": { gradient: "from-red-700 to-red-900", accent: "text-red-500" },
+  "world-cup": { gradient: "from-emerald-600 to-emerald-800", accent: "text-emerald-400" },
+};
 
+export default function Finance() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [events, setEvents] = useState<EventInfo[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierInfo[]>([]);
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
-  const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
+  const [selectedClub, setSelectedClub] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       supabase.from("purchases").select("id,supplier_order_id,quantity,unit_cost,total_cost,total_cost_gbp,currency,purchase_date,supplier_paid,notes,category,section,event_id,supplier_id"),
       supabase.from("orders").select("id,order_ref,sale_price,fees,net_received,quantity,order_date,payment_received,status,event_id,platform_id,category"),
-      supabase.from("events").select("id,match_code,home_team,away_team,event_date,competition"),
+      supabase.from("events").select("id,match_code,home_team,away_team,event_date,competition,venue"),
       supabase.from("suppliers").select("id,name"),
       supabase.from("platforms").select("id,name"),
     ]).then(([purch, ord, ev, sup, plat]) => {
@@ -85,35 +94,44 @@ export default function Finance() {
 
   const supplierMap = useMemo(() => Object.fromEntries(suppliers.map(s => [s.id, s])), [suppliers]);
   const platformMap = useMemo(() => Object.fromEntries(platforms.map(p => [p.id, p])), [platforms]);
-
-  // Filter events by club
   const { unique: dedupedEvents, groupedIds } = useMemo(() => deduplicateEvents(events), [events]);
 
-  const clubEvents = useMemo(() => {
-    const filtered = club ? dedupedEvents.filter(e => matchesClub(e, club)) : dedupedEvents;
-    const eventIdsWithData = new Set([
-      ...orders.map(o => o.event_id),
-      ...purchases.map(p => p.event_id),
-    ]);
-    return filtered
-      .filter(ev => {
+  // Compute per-club aggregates
+  const clubData = useMemo(() => {
+    return CLUBS.map(club => {
+      const clubEvents = dedupedEvents.filter(e => matchesClub(e, club.value));
+      const clubEventIds = new Set<string>();
+      clubEvents.forEach(e => (groupedIds[e.id] || [e.id]).forEach(id => clubEventIds.add(id)));
+
+      const clubPurchases = purchases.filter(p => clubEventIds.has(p.event_id));
+      const clubOrders = orders.filter(o => clubEventIds.has(o.event_id) && o.status !== "cancelled" && o.status !== "refunded");
+
+      const totalCost = clubPurchases.reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
+      const totalRevenue = clubOrders.reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
+      const profit = totalRevenue - totalCost;
+      const margin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
+      const ticketsSold = clubOrders.reduce((s, o) => s + o.quantity, 0);
+      const ticketsBought = clubPurchases.reduce((s, p) => s + p.quantity, 0);
+      const eventCount = clubEvents.filter(ev => {
         const allIds = groupedIds[ev.id] || [ev.id];
-        return allIds.some(id => eventIdsWithData.has(id));
-      })
-      .sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
-  }, [dedupedEvents, groupedIds, orders, purchases, club]);
+        return allIds.some(id => purchases.some(p => p.event_id === id) || orders.some(o => o.event_id === id));
+      }).length;
 
-  // Totals for header
-  const clubEventIds = useMemo(() => {
-    const ids = new Set<string>();
-    clubEvents.forEach(e => (groupedIds[e.id] || [e.id]).forEach(id => ids.add(id)));
-    return ids;
-  }, [clubEvents, groupedIds]);
-  const clubPurchases = useMemo(() => purchases.filter(p => clubEventIds.has(p.event_id)), [purchases, clubEventIds]);
-  const clubOrders = useMemo(() => orders.filter(o => clubEventIds.has(o.event_id)), [orders, clubEventIds]);
-
-  const totalIOwe = clubPurchases.filter(p => !p.supplier_paid).reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
-  const totalOwedToMe = clubOrders.filter(o => !o.payment_received && o.status !== "cancelled" && o.status !== "refunded").reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
+      return {
+        ...club,
+        totalRevenue,
+        totalCost,
+        profit,
+        margin,
+        ticketsSold,
+        ticketsBought,
+        eventCount,
+        events: clubEvents,
+        purchases: clubPurchases,
+        orders: clubOrders,
+      };
+    }).filter(c => c.eventCount > 0);
+  }, [dedupedEvents, groupedIds, purchases, orders]);
 
   // Toggle handlers
   const toggleSupplierPaid = async (purchaseId: string, currentVal: boolean) => {
@@ -130,175 +148,122 @@ export default function Finance() {
     toast.success(!currentVal ? "Marked as received" : "Marked as pending");
   };
 
-  const clubTitle = club
-    ? CLUBS.find(c => c.value === club)?.label || club.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-    : "All Clubs";
+  // DETAIL VIEW — selected club
+  const activeClub = clubData.find(c => c.value === selectedClub);
 
-  // Selected event data
-  const selEvent = clubEvents.find(e => e.id === selectedEvent);
-  const selEventIds = useMemo(() => selectedEvent ? new Set(groupedIds[selectedEvent] || [selectedEvent]) : new Set<string>(), [selectedEvent, groupedIds]);
-  const selPurchases = useMemo(() => selectedEvent ? purchases.filter(p => selEventIds.has(p.event_id)) : [], [purchases, selEventIds, selectedEvent]);
-  const selOrders = useMemo(() => selectedEvent ? orders.filter(o => selEventIds.has(o.event_id)) : [], [orders, selEventIds, selectedEvent]);
+  if (activeClub) {
+    // Per-event breakdown
+    const eventBreakdown = activeClub.events
+      .map(ev => {
+        const allIds = groupedIds[ev.id] || [ev.id];
+        const evPurchases = activeClub.purchases.filter(p => allIds.includes(p.event_id));
+        const evOrders = activeClub.orders.filter(o => allIds.includes(o.event_id));
+        const cost = evPurchases.reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
+        const revenue = evOrders.reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
+        const ticketsBought = evPurchases.reduce((s, p) => s + p.quantity, 0);
+        const ticketsSold = evOrders.reduce((s, o) => s + o.quantity, 0);
+        return { ev, evPurchases, evOrders, cost, revenue, profit: revenue - cost, ticketsBought, ticketsSold };
+      })
+      .filter(e => e.cost > 0 || e.revenue > 0)
+      .sort((a, b) => new Date(a.ev.event_date).getTime() - new Date(b.ev.event_date).getTime());
 
-  // Helper: parse supplier/website name from notes
-  const getSupplierDisplayName = (p: Purchase): string => {
-    const supplier = supplierMap[p.supplier_id];
-    const supplierType = supplier?.name?.toLowerCase() || "";
-    if (supplierType === "trade" && p.notes) {
-      const nameMatch = p.notes.match(/Name:\s*([^|]+)/);
-      if (nameMatch) return nameMatch[1].trim();
-    }
-    if (supplierType === "websites" && p.notes) {
-      const webMatch = p.notes.match(/Website:\s*([^|]+)/);
-      if (webMatch) return webMatch[1].trim();
-    }
-    return supplier?.name || "Unknown";
-  };
-
-  // Group purchases by actual supplier/website name (from notes)
-  const purchasesBySupplier = useMemo(() => {
-    const map: Record<string, Purchase[]> = {};
-    selPurchases.forEach(p => {
-      const key = getSupplierDisplayName(p);
-      if (!map[key]) map[key] = [];
-      map[key].push(p);
-    });
-    return map;
-  }, [selPurchases, supplierMap]);
-
-  // Group orders by platform
-  const ordersByPlatform = useMemo(() => {
-    const map: Record<string, Order[]> = {};
-    selOrders.forEach(o => {
-      const key = o.platform_id || "direct";
-      if (!map[key]) map[key] = [];
-      map[key].push(o);
-    });
-    return map;
-  }, [selOrders]);
-
-  const selTotalIOwe = selPurchases.filter(p => !p.supplier_paid).reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
-  const selTotalOwedToMe = selOrders.filter(o => !o.payment_received && o.status !== "cancelled" && o.status !== "refunded").reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
-  const selTotalPurchases = selPurchases.reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
-  const selTotalSales = selOrders.reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
-
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
-        <h1 className="text-2xl font-bold tracking-tight">{clubTitle} — Finance</h1>
-      </div>
-
-      {/* Event buttons */}
-      <div className="px-6 py-3 border-b border-border shrink-0">
-        <div className="flex flex-wrap gap-2">
-          {clubEvents.map(ev => {
-            const isSelected = selectedEvent === ev.id;
-            const allIds = groupedIds[ev.id] || [ev.id];
-            const evPurchasesUnpaid = purchases.filter(p => allIds.includes(p.event_id) && !p.supplier_paid);
-            const evOrdersUnpaid = orders.filter(o => allIds.includes(o.event_id) && !o.payment_received && o.status !== "cancelled" && o.status !== "refunded");
-            const hasUnpaid = evPurchasesUnpaid.length > 0 || evOrdersUnpaid.length > 0;
-            return (
-              <button
-                key={ev.id}
-                onClick={() => setSelectedEvent(isSelected ? null : ev.id)}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all",
-                  isSelected
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-card text-card-foreground border-border hover:bg-accent hover:text-accent-foreground",
-                )}
-              >
-                <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{ev.home_team} vs {ev.away_team}</span>
-                <span className="text-xs opacity-70">{format(new Date(ev.event_date), "dd MMM")}</span>
-                {hasUnpaid && <span className="h-2 w-2 rounded-full bg-warning shrink-0" />}
-              </button>
-            );
-          })}
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+          <button onClick={() => setSelectedClub(null)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-3">
+            <ArrowLeft className="h-4 w-4" /> Back to Finance
+          </button>
+          <h1 className="text-2xl font-bold tracking-tight">{activeClub.label} — Finance</h1>
         </div>
-      </div>
 
-      {/* Summary panel */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        {!selectedEvent ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            Select an event above to view the money summary
+        {/* Summary cards */}
+        <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 border-b border-border shrink-0">
+          <div className="rounded-lg border bg-card p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Revenue</p>
+            <p className="text-lg font-bold text-success">{fmt(activeClub.totalRevenue)}</p>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Event title */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold">{selEvent?.home_team} vs {selEvent?.away_team}</h2>
-                <p className="text-xs text-muted-foreground">{selEvent && format(new Date(selEvent.event_date), "dd MMMM yyyy")} · {selEvent?.match_code}</p>
-              </div>
-            </div>
+          <div className="rounded-lg border bg-card p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Costs</p>
+            <p className="text-lg font-bold text-destructive">{fmt(activeClub.totalCost)}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Profit</p>
+            <p className={cn("text-lg font-bold", activeClub.profit >= 0 ? "text-success" : "text-destructive")}>
+              {activeClub.profit >= 0 ? "" : "-"}{fmt(Math.abs(activeClub.profit))}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Margin</p>
+            <p className="text-lg font-bold">{activeClub.margin.toFixed(1)}%</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Bought</p>
+            <p className="text-lg font-bold font-mono">{activeClub.ticketsBought}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Sold</p>
+            <p className="text-lg font-bold font-mono">{activeClub.ticketsSold}</p>
+          </div>
+        </div>
 
-            {/* Quick totals */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="rounded-lg border bg-card p-3 text-center">
-                <p className="text-xs text-muted-foreground">Total Purchases</p>
-                <p className="text-lg font-bold">{fmt(selTotalPurchases)}</p>
-              </div>
-              <div className="rounded-lg border bg-card p-3 text-center">
-                <p className="text-xs text-muted-foreground">Total Sales</p>
-                <p className="text-lg font-bold">{fmt(selTotalSales)}</p>
-              </div>
-              <div className="rounded-lg border bg-card p-3 text-center">
-                <p className="text-xs text-muted-foreground">I Owe (Unpaid)</p>
-                <p className="text-lg font-bold text-destructive">{fmt(selTotalIOwe)}</p>
-              </div>
-              <div className="rounded-lg border bg-card p-3 text-center">
-                <p className="text-xs text-muted-foreground">Owed to Me</p>
-                <p className="text-lg font-bold text-success">{fmt(selTotalOwedToMe)}</p>
-              </div>
-            </div>
+        {/* Per-event breakdown */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Per-Event Breakdown</h2>
 
-            {/* Suppliers — I Owe */}
-            <div className="rounded-lg border bg-card overflow-hidden">
-              <div className="px-4 py-3 border-b border-border bg-muted/30">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <Package className="h-4 w-4" /> Purchases — What I Owe
-                </h3>
-              </div>
-              {Object.keys(purchasesBySupplier).length === 0 ? (
-                <div className="p-4 text-sm text-muted-foreground text-center">No purchases for this event</div>
-              ) : (
-                <div className="divide-y divide-border">
-                  {Object.entries(purchasesBySupplier).map(([displayName, items]) => {
-                    const totalQty = items.reduce((s, p) => s + p.quantity, 0);
-                    const totalCost = items.reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
-                    const unpaidCost = items.filter(p => !p.supplier_paid).reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
-                    const allPaid = items.every(p => p.supplier_paid);
-                    return (
-                      <div key={displayName} className="px-4 py-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div>
-                            <p className="font-semibold text-sm">{displayName}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {items.length} purchase{items.length !== 1 ? "s" : ""} · {totalQty} tickets · Total: {fmt(totalCost)}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            {allPaid ? (
-                              <span className="flex items-center gap-1 text-xs text-success font-medium"><CheckCircle2 className="h-3.5 w-3.5" /> All Paid</span>
-                            ) : (
-                              <span className="text-sm font-bold text-destructive">Owe: {fmt(unpaidCost)}</span>
-                            )}
-                          </div>
-                        </div>
-                        {/* Individual purchase lines */}
-                        <div className="space-y-1.5">
-                          {items.map(p => (
+          {eventBreakdown.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground text-sm">No financial data for this club</div>
+          ) : (
+            eventBreakdown.map(({ ev, evPurchases, evOrders, cost, revenue, profit, ticketsBought, ticketsSold }) => (
+              <div key={ev.id} className="rounded-xl border bg-card overflow-hidden">
+                {/* Event header */}
+                <div className="flex items-center justify-between px-5 py-3 bg-muted/40 border-b border-border">
+                  <div>
+                    <p className="font-bold">{ev.home_team} vs {ev.away_team}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}
+                      {ev.venue && ` · ${ev.venue}`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4 text-right">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Revenue</p>
+                      <p className="text-sm font-bold text-success">{fmt(revenue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Costs</p>
+                      <p className="text-sm font-bold text-destructive">{fmt(cost)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Profit</p>
+                      <p className={cn("text-sm font-bold", profit >= 0 ? "text-success" : "text-destructive")}>
+                        {profit >= 0 ? "" : "-"}{fmt(Math.abs(profit))}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
+                  {/* Purchases */}
+                  <div className="p-4">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <Package className="h-3.5 w-3.5" /> Purchases ({ticketsBought} tickets)
+                    </h4>
+                    {evPurchases.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">None</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {evPurchases.map(p => {
+                          const supplierName = supplierMap[p.supplier_id]?.name || "Unknown";
+                          const pCost = p.total_cost_gbp || (p.quantity * p.unit_cost);
+                          return (
                             <div key={p.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-xs">
-                              <div className="flex items-center gap-3">
-                                <span className="text-muted-foreground">{p.quantity}x {p.category}</span>
-                                <span>{fmt(p.total_cost_gbp || (p.quantity * p.unit_cost))}</span>
-                                <span className="text-muted-foreground">{format(new Date(p.purchase_date), "dd MMM yy")}</span>
+                              <div className="flex items-center gap-2">
+                                <span>{p.quantity}x {p.category}</span>
+                                <span className="text-muted-foreground">({supplierName})</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className={cn("text-xs", p.supplier_paid ? "text-success" : "text-destructive")}>
+                                <span className="font-mono font-medium">{fmt(pCost)}</span>
+                                <span className={cn("text-[10px]", p.supplier_paid ? "text-success" : "text-destructive")}>
                                   {p.supplier_paid ? "Paid" : "Unpaid"}
                                 </span>
                                 <Switch
@@ -308,60 +273,33 @@ export default function Finance() {
                                 />
                               </div>
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                    )}
+                  </div>
 
-            {/* Platforms — Owed to Me */}
-            <div className="rounded-lg border bg-card overflow-hidden">
-              <div className="px-4 py-3 border-b border-border bg-muted/30">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <ShoppingCart className="h-4 w-4" /> Sales — Owed to Me
-                </h3>
-              </div>
-              {Object.keys(ordersByPlatform).length === 0 ? (
-                <div className="p-4 text-sm text-muted-foreground text-center">No sales for this event</div>
-              ) : (
-                <div className="divide-y divide-border">
-                  {Object.entries(ordersByPlatform).map(([platformId, items]) => {
-                    const platformName = platformId === "direct" ? "Direct Sale" : (platformMap[platformId]?.name || "Unknown");
-                    const totalQty = items.reduce((s, o) => s + o.quantity, 0);
-                    const totalNet = items.reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
-                    const unpaidNet = items.filter(o => !o.payment_received && o.status !== "cancelled" && o.status !== "refunded").reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
-                    const allReceived = items.every(o => o.payment_received || o.status === "cancelled" || o.status === "refunded");
-                    return (
-                      <div key={platformId} className="px-4 py-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div>
-                            <p className="font-semibold text-sm">{platformName}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Sold {totalQty} ticket{totalQty !== 1 ? "s" : ""} · Total: {fmt(totalNet)}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            {allReceived ? (
-                              <span className="flex items-center gap-1 text-xs text-success font-medium"><CheckCircle2 className="h-3.5 w-3.5" /> All Received</span>
-                            ) : (
-                              <span className="text-sm font-bold text-success">Owed: {fmt(unpaidNet)}</span>
-                            )}
-                          </div>
-                        </div>
-                        {/* Individual order lines */}
-                        <div className="space-y-1.5">
-                          {items.map(o => (
+                  {/* Sales */}
+                  <div className="p-4">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <ShoppingCart className="h-3.5 w-3.5" /> Sales ({ticketsSold} tickets)
+                    </h4>
+                    {evOrders.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">None</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {evOrders.map(o => {
+                          const net = o.net_received || o.sale_price - o.fees;
+                          const platName = o.platform_id ? (platformMap[o.platform_id]?.name || "Unknown") : "Direct";
+                          return (
                             <div key={o.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-xs">
-                              <div className="flex items-center gap-3">
-                                <span className="text-muted-foreground">{o.quantity}x {o.category}</span>
-                                <span>{fmt(o.net_received || o.sale_price - o.fees)}</span>
-                                {o.order_ref && <span className="text-muted-foreground">Ref: {o.order_ref}</span>}
+                              <div className="flex items-center gap-2">
+                                <span>{o.quantity}x {o.category}</span>
+                                <span className="text-muted-foreground">({platName})</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className={cn("text-xs", o.payment_received ? "text-success" : "text-warning")}>
+                                <span className="font-mono font-medium">{fmt(net)}</span>
+                                <span className={cn("text-[10px]", o.payment_received ? "text-success" : "text-warning")}>
                                   {o.payment_received ? "Received" : "Pending"}
                                 </span>
                                 <Switch
@@ -371,17 +309,112 @@ export default function Finance() {
                                 />
                               </div>
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-        )}
+              </div>
+            ))
+          )}
+        </div>
       </div>
+    );
+  }
+
+  // ─── OVERVIEW: Club Cards ───
+  const totalRevenue = clubData.reduce((s, c) => s + c.totalRevenue, 0);
+  const totalCost = clubData.reduce((s, c) => s + c.totalCost, 0);
+  const totalProfit = totalRevenue - totalCost;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Finance</h1>
+        <p className="text-muted-foreground text-sm">
+          Financial overview across all clubs and competitions
+        </p>
+      </div>
+
+      {/* Global summary */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="rounded-xl border bg-card p-5 text-center">
+          <TrendingUp className="h-5 w-5 mx-auto mb-2 text-success" />
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Revenue</p>
+          <p className="text-xl font-bold text-success">{fmt(totalRevenue)}</p>
+        </div>
+        <div className="rounded-xl border bg-card p-5 text-center">
+          <Package className="h-5 w-5 mx-auto mb-2 text-destructive" />
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Costs</p>
+          <p className="text-xl font-bold text-destructive">{fmt(totalCost)}</p>
+        </div>
+        <div className="rounded-xl border bg-card p-5 text-center">
+          <Percent className="h-5 w-5 mx-auto mb-2 text-primary" />
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Net Profit</p>
+          <p className={cn("text-xl font-bold", totalProfit >= 0 ? "text-success" : "text-destructive")}>
+            {totalProfit >= 0 ? "" : "-"}{fmt(Math.abs(totalProfit))}
+          </p>
+        </div>
+      </div>
+
+      {/* Club cards */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {clubData.map(club => {
+          const style = CLUB_STYLES[club.value] || { gradient: "from-primary to-primary/80", accent: "text-primary" };
+          return (
+            <div
+              key={club.value}
+              onClick={() => setSelectedClub(club.value)}
+              className="group relative rounded-2xl overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform"
+            >
+              {/* Gradient background */}
+              <div className={cn("absolute inset-0 bg-gradient-to-br opacity-90", style.gradient)} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+
+              <div className="relative p-6 text-white">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-lg font-bold">{club.label}</h3>
+                    <p className="text-xs text-white/70">{club.eventCount} event{club.eventCount !== 1 ? "s" : ""}</p>
+                  </div>
+                  <Badge className="bg-white/20 text-white border-white/30 hover:bg-white/30">
+                    {club.margin >= 0 ? "+" : ""}{club.margin.toFixed(0)}% margin
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-white/60">Revenue</p>
+                    <p className="text-base font-bold">{fmt(club.totalRevenue)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-white/60">Costs</p>
+                    <p className="text-base font-bold">{fmt(club.totalCost)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-white/60">Profit</p>
+                    <p className={cn("text-base font-bold", club.profit >= 0 ? "text-emerald-300" : "text-red-300")}>
+                      {club.profit >= 0 ? "" : "-"}{fmt(Math.abs(club.profit))}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-white/60">
+                  <span className="flex items-center gap-1"><Ticket className="h-3 w-3" /> {club.ticketsBought} bought · {club.ticketsSold} sold</span>
+                  <span className="group-hover:text-white transition-colors">View details →</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {clubData.length === 0 && (
+        <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">
+          No financial data yet — add purchases and orders to get started.
+        </div>
+      )}
     </div>
   );
 }

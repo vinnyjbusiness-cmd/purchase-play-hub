@@ -10,6 +10,7 @@ import FilterSelect from "@/components/FilterSelect";
 import AddPurchaseDialog from "@/components/AddPurchaseDialog";
 import PurchaseDetailSheet from "@/components/PurchaseDetailSheet";
 import SplitPurchaseDialog from "@/components/SplitPurchaseDialog";
+import { deduplicateEvents, getEventKey } from "@/lib/eventDedup";
 
 interface Purchase {
   id: string;
@@ -28,7 +29,6 @@ interface Purchase {
   events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
 }
 
-/** Extract Name: X and Phone: X from pipe-delimited notes */
 function parseNotesContact(notes: string | null): { name: string | null; phone: string | null } {
   if (!notes) return { name: null, phone: null };
   const parts = notes.split(" | ");
@@ -68,7 +68,6 @@ export default function Purchases() {
     const purchaseList = (data as any) || [];
     setPurchases(purchaseList);
 
-    // Fetch inventory allocation counts per purchase
     if (purchaseList.length > 0) {
       const { data: invData } = await supabase
         .from("inventory")
@@ -95,17 +94,33 @@ export default function Purchases() {
     return [...seen.entries()].map(([value, label]) => ({ value, label }));
   }, [purchases]);
 
+  // Deduplicate events for filter dropdown
   const eventOptions = useMemo(() => {
-    const seen = new Map<string, string>();
-    purchases.forEach(p => {
-      if (p.events) seen.set(p.events.match_code, `${p.events.match_code} — ${p.events.home_team} vs ${p.events.away_team}`);
-    });
-    return [...seen.entries()].map(([value, label]) => ({ value, label }));
+    const eventsFromPurchases = purchases
+      .filter(p => p.events)
+      .map(p => ({
+        id: p.event_id,
+        home_team: p.events!.home_team,
+        away_team: p.events!.away_team,
+        event_date: p.events!.event_date,
+        match_code: p.events!.match_code,
+      }));
+    
+    const { unique } = deduplicateEvents(eventsFromPurchases);
+    return unique
+      .sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime())
+      .map(e => ({
+        value: getEventKey(e.home_team, e.away_team, e.event_date),
+        label: `${e.home_team} vs ${e.away_team} (${format(new Date(e.event_date), "dd MMM")})`,
+      }));
   }, [purchases]);
 
   const filtered = purchases.filter((p) => {
     if (filterSupplier !== "all" && p.suppliers?.name !== filterSupplier) return false;
-    if (filterEvent !== "all" && p.events?.match_code !== filterEvent) return false;
+    if (filterEvent !== "all" && p.events) {
+      const key = getEventKey(p.events.home_team, p.events.away_team, p.events.event_date);
+      if (key !== filterEvent) return false;
+    }
     if (filterStatus !== "all" && p.status !== filterStatus) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -121,12 +136,14 @@ export default function Purchases() {
     return true;
   });
 
-  // Group by event
+  // Group by deduplicated event key
   const grouped = useMemo(() => {
-    const map: Record<string, { event: Purchase["events"]; eventId: string; purchases: Purchase[] }> = {};
+    const map: Record<string, { event: Purchase["events"]; eventKey: string; purchases: Purchase[] }> = {};
     filtered.forEach(p => {
-      const key = p.event_id;
-      if (!map[key]) map[key] = { event: p.events, eventId: key, purchases: [] };
+      const key = p.events
+        ? getEventKey(p.events.home_team, p.events.away_team, p.events.event_date)
+        : p.event_id;
+      if (!map[key]) map[key] = { event: p.events, eventKey: key, purchases: [] };
       map[key].purchases.push(p);
     });
     return Object.values(map).sort((a, b) => {
@@ -169,7 +186,6 @@ export default function Purchases() {
         ]} />
       </div>
 
-      {/* Grouped by game */}
       <div className="space-y-5">
         {grouped.length === 0 && (
           <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No purchases found</div>
@@ -181,20 +197,16 @@ export default function Purchases() {
           const paidCount = group.purchases.filter(p => p.supplier_paid).length;
 
           return (
-            <div key={group.eventId} className="rounded-xl border bg-card overflow-hidden shadow-sm">
-              {/* Game header */}
+            <div key={group.eventKey} className="rounded-xl border bg-card overflow-hidden shadow-sm">
               <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/40">
                 <div className="flex items-center gap-4">
                   <div>
                     <p className="font-bold text-base">
                       {group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event"}
                     </p>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-xs text-muted-foreground font-mono">{group.event?.match_code}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {group.event?.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}
-                      </span>
-                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {group.event?.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-5">
@@ -223,7 +235,6 @@ export default function Purchases() {
                 </div>
               </div>
 
-              {/* Purchases table */}
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -324,16 +335,12 @@ export default function Purchases() {
                             onClick={async (e) => {
                               e.stopPropagation();
                               if (!confirm("Delete this purchase? Any assigned inventory will be unlinked from orders.")) return;
-                              // 1. Get inventory linked to this purchase
                               const { data: inv } = await supabase.from("inventory").select("id").eq("purchase_id", p.id);
                               const invIds = (inv || []).map(i => i.id);
-                              // 2. Delete order_lines referencing this inventory
                               if (invIds.length > 0) {
                                 await supabase.from("order_lines").delete().in("inventory_id", invIds);
-                                // 3. Delete inventory
                                 await supabase.from("inventory").delete().eq("purchase_id", p.id);
                               }
-                              // 4. Delete purchase
                               await supabase.from("purchases").delete().eq("id", p.id);
                               load();
                             }}
@@ -342,7 +349,8 @@ export default function Purchases() {
                           </Button>
                         </TableCell>
                       </TableRow>
-                    )})}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -356,7 +364,6 @@ export default function Purchases() {
         onClose={() => setSelectedPurchaseId(null)}
         onUpdated={load}
       />
-
       {splitPurchase && (
         <SplitPurchaseDialog
           purchaseId={splitPurchase.id}
@@ -367,7 +374,7 @@ export default function Purchases() {
           currency="GBP"
           supplierName={splitPurchase.suppliers?.name || "Unknown"}
           onClose={() => setSplitPurchase(null)}
-          onSplit={() => { setSplitPurchase(null); load(); }}
+          onSplit={load}
         />
       )}
     </div>

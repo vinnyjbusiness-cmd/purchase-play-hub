@@ -1,25 +1,41 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus } from "lucide-react";
+import { Save } from "lucide-react";
 import { toast } from "sonner";
+import LogoAvatar from "@/components/LogoAvatar";
 
-interface Props {
-  onCreated: () => void;
+interface Supplier {
+  id: string;
+  display_id: string | null;
+  name: string;
+  logo_url: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  payment_terms: string | null;
+  notes: string | null;
+  created_at: string;
 }
 
-export default function AddSupplierDialog({ onCreated }: Props) {
-  const [open, setOpen] = useState(false);
+interface Props {
+  supplier: Supplier;
+  onClose: () => void;
+  onUpdated: () => void;
+}
+
+export default function EditSupplierDialog({ supplier, onClose, onUpdated }: Props) {
   const [loading, setLoading] = useState(false);
+  const [logoUrl, setLogoUrl] = useState(supplier.logo_url);
   const [form, setForm] = useState({
-    name: "",
-    contact_name: "",
-    contact_phone: "",
-    notes: "",
+    name: supplier.name,
+    contact_name: supplier.contact_name || "",
+    contact_phone: supplier.contact_phone || "",
+    notes: supplier.notes || "",
   });
 
   const set = (key: string, value: string) => setForm(f => ({ ...f, [key]: value }));
@@ -29,17 +45,16 @@ export default function AddSupplierDialog({ onCreated }: Props) {
     if (!form.name.trim()) return;
     setLoading(true);
     try {
-      const { error } = await supabase.from("suppliers").insert({
+      const { error } = await supabase.from("suppliers").update({
         name: form.name.trim(),
         contact_name: form.contact_name.trim() || null,
         contact_phone: form.contact_phone.trim() || null,
         notes: form.notes.trim() || null,
-      });
+        logo_url: logoUrl,
+      }).eq("id", supplier.id);
       if (error) throw error;
-      toast.success("Supplier added");
-      setForm({ name: "", contact_name: "", contact_phone: "", notes: "" });
-      setOpen(false);
-      onCreated();
+      toast.success("Supplier updated");
+      onUpdated();
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -48,18 +63,26 @@ export default function AddSupplierDialog({ onCreated }: Props) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add Supplier</Button>
-      </DialogTrigger>
+    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Supplier</DialogTitle>
+          <DialogTitle>Edit Supplier</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex justify-center">
+            <LogoAvatar
+              name={form.name || supplier.name}
+              logoUrl={logoUrl}
+              entityType="supplier"
+              entityId={supplier.id}
+              editable
+              size="lg"
+              onLogoUpdated={(url) => setLogoUrl(url)}
+            />
+          </div>
           <div className="space-y-1.5">
             <Label>Supplier Name *</Label>
-            <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. StubHub, Viagogo" />
+            <Input value={form.name} onChange={(e) => set("name", e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -73,10 +96,11 @@ export default function AddSupplierDialog({ onCreated }: Props) {
           </div>
           <div className="space-y-1.5">
             <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Any additional info..." rows={2} />
+            <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={3} />
           </div>
           <Button type="submit" className="w-full" disabled={loading || !form.name.trim()}>
-            {loading ? "Saving..." : "Add Supplier"}
+            <Save className="h-4 w-4 mr-1" />
+            {loading ? "Saving..." : "Save Changes"}
           </Button>
         </form>
       </DialogContent>
