@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Plus, ChevronRight, CheckCircle2, AlertCircle, History, BookOpen, Inbox, Link } from "lucide-react";
-import { format } from "date-fns";
+import { ArrowLeft, Plus, ChevronRight, CheckCircle2, AlertCircle, History, BookOpen, Inbox, Link, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
+import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, isSameMonth } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import LogoAvatar from "@/components/LogoAvatar";
 
 interface Purchase {
   id: string; quantity: number; unit_cost: number; total_cost: number | null;
@@ -23,8 +25,8 @@ interface Order {
   event_id: string; platform_id: string | null; category: string;
 }
 interface EventInfo { id: string; home_team: string; away_team: string; event_date: string; }
-interface SupplierInfo { id: string; name: string; }
-interface PlatformInfo { id: string; name: string; }
+interface SupplierInfo { id: string; name: string; logo_url: string | null; }
+interface PlatformInfo { id: string; name: string; logo_url: string | null; }
 interface BalancePayment {
   id: string; party_type: string | null; party_id: string | null; amount: number;
   currency: string; payment_date: string; notes: string | null; created_at: string;
@@ -76,8 +78,8 @@ export default function Balance() {
       supabase.from("purchases").select("id,quantity,unit_cost,total_cost,total_cost_gbp,currency,purchase_date,supplier_paid,notes,category,event_id,supplier_id"),
       supabase.from("orders").select("id,sale_price,fees,net_received,quantity,order_date,payment_received,status,event_id,platform_id,category"),
       supabase.from("events").select("id,home_team,away_team,event_date"),
-      supabase.from("suppliers").select("id,name"),
-      supabase.from("platforms").select("id,name"),
+      supabase.from("suppliers").select("id,name,logo_url"),
+      supabase.from("platforms").select("id,name,logo_url"),
       supabase.from("balance_payments").select("*").order("payment_date", { ascending: false }),
     ]).then(([purch, ord, ev, sup, plat, pay]) => {
       setPurchases(purch.data || []);
@@ -285,46 +287,164 @@ export default function Balance() {
   const typeColor = (t: string) => t === "payment" ? "text-success" : t === "opening_balance" ? "text-primary" : "text-warning";
   const typeIcon = (t: string) => t === "payment" ? "+" : t === "opening_balance" ? "📋" : "⚡";
 
-  // ─── DETAIL VIEW ───
+  // Activity heatmap data — last 12 months
+  const heatmapData = useMemo(() => {
+    if (!selectedData) return [];
+    const now = new Date();
+    const start = startOfMonth(subMonths(now, 11));
+    const end = endOfMonth(now);
+    const months = eachMonthOfInterval({ start, end });
+
+    return months.map(month => {
+      let count = 0;
+      let amount = 0;
+      if (selectedData.type === "supplier") {
+        (selectedData as any).purchases?.forEach((p: Purchase) => {
+          if (isSameMonth(new Date(p.purchase_date), month)) {
+            count++;
+            amount += p.total_cost_gbp || (p.quantity * p.unit_cost);
+          }
+        });
+      } else {
+        (selectedData as any).orders?.forEach((o: Order) => {
+          if (isSameMonth(new Date(o.order_date), month)) {
+            count++;
+            amount += o.net_received || (o.sale_price - o.fees);
+          }
+        });
+      }
+      // Include payments in this month
+      selectedData.payments?.forEach((pay: BalancePayment) => {
+        if (isSameMonth(new Date(pay.payment_date), month)) {
+          count++;
+        }
+      });
+      return { month, count, amount };
+    });
+  }, [selectedData]);
+
+  const maxHeatCount = Math.max(1, ...heatmapData.map(d => d.count));
+
+  // Summary stats for selected party
+  const summaryStats = useMemo(() => {
+    if (!selectedData) return null;
+    const balance = selectedData.totalOwed - selectedData.totalPaid;
+    const items = selectedData.type === "supplier" ? (selectedData as any).purchases?.length || 0 : (selectedData as any).orders?.length || 0;
+    const paymentCount = selectedData.payments?.length || 0;
+    const avgTransaction = items > 0 ? selectedData.totalOwed / items : 0;
+    return { balance, items, paymentCount, avgTransaction };
+  }, [selectedData]);
+
+  // ─── DETAIL VIEW (Sheet) ───
   if (selectedParty && selectedData) {
     const balance = selectedData.totalOwed - selectedData.totalPaid;
     const isSettled = balance <= 0;
+    const supplier = selectedData.type === "supplier" ? suppliers.find(s => s.id === selectedData.supplierId || s.id === selectedParty.id) : null;
+    const platform = selectedData.type === "platform" ? platforms.find(p => p.id === (selectedData as any).platformId || p.id === selectedParty.id) : null;
+
     return (
       <div className="flex flex-col h-full overflow-hidden">
         <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
-          <button onClick={() => setSelectedParty(null)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-2">
+          <button onClick={() => setSelectedParty(null)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-3">
             <ArrowLeft className="h-4 w-4" /> Back to Balances
           </button>
-          <h1 className="text-2xl font-bold tracking-tight">{selectedData.displayName}</h1>
-          <div className="flex flex-wrap gap-4 mt-2">
-            <div>
+
+          {/* Header with logo */}
+          <div className="flex items-center gap-4">
+            <LogoAvatar
+              name={selectedData.displayName}
+              logoUrl={supplier?.logo_url || platform?.logo_url || null}
+              entityType={selectedData.type}
+              entityId={supplier?.id || platform?.id || selectedParty.id}
+              editable
+              size="lg"
+              onLogoUpdated={() => loadData()}
+            />
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold tracking-tight">{selectedData.displayName}</h1>
+              <p className="text-sm text-muted-foreground capitalize">{selectedData.type}</p>
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+            <div className="rounded-lg border bg-muted/30 p-3">
               <span className="text-xs text-muted-foreground">Total {selectedData.type === "supplier" ? "Owed" : "Owed to Me"}</span>
               <p className="text-lg font-bold">{fmt(selectedData.totalOwed)}</p>
             </div>
-            <div>
+            <div className="rounded-lg border bg-muted/30 p-3">
               <span className="text-xs text-muted-foreground">Paid</span>
               <p className="text-lg font-bold text-success">{fmt(selectedData.totalPaid)}</p>
             </div>
-            <div>
+            <div className="rounded-lg border bg-muted/30 p-3">
               <span className="text-xs text-muted-foreground">Balance</span>
               <p className={cn("text-lg font-bold", isSettled ? "text-success" : "text-destructive")}>{isSettled ? "Settled" : fmt(balance)}</p>
             </div>
-            {selectedData.openingBalance > 0 && (
-              <div>
-                <span className="text-xs text-muted-foreground">Opening Bal.</span>
-                <p className="text-lg font-bold text-primary">{fmt(selectedData.openingBalance)}</p>
-              </div>
-            )}
-            {selectedData.adjustments > 0 && (
-              <div>
-                <span className="text-xs text-muted-foreground">Adjustments</span>
-                <p className="text-lg font-bold text-warning">{fmt(selectedData.adjustments)}</p>
-              </div>
-            )}
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <span className="text-xs text-muted-foreground">Avg / Transaction</span>
+              <p className="text-lg font-bold">{fmt(summaryStats?.avgTransaction || 0)}</p>
+            </div>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {/* Activity Heatmap */}
+          <div className="rounded-lg border bg-card overflow-hidden">
+            <div className="px-4 py-3 border-b border-border bg-muted/30">
+              <h3 className="text-sm font-semibold flex items-center gap-2"><BarChart3 className="h-4 w-4" /> Activity (Last 12 Months)</h3>
+            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-12 gap-1.5">
+                {heatmapData.map((d, i) => {
+                  const intensity = d.count / maxHeatCount;
+                  return (
+                    <div key={i} className="flex flex-col items-center gap-1">
+                      <div
+                        className={cn(
+                          "w-full aspect-square rounded-md transition-colors",
+                          d.count === 0 ? "bg-muted" :
+                          intensity < 0.25 ? "bg-primary/20" :
+                          intensity < 0.5 ? "bg-primary/40" :
+                          intensity < 0.75 ? "bg-primary/60" :
+                          "bg-primary"
+                        )}
+                        title={`${format(d.month, "MMM yyyy")}: ${d.count} activities, ${fmt(d.amount)}`}
+                      />
+                      <span className="text-[10px] text-muted-foreground">{format(d.month, "MMM")}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2 mt-3 justify-end">
+                <span className="text-[10px] text-muted-foreground">Less</span>
+                <div className="h-3 w-3 rounded-sm bg-muted" />
+                <div className="h-3 w-3 rounded-sm bg-primary/20" />
+                <div className="h-3 w-3 rounded-sm bg-primary/40" />
+                <div className="h-3 w-3 rounded-sm bg-primary/60" />
+                <div className="h-3 w-3 rounded-sm bg-primary" />
+                <span className="text-[10px] text-muted-foreground">More</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Summary Stats */}
+          {summaryStats && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg border bg-card p-3 text-center">
+                <p className="text-2xl font-bold">{summaryStats.items}</p>
+                <p className="text-xs text-muted-foreground">{selectedData.type === "supplier" ? "Purchases" : "Orders"}</p>
+              </div>
+              <div className="rounded-lg border bg-card p-3 text-center">
+                <p className="text-2xl font-bold">{summaryStats.paymentCount}</p>
+                <p className="text-xs text-muted-foreground">Payments Made</p>
+              </div>
+              <div className="rounded-lg border bg-card p-3 text-center">
+                <p className="text-2xl font-bold">{heatmapData.filter(d => d.count > 0).length}</p>
+                <p className="text-xs text-muted-foreground">Active Months</p>
+              </div>
+            </div>
+          )}
+
           {/* Breakdown by event */}
           {Object.keys(selectedData.byEvent).length > 0 && (
             <div className="rounded-lg border bg-card overflow-hidden">
@@ -391,42 +511,34 @@ export default function Balance() {
               <div className="p-4 text-sm text-muted-foreground text-center">No entries yet</div>
             ) : (
               <div className="divide-y divide-border">
-                {selectedData.payments.map((pay, idx) => {
-                  // Calculate running balance at this point
-                  const priorEntries = selectedData.payments.slice(idx);
-                  const runningOwed = priorEntries.filter(e => e.type !== "payment").reduce((s, e) => s + e.amount, 0);
-                  const runningPaid = priorEntries.filter(e => e.type === "payment").reduce((s, e) => s + e.amount, 0);
-                  
-                  return (
-                    <div key={pay.id} className="px-4 py-3">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className={cn("text-sm font-semibold", typeColor(pay.type))}>
-                              {typeIcon(pay.type)} {fmt(pay.amount)}
-                            </span>
-                            <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium",
-                              pay.type === "payment" ? "bg-success/10 text-success" :
-                              pay.type === "opening_balance" ? "bg-primary/10 text-primary" :
-                              "bg-warning/10 text-warning"
-                            )}>
-                              {typeLabel(pay.type)}
-                            </span>
-                          </div>
-                          <div className="text-xs text-muted-foreground space-y-0.5">
-                            <p>📅 {format(new Date(pay.payment_date), "dd MMM yyyy 'at' HH:mm")}</p>
-                            {pay.contact_name && <p>👤 Contact: {pay.contact_name}</p>}
-                            {pay.notes && <p>📝 {pay.notes}</p>}
-                            <p className="text-[10px] text-muted-foreground/60">Added: {format(new Date(pay.created_at), "dd MMM yyyy 'at' HH:mm:ss")}</p>
-                          </div>
+                {selectedData.payments.map((pay, idx) => (
+                  <div key={pay.id} className="px-4 py-3">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={cn("text-sm font-semibold", typeColor(pay.type))}>
+                            {typeIcon(pay.type)} {fmt(pay.amount)}
+                          </span>
+                          <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium",
+                            pay.type === "payment" ? "bg-success/10 text-success" :
+                            pay.type === "opening_balance" ? "bg-primary/10 text-primary" :
+                            "bg-warning/10 text-warning"
+                          )}>
+                            {typeLabel(pay.type)}
+                          </span>
                         </div>
-                        <Button size="sm" variant="ghost" className="text-xs text-destructive hover:text-destructive shrink-0" onClick={() => deletePayment(pay.id)}>
-                          Remove
-                        </Button>
+                        <div className="text-xs text-muted-foreground space-y-0.5">
+                          <p>📅 {format(new Date(pay.payment_date), "dd MMM yyyy 'at' HH:mm")}</p>
+                          {pay.contact_name && <p>👤 Contact: {pay.contact_name}</p>}
+                          {pay.notes && <p>📝 {pay.notes}</p>}
+                        </div>
                       </div>
+                      <Button size="sm" variant="ghost" className="text-xs text-destructive hover:text-destructive shrink-0" onClick={() => deletePayment(pay.id)}>
+                        Remove
+                      </Button>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -547,82 +659,102 @@ export default function Balance() {
           </div>
         )}
 
-        {/* Suppliers */}
-        <div className="rounded-lg border bg-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-muted/30">
-            <h3 className="text-sm font-semibold flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-destructive" /> I Owe — Suppliers
-            </h3>
+        {/* Suppliers — Card Grid */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <AlertCircle className="h-4 w-4 text-destructive" />
+            <h3 className="text-sm font-semibold">I Owe — Suppliers</h3>
           </div>
-          <div className="divide-y divide-border">
-            {supplierBalances.map(b => {
-              const balance = b.totalOwed - b.totalPaid;
-              const isSettled = balance <= 0;
-              return (
-                <button key={b.supplierId} onClick={() => setSelectedParty({ type: "supplier", id: b.supplierId })}
-                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors text-left">
-                  <div>
-                    <p className="text-sm font-medium">{b.displayName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {b.purchases.length} purchase{b.purchases.length !== 1 ? "s" : ""} · Total: {fmt(b.totalOwed)}
-                      {b.totalPaid > 0 && ` · Paid: ${fmt(b.totalPaid)}`}
-                      {b.openingBalance > 0 && ` · Opening: ${fmt(b.openingBalance)}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isSettled ? (
-                      <span className="flex items-center gap-1 text-xs text-success font-medium"><CheckCircle2 className="h-3.5 w-3.5" /> Settled</span>
-                    ) : (
-                      <span className="text-sm font-bold text-destructive">{fmt(balance)}</span>
-                    )}
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </button>
-              );
-            })}
-            {supplierBalances.length === 0 && (
-              <div className="p-4 text-sm text-muted-foreground text-center">No supplier balances yet</div>
-            )}
-          </div>
+          {supplierBalances.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No supplier balances yet</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              {supplierBalances.map(b => {
+                const balance = b.totalOwed - b.totalPaid;
+                const isSettled = balance <= 0;
+                const supplier = suppliers.find(s => s.id === b.supplierId);
+                return (
+                  <button
+                    key={b.supplierId}
+                    onClick={() => setSelectedParty({ type: "supplier", id: b.supplierId })}
+                    className="rounded-xl border bg-card p-4 flex flex-col items-center gap-3 hover:bg-muted/40 hover:border-primary/30 transition-all text-center group"
+                  >
+                    <LogoAvatar
+                      name={b.displayName}
+                      logoUrl={supplier?.logo_url || null}
+                      entityType="supplier"
+                      entityId={supplier?.id || b.supplierId}
+                      editable
+                      size="lg"
+                      onLogoUpdated={() => loadData()}
+                    />
+                    <div className="w-full">
+                      <p className="text-sm font-semibold truncate">{b.displayName}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {b.purchases.length} purchase{b.purchases.length !== 1 ? "s" : ""}
+                      </p>
+                      {isSettled ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-success font-medium mt-2">
+                          <CheckCircle2 className="h-3 w-3" /> Settled
+                        </span>
+                      ) : (
+                        <p className="text-lg font-bold text-destructive mt-1">{fmt(balance)}</p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Platforms */}
-        <div className="rounded-lg border bg-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-muted/30">
-            <h3 className="text-sm font-semibold flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-success" /> Owed to Me — Platforms
-            </h3>
+        {/* Platforms — Card Grid */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <CheckCircle2 className="h-4 w-4 text-success" />
+            <h3 className="text-sm font-semibold">Owed to Me — Platforms</h3>
           </div>
-          <div className="divide-y divide-border">
-            {platformBalances.map(b => {
-              const balance = b.totalOwed - b.totalPaid;
-              const isSettled = balance <= 0;
-              return (
-                <button key={b.platformId} onClick={() => setSelectedParty({ type: "platform", id: b.platformId })}
-                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors text-left">
-                  <div>
-                    <p className="text-sm font-medium">{b.displayName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {b.orders.length} order{b.orders.length !== 1 ? "s" : ""} · Total: {fmt(b.totalOwed)}
-                      {b.totalPaid > 0 && ` · Received: ${fmt(b.totalPaid)}`}
-                      {b.openingBalance > 0 && ` · Opening: ${fmt(b.openingBalance)}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isSettled ? (
-                      <span className="flex items-center gap-1 text-xs text-success font-medium"><CheckCircle2 className="h-3.5 w-3.5" /> Settled</span>
-                    ) : (
-                      <span className="text-sm font-bold text-success">{fmt(balance)}</span>
-                    )}
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </button>
-              );
-            })}
-            {platformBalances.length === 0 && (
-              <div className="p-4 text-sm text-muted-foreground text-center">No platform balances yet</div>
-            )}
-          </div>
+          {platformBalances.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No platform balances yet</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              {platformBalances.map(b => {
+                const balance = b.totalOwed - b.totalPaid;
+                const isSettled = balance <= 0;
+                const platform = platforms.find(p => p.id === b.platformId);
+                return (
+                  <button
+                    key={b.platformId}
+                    onClick={() => setSelectedParty({ type: "platform", id: b.platformId })}
+                    className="rounded-xl border bg-card p-4 flex flex-col items-center gap-3 hover:bg-muted/40 hover:border-primary/30 transition-all text-center group"
+                  >
+                    <LogoAvatar
+                      name={b.displayName}
+                      logoUrl={platform?.logo_url || null}
+                      entityType="platform"
+                      entityId={platform?.id || b.platformId}
+                      editable
+                      size="lg"
+                      onLogoUpdated={() => loadData()}
+                    />
+                    <div className="w-full">
+                      <p className="text-sm font-semibold truncate">{b.displayName}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {b.orders.length} order{b.orders.length !== 1 ? "s" : ""}
+                      </p>
+                      {isSettled ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-success font-medium mt-2">
+                          <CheckCircle2 className="h-3 w-3" /> Settled
+                        </span>
+                      ) : (
+                        <p className="text-lg font-bold text-success mt-1">{fmt(balance)}</p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 

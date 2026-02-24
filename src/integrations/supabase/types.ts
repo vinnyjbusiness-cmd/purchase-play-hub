@@ -507,6 +507,7 @@ export type Database = {
           fee_type: string | null
           fee_value: number | null
           id: string
+          logo_url: string | null
           name: string
           notes: string | null
           org_id: string | null
@@ -517,6 +518,7 @@ export type Database = {
           fee_type?: string | null
           fee_value?: number | null
           id?: string
+          logo_url?: string | null
           name: string
           notes?: string | null
           org_id?: string | null
@@ -527,6 +529,7 @@ export type Database = {
           fee_type?: string | null
           fee_value?: number | null
           id?: string
+          logo_url?: string | null
           name?: string
           notes?: string | null
           org_id?: string | null
@@ -709,6 +712,7 @@ export type Database = {
           contact_phone: string | null
           created_at: string
           id: string
+          logo_url: string | null
           name: string
           notes: string | null
           org_id: string | null
@@ -720,6 +724,7 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string
           id?: string
+          logo_url?: string | null
           name: string
           notes?: string | null
           org_id?: string | null
@@ -731,6 +736,7 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string
           id?: string
+          logo_url?: string | null
           name?: string
           notes?: string | null
           org_id?: string | null
