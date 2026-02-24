@@ -666,7 +666,9 @@ export default function Balance() {
             <h3 className="text-sm font-semibold">I Owe — Suppliers</h3>
           </div>
           {supplierBalances.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No supplier balances yet</p>
+            <div className="rounded-xl border bg-card p-8 text-center">
+              <p className="text-sm text-muted-foreground">No supplier balances yet</p>
+            </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
               {supplierBalances.map(b => {
@@ -684,9 +686,7 @@ export default function Balance() {
                       logoUrl={supplier?.logo_url || null}
                       entityType="supplier"
                       entityId={supplier?.id || b.supplierId}
-                      editable
                       size="lg"
-                      onLogoUpdated={() => loadData()}
                     />
                     <div className="w-full">
                       <p className="text-sm font-semibold truncate">{b.displayName}</p>
@@ -715,7 +715,9 @@ export default function Balance() {
             <h3 className="text-sm font-semibold">Owed to Me — Platforms</h3>
           </div>
           {platformBalances.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No platform balances yet</p>
+            <div className="rounded-xl border bg-card p-8 text-center">
+              <p className="text-sm text-muted-foreground">No platform balances yet</p>
+            </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
               {platformBalances.map(b => {
@@ -733,9 +735,7 @@ export default function Balance() {
                       logoUrl={platform?.logo_url || null}
                       entityType="platform"
                       entityId={platform?.id || b.platformId}
-                      editable
                       size="lg"
-                      onLogoUpdated={() => loadData()}
                     />
                     <div className="w-full">
                       <p className="text-sm font-semibold truncate">{b.displayName}</p>

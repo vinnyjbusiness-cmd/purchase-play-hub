@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 import { Wallet as WalletIcon, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,7 @@ const COLORS = [
 ];
 
 export default function Wallet() {
+  const navigate = useNavigate();
   const [purchases, setPurchases] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -196,6 +198,14 @@ export default function Wallet() {
                   <div>
                     <p className="text-sm font-medium">{d.name}</p>
                     <p className="text-xs text-muted-foreground">Owed: {fmt(d.owed)} · Received: {fmt(d.paid)}</p>
+                    {d.paid === 0 && (
+                      <button
+                        onClick={() => navigate("/balance")}
+                        className="text-[11px] text-primary hover:underline mt-0.5 inline-block"
+                      >
+                        Record a payment →
+                      </button>
+                    )}
                   </div>
                   <span className="text-sm font-bold text-success">{fmt(d.balance)}</span>
                 </div>

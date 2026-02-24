@@ -159,7 +159,7 @@ export default function Purchases() {
             <Input placeholder="Search purchases..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
           </div>
         </div>
-        <FilterSelect label="Source" value={filterSupplier} onValueChange={setFilterSupplier} options={supplierOptions} />
+        <FilterSelect label="Supplier" value={filterSupplier} onValueChange={setFilterSupplier} options={supplierOptions} />
         <FilterSelect label="Game" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
         <FilterSelect label="Status" value={filterStatus} onValueChange={setFilterStatus} options={[
           { value: "pending", label: "Pending" },
