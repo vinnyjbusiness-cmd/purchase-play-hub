@@ -19,6 +19,8 @@ import {
   ClipboardList,
   Wallet as WalletIcon,
   ListTodo,
+  CalendarClock,
+  FileText,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -138,11 +140,13 @@ export default function AppSidebar() {
 
   const adminBottomItems = [
     { to: "/purchases", icon: Package, label: "Purchases" },
+    { to: "/timeline", icon: CalendarClock, label: "Event Timeline" },
     { to: "/balance", icon: Scale, label: "Balances" },
     { to: "/wallet", icon: WalletIcon, label: "Wallet" },
     { to: "/platforms", icon: Globe, label: "Platforms" },
     { to: "/analytics", icon: BarChart3, label: "Analytics" },
     { to: "/cashflow", icon: Banknote, label: "Cashflow" },
+    { to: "/invoices", icon: FileText, label: "Invoices" },
     { to: "/health", icon: HeartPulse, label: "Health" },
     { to: "/todos", icon: ListTodo, label: "To-Do List" },
     { to: "/team", icon: Users, label: "Team" },
