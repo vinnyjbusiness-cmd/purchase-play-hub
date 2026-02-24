@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { useOrg } from "@/hooks/useOrg";
 import { VENUES, getVenue } from "@/lib/seatingSections";
-import { Upload } from "lucide-react";
+import { Upload, ChevronDown, ChevronRight } from "lucide-react";
 
 interface Props {
   onClose: () => void;
@@ -37,12 +38,19 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const [seat, setSeat] = useState("");
   const [faceValue, setFaceValue] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [ticketName, setTicketName] = useState("");
+  // Login details
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [supporterId, setSupporterId] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  // Ticket details
   const [iphonePassLink, setIphonePassLink] = useState("");
   const [androidPassLink, setAndroidPassLink] = useState("");
   const [pkPassFile, setPkPassFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [ticketOpen, setTicketOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -102,8 +110,12 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
       row_name: rowName || null,
       seat: seat || null,
       face_value: faceValue ? parseFloat(faceValue) : null,
-      ticket_name: ticketName || null,
+      ticket_name: [firstName, lastName].filter(Boolean).join(" ") || null,
+      first_name: firstName || null,
+      last_name: lastName || null,
       supporter_id: supporterId || null,
+      email: email || null,
+      password: password || null,
       iphone_pass_link: iphonePassLink || null,
       android_pass_link: androidPassLink || null,
       pk_pass_url: pkPassUrl,
@@ -153,7 +165,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
               <SelectContent>
                 {filteredEvents.map(e => (
                   <SelectItem key={e.id} value={e.id}>
-                    {e.match_code} — {e.home_team} vs {e.away_team}
+                    {e.home_team} vs {e.away_team} — {new Date(e.event_date).toLocaleDateString()}
                   </SelectItem>
                 ))}
                 {filteredEvents.length === 0 && venue && (
@@ -163,26 +175,15 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
             </Select>
           </div>
 
-          {/* Name & Supporter ID */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Name</Label>
-              <Input value={ticketName} onChange={e => setTicketName(e.target.value)} placeholder="Ticket holder name" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Supporter ID</Label>
-              <Input value={supporterId} onChange={e => setSupporterId(e.target.value)} placeholder="e.g. LFC-12345" />
-            </div>
-          </div>
-
+          {/* Seating Info */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Category</Label>
               <Select value={category} onValueChange={(v) => { setCategory(v as "GA" | "HOSPO"); setSection(""); setBlock(""); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="GA">GA (General Admission)</SelectItem>
-                  <SelectItem value="HOSPO">HOSPO (Hospitality)</SelectItem>
+                  <SelectItem value="GA">General Admission</SelectItem>
+                  <SelectItem value="HOSPO">Hospitality</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -240,51 +241,93 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
             </div>
           </div>
 
-          {/* Pass Links */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>iPhone Pass Link</Label>
-              <Input value={iphonePassLink} onChange={e => setIphonePassLink(e.target.value)} placeholder="https://..." />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Android Pass Link</Label>
-              <Input value={androidPassLink} onChange={e => setAndroidPassLink(e.target.value)} placeholder="https://..." />
-            </div>
-          </div>
+          {/* Login Details — Collapsible */}
+          <Collapsible open={loginOpen} onOpenChange={setLoginOpen}>
+            <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full py-2 border-t border-border">
+              {loginOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              Login Details
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3 pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>First Name</Label>
+                  <Input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Last Name</Label>
+                  <Input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Supporter ID</Label>
+                <Input value={supporterId} onChange={e => setSupporterId(e.target.value)} placeholder="e.g. LFC-12345" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Email</Label>
+                  <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="john@example.com" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Password</Label>
+                  <Input value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
 
-          {/* PK Pass Upload */}
-          <div className="space-y-1.5">
-            <Label>PK Pass File</Label>
-            <div
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30"
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pkpass,.pk"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) setPkPassFile(file);
-                }}
-              />
-              {pkPassFile ? (
-                <div className="flex items-center justify-center gap-2 text-sm">
-                  <Upload className="h-4 w-4 text-primary" />
-                  <span className="font-medium">{pkPassFile.name}</span>
-                  <button onClick={(e) => { e.stopPropagation(); setPkPassFile(null); }} className="text-muted-foreground hover:text-destructive ml-2">✕</button>
+          {/* Ticket Details — Collapsible */}
+          <Collapsible open={ticketOpen} onOpenChange={setTicketOpen}>
+            <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full py-2 border-t border-border">
+              {ticketOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              Ticket Details
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3 pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>iPhone Pass Link</Label>
+                  <Input value={iphonePassLink} onChange={e => setIphonePassLink(e.target.value)} placeholder="https://..." />
                 </div>
-              ) : (
-                <div className="text-sm text-muted-foreground">
-                  <Upload className="h-5 w-5 mx-auto mb-1 opacity-50" />
-                  Drag & drop .pkpass file or click to browse
+                <div className="space-y-1.5">
+                  <Label>Android Pass Link</Label>
+                  <Input value={androidPassLink} onChange={e => setAndroidPassLink(e.target.value)} placeholder="https://..." />
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+
+              {/* PK Pass Upload */}
+              <div className="space-y-1.5">
+                <Label>PK Pass File</Label>
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30"
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pkpass,.pk"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) setPkPassFile(file);
+                    }}
+                  />
+                  {pkPassFile ? (
+                    <div className="flex items-center justify-center gap-2 text-sm">
+                      <Upload className="h-4 w-4 text-primary" />
+                      <span className="font-medium">{pkPassFile.name}</span>
+                      <button onClick={(e) => { e.stopPropagation(); setPkPassFile(null); }} className="text-muted-foreground hover:text-destructive ml-2">✕</button>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      <Upload className="h-5 w-5 mx-auto mb-1 opacity-50" />
+                      Drag & drop .pkpass file or click to browse
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
 
           <Button onClick={handleSubmit} disabled={loading} className="w-full">
             {loading ? "Adding..." : "Add Inventory"}

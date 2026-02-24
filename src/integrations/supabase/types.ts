@@ -200,11 +200,15 @@ export type Database = {
           block: string | null
           category: string
           created_at: string
+          email: string | null
           event_id: string
           face_value: number | null
+          first_name: string | null
           id: string
           iphone_pass_link: string | null
+          last_name: string | null
           org_id: string | null
+          password: string | null
           pk_pass_url: string | null
           purchase_id: string | null
           row_name: string | null
@@ -219,11 +223,15 @@ export type Database = {
           block?: string | null
           category?: string
           created_at?: string
+          email?: string | null
           event_id: string
           face_value?: number | null
+          first_name?: string | null
           id?: string
           iphone_pass_link?: string | null
+          last_name?: string | null
           org_id?: string | null
+          password?: string | null
           pk_pass_url?: string | null
           purchase_id?: string | null
           row_name?: string | null
@@ -238,11 +246,15 @@ export type Database = {
           block?: string | null
           category?: string
           created_at?: string
+          email?: string | null
           event_id?: string
           face_value?: number | null
+          first_name?: string | null
           id?: string
           iphone_pass_link?: string | null
+          last_name?: string | null
           org_id?: string | null
+          password?: string | null
           pk_pass_url?: string | null
           purchase_id?: string | null
           row_name?: string | null

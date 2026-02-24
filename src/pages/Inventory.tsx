@@ -1,15 +1,15 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Ticket, Download, Apple, Smartphone } from "lucide-react";
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Ticket, Download, Apple, Smartphone, Copy, Check, Users, User } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import FilterSelect from "@/components/FilterSelect";
 import AddInventoryDialog from "@/components/AddInventoryDialog";
 import InventoryDetailSheet from "@/components/InventoryDetailSheet";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
 interface InventoryItem {
@@ -22,6 +22,10 @@ interface InventoryItem {
   face_value: number | null;
   ticket_name: string | null;
   supporter_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  password: string | null;
   iphone_pass_link: string | null;
   android_pass_link: string | null;
   pk_pass_url: string | null;
@@ -29,7 +33,7 @@ interface InventoryItem {
   created_at: string;
   event_id: string;
   purchase_id: string | null;
-  events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
+  events: { match_code: string; home_team: string; away_team: string; event_date: string; venue: string | null } | null;
 }
 
 interface OrderLine {
@@ -45,13 +49,14 @@ const statusColor: Record<string, string> = {
 };
 
 function exportToCSV(items: InventoryItem[]) {
-  const headers = ["Event", "Match Code", "Date", "Name", "Supporter ID", "Category", "Section", "Block", "Row", "Seat", "Face Value", "Status", "iPhone Pass", "Android Pass", "PK Pass"];
+  const headers = ["Event", "Date", "First Name", "Last Name", "Supporter ID", "Email", "Category", "Section", "Block", "Row", "Seat", "Face Value", "Status", "iPhone Pass", "Android Pass", "PK Pass"];
   const rows = items.map(i => [
     i.events ? `${i.events.home_team} vs ${i.events.away_team}` : "",
-    i.events?.match_code || "",
     i.events?.event_date ? format(new Date(i.events.event_date), "dd/MM/yyyy HH:mm") : "",
-    i.ticket_name || "",
+    i.first_name || "",
+    i.last_name || "",
     i.supporter_id || "",
+    i.email || "",
     i.category || "",
     i.section || "",
     i.block || "",
@@ -71,7 +76,57 @@ function exportToCSV(items: InventoryItem[]) {
   a.download = `inventory-export-${format(new Date(), "yyyy-MM-dd")}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  toast.success("Exported to CSV (Google Sheets compatible)");
+  toast.success("Exported to CSV");
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className="p-0.5 rounded hover:bg-muted/60 transition-colors"
+      title="Copy"
+    >
+      {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3 text-muted-foreground" />}
+    </button>
+  );
+}
+
+/** Group items by matching seating info into quantity groups */
+function groupByQuantity(items: InventoryItem[]): { key: string; items: InventoryItem[]; qty: number }[] {
+  // Group by purchase_id first (if exists), then by seating signature
+  const groups: Map<string, InventoryItem[]> = new Map();
+  items.forEach(item => {
+    const key = item.purchase_id || `solo_${item.id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(item);
+  });
+  return Array.from(groups.entries()).map(([key, items]) => ({
+    key,
+    items,
+    qty: items.length,
+  }));
+}
+
+function getQtyLabel(qty: number): string {
+  if (qty === 1) return "Single";
+  if (qty === 2) return "Pair";
+  if (qty === 3) return "Triple";
+  if (qty === 4) return "Quad";
+  return `x${qty}`;
+}
+
+function getQtyColor(qty: number): string {
+  if (qty === 1) return "bg-muted text-muted-foreground";
+  if (qty === 2) return "bg-primary/10 text-primary border-primary/20";
+  if (qty === 3) return "bg-warning/10 text-warning border-warning/20";
+  if (qty >= 4) return "bg-success/10 text-success border-success/20";
+  return "";
 }
 
 export default function Inventory() {
@@ -83,12 +138,14 @@ export default function Inventory() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
+  const [expandedTicketDetails, setExpandedTicketDetails] = useState<Set<string>>(new Set());
+  const [expandedLoginDetails, setExpandedLoginDetails] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [invRes, olRes] = await Promise.all([
       supabase
         .from("inventory")
-        .select("*, events(match_code, home_team, away_team, event_date)")
+        .select("*, events(match_code, home_team, away_team, event_date, venue)")
         .order("created_at", { ascending: false }),
       supabase.from("order_lines").select("inventory_id, order_id"),
     ]);
@@ -103,7 +160,7 @@ export default function Inventory() {
   const eventOptions = useMemo(() => {
     const seen = new Map<string, string>();
     items.forEach(i => {
-      if (i.events) seen.set(i.events.match_code, `${i.events.match_code} — ${i.events.home_team} vs ${i.events.away_team}`);
+      if (i.events) seen.set(i.events.match_code, `${i.events.home_team} vs ${i.events.away_team}`);
     });
     return [...seen.entries()].map(([value, label]) => ({ value, label }));
   }, [items]);
@@ -120,7 +177,10 @@ export default function Inventory() {
         (i.row_name || "").toLowerCase().includes(q) ||
         (i.seat || "").toLowerCase().includes(q) ||
         (i.ticket_name || "").toLowerCase().includes(q) ||
+        (i.first_name || "").toLowerCase().includes(q) ||
+        (i.last_name || "").toLowerCase().includes(q) ||
         (i.supporter_id || "").toLowerCase().includes(q) ||
+        (i.email || "").toLowerCase().includes(q) ||
         (i.events?.home_team || "").toLowerCase().includes(q) ||
         (i.events?.away_team || "").toLowerCase().includes(q)
       );
@@ -150,6 +210,22 @@ export default function Inventory() {
     if (error) { toast.error(error.message); return; }
     toast.success("Inventory item deleted");
     load();
+  };
+
+  const toggleTicketDetails = (id: string) => {
+    setExpandedTicketDetails(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleLoginDetails = (id: string) => {
+    setExpandedLoginDetails(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   };
 
   return (
@@ -202,6 +278,14 @@ export default function Inventory() {
           const eventDate = group.event?.event_date ? new Date(group.event.event_date) : null;
           const isPast = eventDate ? eventDate < new Date() : false;
 
+          // Quantity grouping summary
+          const availableItems = group.items.filter(i => i.status === "available");
+          const qtyGroups = groupByQuantity(availableItems);
+          const singles = qtyGroups.filter(g => g.qty === 1).length;
+          const pairs = qtyGroups.filter(g => g.qty === 2).length;
+          const triples = qtyGroups.filter(g => g.qty === 3).length;
+          const quads = qtyGroups.filter(g => g.qty >= 4).length;
+
           return (
             <div key={group.eventId} className="rounded-xl border bg-card overflow-hidden shadow-sm">
               <button
@@ -216,15 +300,42 @@ export default function Inventory() {
                     <Ticket className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="font-bold text-base">
-                      {group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event"}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-base">
+                        {group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event"}
+                      </p>
+                      {group.event?.venue && (
+                        <span className="text-xs text-muted-foreground">• {group.event.venue}</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-xs text-muted-foreground font-mono">{group.event?.match_code}</span>
                       {eventDate && (
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs font-semibold text-foreground">
                           {format(eventDate, "EEE dd MMM yyyy, HH:mm")}
                         </span>
+                      )}
+                    </div>
+                    {/* Quantity summary badges */}
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      {singles > 0 && (
+                        <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground">
+                          <User className="h-2.5 w-2.5 mr-0.5" />{singles} single{singles !== 1 ? "s" : ""}
+                        </Badge>
+                      )}
+                      {pairs > 0 && (
+                        <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+                          <Users className="h-2.5 w-2.5 mr-0.5" />{pairs} pair{pairs !== 1 ? "s" : ""}
+                        </Badge>
+                      )}
+                      {triples > 0 && (
+                        <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/20">
+                          {triples} triple{triples !== 1 ? "s" : ""}
+                        </Badge>
+                      )}
+                      {quads > 0 && (
+                        <Badge variant="outline" className="text-[10px] bg-success/10 text-success border-success/20">
+                          {quads} quad{quads !== 1 ? "s" : ""}+
+                        </Badge>
                       )}
                     </div>
                   </div>
@@ -260,91 +371,182 @@ export default function Inventory() {
                 </div>
               </button>
 
-              {!isExpanded && (
-                <div className="flex sm:hidden items-center gap-2 px-5 pb-3 flex-wrap">
-                  <Badge variant="outline" className="text-[10px]">{total} total</Badge>
-                  {available > 0 && <Badge variant="outline" className="text-[10px] bg-success/10 text-success border-success/20">{available} avail</Badge>}
-                  {sold > 0 && <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">{sold} sold</Badge>}
-                  <Badge variant="outline" className="text-[10px]">{assigned}/{total} assigned</Badge>
-                </div>
-              )}
-
               {isExpanded && (
-                <div className="border-t overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Name</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Supporter ID</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Section</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Block</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Row</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Seat</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider text-right">Face Value</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Passes</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Status</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider">Assigned</TableHead>
-                        <TableHead className="text-[10px] uppercase tracking-wider text-center">Delete</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {group.items.map((item) => (
-                        <TableRow key={item.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedId(item.id)}>
-                          <TableCell className="font-medium text-sm">{item.ticket_name || "—"}</TableCell>
-                          <TableCell className="text-sm font-mono">{item.supporter_id || "—"}</TableCell>
-                          <TableCell className="text-sm">{item.category}</TableCell>
-                          <TableCell className="text-sm">{item.section || "—"}</TableCell>
-                          <TableCell className="text-sm">{item.block || "—"}</TableCell>
-                          <TableCell className="text-sm">{item.row_name || "—"}</TableCell>
-                          <TableCell className="text-sm">{item.seat || "—"}</TableCell>
-                          <TableCell className="text-right text-sm font-medium">
-                            {item.face_value != null ? `£${Number(item.face_value).toFixed(2)}` : "—"}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1.5">
-                              {item.iphone_pass_link && (
-                                <a href={item.iphone_pass_link} target="_blank" rel="noopener" onClick={e => e.stopPropagation()} title="iPhone Pass">
-                                  <Apple className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                                </a>
+                <div className="border-t divide-y divide-border">
+                  {(() => {
+                    const allGroups = groupByQuantity(group.items);
+                    return allGroups.map(qg => (
+                      <div key={qg.key}>
+                        {/* Group header */}
+                        <div className="px-5 py-2 bg-muted/20 flex items-center gap-2">
+                          <Badge variant="outline" className={cn("text-[10px] font-bold", getQtyColor(qg.qty))}>
+                            {getQtyLabel(qg.qty)} ({qg.qty})
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {qg.items[0]?.section || qg.items[0]?.category} {qg.items[0]?.block ? `• Block ${qg.items[0].block}` : ""}
+                          </span>
+                        </div>
+                        {/* Individual tickets in group */}
+                        {qg.items.map(item => {
+                          const hasPassLinks = item.iphone_pass_link || item.android_pass_link || item.pk_pass_url;
+                          const hasLoginDetails = item.first_name || item.last_name || item.email || item.password || item.supporter_id;
+                          const isTicketExpanded = expandedTicketDetails.has(item.id);
+                          const isLoginExpanded = expandedLoginDetails.has(item.id);
+
+                          return (
+                            <div key={item.id} className="px-5 py-3 hover:bg-muted/20 transition-colors">
+                              {/* Main row — all key seating info visible */}
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-4 flex-1 min-w-0">
+                                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    {/* Seating info — always visible */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1 flex-1 text-sm">
+                                      <div>
+                                        <span className="text-[10px] uppercase text-muted-foreground block">Category</span>
+                                        <span className="font-medium truncate">{item.category}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-[10px] uppercase text-muted-foreground block">Block</span>
+                                        <span className="font-medium">{item.block || "—"}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-[10px] uppercase text-muted-foreground block">Row</span>
+                                        <span className="font-medium">{item.row_name || "—"}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-[10px] uppercase text-muted-foreground block">Seat</span>
+                                        <span className="font-medium">{item.seat || "—"}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-[10px] uppercase text-muted-foreground block">Face Value</span>
+                                        <span className="font-medium">{item.face_value != null ? `£${Number(item.face_value).toFixed(2)}` : "—"}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <Badge variant="outline" className={cn("text-[10px]", statusColor[item.status] || "")}>
+                                    {item.status}
+                                  </Badge>
+                                  <Badge variant="outline" className={cn("text-[10px]", assignedSet.has(item.id) ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground")}>
+                                    {assignedSet.has(item.id) ? "Assigned" : "Unassigned"}
+                                  </Badge>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                    onClick={() => setSelectedId(item.id)}
+                                  >
+                                    <ChevronRight className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={(e) => handleDelete(e, item)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {/* Login Details — collapsible */}
+                              {hasLoginDetails && (
+                                <Collapsible open={isLoginExpanded} onOpenChange={() => toggleLoginDetails(item.id)}>
+                                  <CollapsibleTrigger className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                                    {isLoginExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                    Login Details
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent>
+                                    <div className="mt-2 rounded-lg bg-muted/30 p-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                      {(item.first_name || item.last_name) && (
+                                        <div>
+                                          <span className="text-muted-foreground block">Name</span>
+                                          <span className="font-medium">{[item.first_name, item.last_name].filter(Boolean).join(" ")}</span>
+                                        </div>
+                                      )}
+                                      {item.supporter_id && (
+                                        <div className="flex items-center gap-1">
+                                          <div>
+                                            <span className="text-muted-foreground block">Supporter ID</span>
+                                            <span className="font-mono font-medium">{item.supporter_id}</span>
+                                          </div>
+                                          <CopyButton text={item.supporter_id} />
+                                        </div>
+                                      )}
+                                      {item.email && (
+                                        <div className="flex items-center gap-1">
+                                          <div>
+                                            <span className="text-muted-foreground block">Email</span>
+                                            <span className="font-medium">{item.email}</span>
+                                          </div>
+                                          <CopyButton text={item.email} />
+                                        </div>
+                                      )}
+                                      {item.password && (
+                                        <div className="flex items-center gap-1">
+                                          <div>
+                                            <span className="text-muted-foreground block">Password</span>
+                                            <span className="font-mono font-medium">{item.password}</span>
+                                          </div>
+                                          <CopyButton text={item.password} />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </CollapsibleContent>
+                                </Collapsible>
                               )}
-                              {item.android_pass_link && (
-                                <a href={item.android_pass_link} target="_blank" rel="noopener" onClick={e => e.stopPropagation()} title="Android Pass">
-                                  <Smartphone className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                                </a>
+
+                              {/* Ticket Details — collapsible with copy buttons */}
+                              {hasPassLinks && (
+                                <Collapsible open={isTicketExpanded} onOpenChange={() => toggleTicketDetails(item.id)}>
+                                  <CollapsibleTrigger className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                                    {isTicketExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                    Ticket Details
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent>
+                                    <div className="mt-2 rounded-lg bg-muted/30 p-3 space-y-2">
+                                      {item.iphone_pass_link && (
+                                        <div className="flex items-center gap-2 text-xs">
+                                          <Apple className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                          <span className="text-muted-foreground shrink-0">iPhone:</span>
+                                          <a href={item.iphone_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
+                                            {item.iphone_pass_link}
+                                          </a>
+                                          <CopyButton text={item.iphone_pass_link} />
+                                        </div>
+                                      )}
+                                      {item.android_pass_link && (
+                                        <div className="flex items-center gap-2 text-xs">
+                                          <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                          <span className="text-muted-foreground shrink-0">Android:</span>
+                                          <a href={item.android_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
+                                            {item.android_pass_link}
+                                          </a>
+                                          <CopyButton text={item.android_pass_link} />
+                                        </div>
+                                      )}
+                                      {item.pk_pass_url && (
+                                        <div className="flex items-center gap-2 text-xs">
+                                          <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                          <span className="text-muted-foreground shrink-0">PK Pass:</span>
+                                          <a href={item.pk_pass_url} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
+                                            Download
+                                          </a>
+                                          <CopyButton text={item.pk_pass_url} />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </CollapsibleContent>
+                                </Collapsible>
                               )}
-                              {item.pk_pass_url && (
-                                <a href={item.pk_pass_url} target="_blank" rel="noopener" onClick={e => e.stopPropagation()} title="Download PK Pass">
-                                  <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                                </a>
-                              )}
-                              {!item.iphone_pass_link && !item.android_pass_link && !item.pk_pass_url && "—"}
                             </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={statusColor[item.status] || ""}>
-                              {item.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={assignedSet.has(item.id) ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground"}>
-                              {assignedSet.has(item.id) ? "Yes" : "No"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={(e) => handleDelete(e, item)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                          );
+                        })}
+                      </div>
+                    ));
+                  })()}
                 </div>
               )}
             </div>
