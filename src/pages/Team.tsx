@@ -8,10 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, UserPlus, Mail, Shield, Eye, Clock, Check, X, Compass } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Users, UserPlus, Mail, Shield, Eye, Clock, Check, X, Play, ChevronDown, BookOpen, Briefcase } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import GuidedTour from "@/components/GuidedTour";
 
 interface Member {
   id: string;
@@ -30,6 +30,25 @@ interface Invitation {
   expires_at: string;
 }
 
+const FEATURE_GUIDE = [
+  { name: "Dashboard", desc: "Overview of key metrics — total revenue, active orders, upcoming events, and quick-access shortcuts to the most used pages." },
+  { name: "Orders", desc: "Track all customer sales. Update order status, delivery type, link inventory tickets, and view profit/loss per order." },
+  { name: "Purchases", desc: "Record supplier ticket buys with cost, quantity, and category. Purchases auto-generate inventory items." },
+  { name: "Inventory", desc: "Manage all ticket stock. View seating details, login credentials, and ticket pass links. Group by singles, pairs, quads." },
+  { name: "Suppliers", desc: "Manage supplier contacts, payment terms, logos, and track purchase history per supplier." },
+  { name: "Events", desc: "Create and manage events with match codes, venues, and dates. All orders and inventory link to events." },
+  { name: "Platforms", desc: "Configure selling platforms (e.g. StubHub, Viagogo). Track fees, payout schedules, and per-platform performance." },
+  { name: "Finance", desc: "PIN-protected financial overview — profit/loss, revenue breakdown, fee analysis, and transaction ledger." },
+  { name: "Analytics", desc: "Deep-dive metrics: margin %, average ticket price, club/tournament filters, and side-by-side event comparison." },
+  { name: "Balances", desc: "Track what you owe suppliers and what platforms owe you. Partial payments, payment age warnings, and history." },
+  { name: "Wallet", desc: "Quick snapshot of total accessible liquid funds across all platforms and suppliers." },
+  { name: "Cashflow", desc: "Calendar view of expected income and outflows. Recurring payout markers and weekly summary panel." },
+  { name: "To-Do List", desc: "Team task management with priorities (Urgent to Low), assignees, due dates, and completion celebrations." },
+  { name: "Invoices", desc: "Generate professional invoices with saved business details, line items, tax, and bank info." },
+  { name: "Health Check", desc: "Automated system checks with live status banner. Auto-rechecks every 60 seconds." },
+  { name: "Communications", desc: "Send team emails and set up automated rules for alerts like unactioned orders or weekly summaries." },
+];
+
 export default function Team() {
   const { orgId, orgName, userRole } = useOrg();
   const [members, setMembers] = useState<Member[]>([]);
@@ -38,7 +57,7 @@ export default function Team() {
   const [inviteRole, setInviteRole] = useState<"admin" | "viewer">("viewer");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [sending, setSending] = useState(false);
-  const [showTour, setShowTour] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -106,13 +125,12 @@ export default function Team() {
           </p>
         </div>
         {isAdmin && (
-          <div className="flex items-center gap-2">
-            <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm">
-                  <UserPlus className="h-4 w-4 mr-1" /> Invite Member
-                </Button>
-              </DialogTrigger>
+          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <UserPlus className="h-4 w-4 mr-1" /> Invite Member
+              </Button>
+            </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Invite Team Member</DialogTitle>
@@ -156,7 +174,6 @@ export default function Team() {
               </div>
             </DialogContent>
           </Dialog>
-          </div>
         )}
       </div>
 
@@ -315,18 +332,52 @@ export default function Team() {
         </div>
       </div>
 
-      {/* Start Tour CTA */}
-      <div className="rounded-xl border bg-card p-5 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold">New to the platform?</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Take a guided walkthrough to learn how everything works.</p>
-        </div>
-        <Button variant="secondary" onClick={() => setShowTour(true)}>
-          <Compass className="h-4 w-4 mr-1.5" /> Start Tour
-        </Button>
-      </div>
+      {/* Onboarding: Video + Feature Guide */}
+      <div className="space-y-4">
+        <h2 className="text-sm font-semibold">Onboarding & Training</h2>
 
-      {showTour && <GuidedTour onEnd={() => setShowTour(false)} />}
+        {/* Video CTA */}
+        <div className="rounded-xl border bg-card p-5 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold">Watch the Platform Walkthrough</p>
+            <p className="text-xs text-muted-foreground mt-0.5">A quick video showing how everything works end-to-end.</p>
+          </div>
+          <Button variant="secondary" asChild>
+            <a href="https://www.youtube.com/watch?v=PLACEHOLDER" target="_blank" rel="noopener noreferrer">
+              <Play className="h-4 w-4 mr-1.5" /> Watch Video
+            </a>
+          </Button>
+        </div>
+
+        {/* Written Feature Guide */}
+        <Collapsible open={guideOpen} onOpenChange={setGuideOpen}>
+          <div className="rounded-xl border bg-card overflow-hidden">
+            <CollapsibleTrigger asChild>
+              <button className="w-full px-5 py-4 flex items-center justify-between hover:bg-muted/30 transition-colors">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold">Feature Guide</span>
+                  <Badge variant="secondary" className="text-xs">{FEATURE_GUIDE.length} pages</Badge>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${guideOpen ? "rotate-180" : ""}`} />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="border-t divide-y divide-border">
+                {FEATURE_GUIDE.map((item) => (
+                  <div key={item.name} className="px-5 py-3">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <Briefcase className="h-3.5 w-3.5 text-primary" />
+                      <h4 className="text-sm font-medium">{item.name}</h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-5.5">{item.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
+      </div>
     </div>
   );
 }
