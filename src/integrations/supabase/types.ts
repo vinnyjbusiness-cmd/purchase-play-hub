@@ -436,6 +436,48 @@ export type Database = {
           },
         ]
       }
+      order_status_history: {
+        Row: {
+          created_at: string
+          id: string
+          order_id: string
+          org_id: string | null
+          reached_at: string
+          stage: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          order_id: string
+          org_id?: string | null
+          reached_at?: string
+          stage: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          order_id?: string
+          org_id?: string | null
+          reached_at?: string
+          stage?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_status_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_status_history_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           buyer_email: string | null
