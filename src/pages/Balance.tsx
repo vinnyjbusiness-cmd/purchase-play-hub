@@ -6,10 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Plus, ChevronRight, CheckCircle2, AlertCircle, History, BookOpen, Inbox, Link, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
-import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, isSameMonth } from "date-fns";
+import { ArrowLeft, Plus, ChevronRight, CheckCircle2, AlertCircle, History, BookOpen, Inbox, Link, TrendingUp, TrendingDown, BarChart3, Pencil, AlertTriangle } from "lucide-react";
+import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, isSameMonth, differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import LogoAvatar from "@/components/LogoAvatar";
@@ -51,7 +50,13 @@ export default function Balance() {
   const [dialogNotes, setDialogNotes] = useState("");
   const [dialogLoading, setDialogLoading] = useState(false);
 
-  // Add opening balance from overview (no party selected yet)
+  // Edit balance dialog
+  const [editingPayment, setEditingPayment] = useState<BalancePayment | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+
+  // Add opening balance from overview
   const [showAddOpening, setShowAddOpening] = useState(false);
   const [openingPartyType, setOpeningPartyType] = useState<"supplier" | "platform">("supplier");
   const [openingPartyId, setOpeningPartyId] = useState("");
@@ -59,14 +64,6 @@ export default function Balance() {
   const [openingAmount, setOpeningAmount] = useState("");
   const [openingNotes, setOpeningNotes] = useState("");
   const [openingLoading, setOpeningLoading] = useState(false);
-
-  // Add Balance dialog (quick add — initially unassigned)
-  const [showAddBalance, setShowAddBalance] = useState(false);
-  const [addBalSupplierId, setAddBalSupplierId] = useState("");
-  const [addBalContactName, setAddBalContactName] = useState("");
-  const [addBalAmount, setAddBalAmount] = useState("");
-  const [addBalNotes, setAddBalNotes] = useState("");
-  const [addBalLoading, setAddBalLoading] = useState(false);
 
   // Assign unassigned balance dialog
   const [assigningPayment, setAssigningPayment] = useState<BalancePayment | null>(null);
@@ -105,77 +102,79 @@ export default function Balance() {
     return supplier?.name || "Unknown";
   };
 
-  // Build deduplicated supplier options with display names from purchases
   const supplierOptions = useMemo(() => {
-    const seen = new Map<string, string>(); // id -> displayName
-    // From purchases — use the smart display name
+    const seen = new Map<string, string>();
     purchases.forEach(p => {
       if (!seen.has(p.supplier_id)) seen.set(p.supplier_id, getSupplierDisplayName(p));
     });
-    // Any suppliers without purchases
     suppliers.forEach(s => {
       if (!seen.has(s.id)) seen.set(s.id, s.name);
     });
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [suppliers, purchases, supplierMap]);
 
-  // Compute supplier balances
+  // Compute supplier balances — auto-include ALL suppliers
   const supplierBalances = useMemo(() => {
-    const map: Record<string, { supplierId: string; displayName: string; totalOwed: number; totalPaid: number; openingBalance: number; adjustments: number; purchases: Purchase[] }> = {};
+    const map: Record<string, { supplierId: string; displayName: string; totalOwed: number; totalPaid: number; openingBalance: number; adjustments: number; purchases: Purchase[]; lastActivity: string | null }> = {};
+    // Seed all suppliers
+    suppliers.forEach(s => {
+      map[s.id] = { supplierId: s.id, displayName: s.name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, purchases: [], lastActivity: null };
+    });
     // From purchases
     purchases.forEach(p => {
       const key = p.supplier_id;
       const cost = p.total_cost_gbp || (p.quantity * p.unit_cost);
-      if (!map[key]) map[key] = { supplierId: key, displayName: getSupplierDisplayName(p), totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, purchases: [] };
+      if (!map[key]) map[key] = { supplierId: key, displayName: getSupplierDisplayName(p), totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, purchases: [], lastActivity: null };
       map[key].totalOwed += cost;
       map[key].purchases.push(p);
+      if (!map[key].lastActivity || p.purchase_date > map[key].lastActivity!) map[key].lastActivity = p.purchase_date;
     });
-    // From balance_payments (assigned ones only)
+    // From balance_payments
     payments.filter(p => p.party_type === "supplier" && p.party_id).forEach(pay => {
-      // Use contact_name as a unique key when supplier is "Trade" to keep separate tabs
       const isTradeSupplier = supplierMap[pay.party_id!]?.name?.toLowerCase() === "trade";
       const key = isTradeSupplier && pay.contact_name ? `trade_${pay.contact_name.toLowerCase()}` : pay.party_id!;
       if (!map[key]) {
         const name = pay.contact_name || supplierMap[pay.party_id!]?.name || "Unknown";
-        map[key] = { supplierId: key, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, purchases: [] };
+        map[key] = { supplierId: key, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, purchases: [], lastActivity: null };
       }
-      // Update display name if contact_name is available and current is generic
       if (pay.contact_name && (map[key].displayName === "Trade" || map[key].displayName === "Unknown")) {
         map[key].displayName = pay.contact_name;
       }
       if (pay.type === "payment") map[key].totalPaid += pay.amount;
       else if (pay.type === "opening_balance") { map[key].openingBalance += pay.amount; map[key].totalOwed += pay.amount; }
       else if (pay.type === "adjustment") { map[key].adjustments += pay.amount; map[key].totalOwed += pay.amount; }
+      if (!map[key].lastActivity || pay.payment_date > map[key].lastActivity!) map[key].lastActivity = pay.payment_date;
     });
     return Object.values(map).sort((a, b) => (b.totalOwed - b.totalPaid) - (a.totalOwed - a.totalPaid));
-  }, [purchases, payments, supplierMap]);
+  }, [purchases, payments, supplierMap, suppliers]);
 
   // Compute platform balances
   const platformBalances = useMemo(() => {
-    const map: Record<string, { platformId: string; displayName: string; totalOwed: number; totalPaid: number; openingBalance: number; adjustments: number; orders: Order[] }> = {};
+    const map: Record<string, { platformId: string; displayName: string; totalOwed: number; totalPaid: number; openingBalance: number; adjustments: number; orders: Order[]; lastActivity: string | null }> = {};
     orders.filter(o => o.status !== "cancelled" && o.status !== "refunded").forEach(o => {
       const key = o.platform_id || "direct";
       const net = o.net_received || (o.sale_price - o.fees);
       if (!map[key]) {
         const name = key === "direct" ? "Direct Sale" : (platformMap[key]?.name || "Unknown");
-        map[key] = { platformId: key, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, orders: [] };
+        map[key] = { platformId: key, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, orders: [], lastActivity: null };
       }
       map[key].totalOwed += net;
       map[key].orders.push(o);
+      if (!map[key].lastActivity || o.order_date > map[key].lastActivity!) map[key].lastActivity = o.order_date;
     });
     payments.filter(p => p.party_type === "platform" && p.party_id).forEach(pay => {
       if (!map[pay.party_id!]) {
         const name = platformMap[pay.party_id!]?.name || "Unknown";
-        map[pay.party_id!] = { platformId: pay.party_id!, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, orders: [] };
+        map[pay.party_id!] = { platformId: pay.party_id!, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, orders: [], lastActivity: null };
       }
       if (pay.type === "payment") map[pay.party_id!].totalPaid += pay.amount;
       else if (pay.type === "opening_balance") { map[pay.party_id!].openingBalance += pay.amount; map[pay.party_id!].totalOwed += pay.amount; }
       else if (pay.type === "adjustment") { map[pay.party_id!].adjustments += pay.amount; map[pay.party_id!].totalOwed += pay.amount; }
+      if (!map[pay.party_id!].lastActivity || pay.payment_date > map[pay.party_id!].lastActivity!) map[pay.party_id!].lastActivity = pay.payment_date;
     });
     return Object.values(map).sort((a, b) => (b.totalOwed - b.totalPaid) - (a.totalOwed - a.totalPaid));
   }, [orders, payments, platformMap]);
 
-  // Unassigned balances
   const unassignedBalances = useMemo(() => payments.filter(p => !p.party_id), [payments]);
 
   const totalIOwOut = supplierBalances.reduce((s, b) => s + Math.max(0, b.totalOwed - b.totalPaid), 0);
@@ -189,7 +188,6 @@ export default function Balance() {
       if (!bal) return null;
       const byEvent: Record<string, Purchase[]> = {};
       bal.purchases.forEach(p => { if (!byEvent[p.event_id]) byEvent[p.event_id] = []; byEvent[p.event_id].push(p); });
-      // For trade_ keys, match by contact_name; otherwise match by party_id
       const isTradeKey = selectedParty.id.startsWith("trade_");
       const tradeName = isTradeKey ? selectedParty.id.replace("trade_", "") : null;
       const partyPayments = isTradeKey
@@ -206,19 +204,18 @@ export default function Balance() {
     }
   }, [selectedParty, supplierBalances, platformBalances, payments]);
 
-  // Add entry (payment, opening_balance, or adjustment)
+  // Add entry
   const handleAddEntry = async () => {
     if (!selectedParty || !dialogAmount || !dialogMode) return;
     setDialogLoading(true);
     try {
-      // Resolve real supplier ID for trade_ keys
       const isTradeKey = selectedParty.id.startsWith("trade_");
       const tradeName = isTradeKey ? selectedParty.id.replace("trade_", "") : null;
       const realPartyId = isTradeKey
         ? payments.find(p => p.party_type === "supplier" && p.contact_name?.toLowerCase() === tradeName)?.party_id
         : selectedParty.id;
       const contactName = isTradeKey ? selectedData?.displayName || null : null;
-      
+
       const { error } = await supabase.from("balance_payments").insert({
         party_type: selectedParty.type,
         party_id: realPartyId,
@@ -241,14 +238,32 @@ export default function Balance() {
     }
   };
 
-  // Add opening balance from overview
+  // Edit entry
+  const handleEditEntry = async () => {
+    if (!editingPayment || !editAmount) return;
+    setEditLoading(true);
+    try {
+      const { error } = await supabase.from("balance_payments").update({
+        amount: parseFloat(editAmount),
+        notes: editNotes || null,
+      }).eq("id", editingPayment.id);
+      if (error) throw error;
+      toast.success("Balance updated");
+      setEditingPayment(null);
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
   const handleAddOpening = async () => {
     if (openingPartyType === "supplier" && !openingPartyId) return;
     if (openingPartyType === "platform" && !openingContactName.trim()) return;
     if (!openingAmount) return;
     setOpeningLoading(true);
     try {
-      // For trade type, pick the first Trade supplier ID automatically
       const partyId = openingPartyType === "platform"
         ? suppliers.find(s => s.name.toLowerCase() === "trade")?.id || null
         : openingPartyId;
@@ -287,37 +302,34 @@ export default function Balance() {
   const typeColor = (t: string) => t === "payment" ? "text-success" : t === "opening_balance" ? "text-primary" : "text-warning";
   const typeIcon = (t: string) => t === "payment" ? "+" : t === "opening_balance" ? "📋" : "⚡";
 
-  // Activity heatmap data — last 12 months
+  // Payment age helper
+  const getPaymentAge = (lastActivity: string | null): { days: number; isOverdue: boolean } => {
+    if (!lastActivity) return { days: -1, isOverdue: false };
+    const days = differenceInDays(new Date(), new Date(lastActivity));
+    return { days, isOverdue: days > 7 };
+  };
+
+  // Activity heatmap
   const heatmapData = useMemo(() => {
     if (!selectedData) return [];
     const now = new Date();
     const start = startOfMonth(subMonths(now, 11));
     const end = endOfMonth(now);
     const months = eachMonthOfInterval({ start, end });
-
     return months.map(month => {
       let count = 0;
       let amount = 0;
       if (selectedData.type === "supplier") {
         (selectedData as any).purchases?.forEach((p: Purchase) => {
-          if (isSameMonth(new Date(p.purchase_date), month)) {
-            count++;
-            amount += p.total_cost_gbp || (p.quantity * p.unit_cost);
-          }
+          if (isSameMonth(new Date(p.purchase_date), month)) { count++; amount += p.total_cost_gbp || (p.quantity * p.unit_cost); }
         });
       } else {
         (selectedData as any).orders?.forEach((o: Order) => {
-          if (isSameMonth(new Date(o.order_date), month)) {
-            count++;
-            amount += o.net_received || (o.sale_price - o.fees);
-          }
+          if (isSameMonth(new Date(o.order_date), month)) { count++; amount += o.net_received || (o.sale_price - o.fees); }
         });
       }
-      // Include payments in this month
       selectedData.payments?.forEach((pay: BalancePayment) => {
-        if (isSameMonth(new Date(pay.payment_date), month)) {
-          count++;
-        }
+        if (isSameMonth(new Date(pay.payment_date), month)) count++;
       });
       return { month, count, amount };
     });
@@ -325,7 +337,6 @@ export default function Balance() {
 
   const maxHeatCount = Math.max(1, ...heatmapData.map(d => d.count));
 
-  // Summary stats for selected party
   const summaryStats = useMemo(() => {
     if (!selectedData) return null;
     const balance = selectedData.totalOwed - selectedData.totalPaid;
@@ -335,7 +346,7 @@ export default function Balance() {
     return { balance, items, paymentCount, avgTransaction };
   }, [selectedData]);
 
-  // ─── DETAIL VIEW (Sheet) ───
+  // ─── DETAIL VIEW ───
   if (selectedParty && selectedData) {
     const balance = selectedData.totalOwed - selectedData.totalPaid;
     const isSettled = balance <= 0;
@@ -348,25 +359,13 @@ export default function Balance() {
           <button onClick={() => setSelectedParty(null)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-3">
             <ArrowLeft className="h-4 w-4" /> Back to Balances
           </button>
-
-          {/* Header with logo */}
           <div className="flex items-center gap-4">
-            <LogoAvatar
-              name={selectedData.displayName}
-              logoUrl={supplier?.logo_url || platform?.logo_url || null}
-              entityType={selectedData.type}
-              entityId={supplier?.id || platform?.id || selectedParty.id}
-              editable
-              size="lg"
-              onLogoUpdated={() => loadData()}
-            />
+            <LogoAvatar name={selectedData.displayName} logoUrl={supplier?.logo_url || platform?.logo_url || null} entityType={selectedData.type} entityId={supplier?.id || platform?.id || selectedParty.id} editable size="lg" onLogoUpdated={() => loadData()} />
             <div className="flex-1">
               <h1 className="text-2xl font-bold tracking-tight">{selectedData.displayName}</h1>
               <p className="text-sm text-muted-foreground capitalize">{selectedData.type}</p>
             </div>
           </div>
-
-          {/* Stats row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
             <div className="rounded-lg border bg-muted/30 p-3">
               <span className="text-xs text-muted-foreground">Total {selectedData.type === "supplier" ? "Owed" : "Owed to Me"}</span>
@@ -399,51 +398,14 @@ export default function Balance() {
                   const intensity = d.count / maxHeatCount;
                   return (
                     <div key={i} className="flex flex-col items-center gap-1">
-                      <div
-                        className={cn(
-                          "w-full aspect-square rounded-md transition-colors",
-                          d.count === 0 ? "bg-muted" :
-                          intensity < 0.25 ? "bg-primary/20" :
-                          intensity < 0.5 ? "bg-primary/40" :
-                          intensity < 0.75 ? "bg-primary/60" :
-                          "bg-primary"
-                        )}
-                        title={`${format(d.month, "MMM yyyy")}: ${d.count} activities, ${fmt(d.amount)}`}
-                      />
+                      <div className={cn("w-full aspect-square rounded-md transition-colors", d.count === 0 ? "bg-muted" : intensity < 0.25 ? "bg-primary/20" : intensity < 0.5 ? "bg-primary/40" : intensity < 0.75 ? "bg-primary/60" : "bg-primary")} title={`${format(d.month, "MMM yyyy")}: ${d.count} activities, ${fmt(d.amount)}`} />
                       <span className="text-[10px] text-muted-foreground">{format(d.month, "MMM")}</span>
                     </div>
                   );
                 })}
               </div>
-              <div className="flex items-center gap-2 mt-3 justify-end">
-                <span className="text-[10px] text-muted-foreground">Less</span>
-                <div className="h-3 w-3 rounded-sm bg-muted" />
-                <div className="h-3 w-3 rounded-sm bg-primary/20" />
-                <div className="h-3 w-3 rounded-sm bg-primary/40" />
-                <div className="h-3 w-3 rounded-sm bg-primary/60" />
-                <div className="h-3 w-3 rounded-sm bg-primary" />
-                <span className="text-[10px] text-muted-foreground">More</span>
-              </div>
             </div>
           </div>
-
-          {/* Summary Stats */}
-          {summaryStats && (
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-lg border bg-card p-3 text-center">
-                <p className="text-2xl font-bold">{summaryStats.items}</p>
-                <p className="text-xs text-muted-foreground">{selectedData.type === "supplier" ? "Purchases" : "Orders"}</p>
-              </div>
-              <div className="rounded-lg border bg-card p-3 text-center">
-                <p className="text-2xl font-bold">{summaryStats.paymentCount}</p>
-                <p className="text-xs text-muted-foreground">Payments Made</p>
-              </div>
-              <div className="rounded-lg border bg-card p-3 text-center">
-                <p className="text-2xl font-bold">{heatmapData.filter(d => d.count > 0).length}</p>
-                <p className="text-xs text-muted-foreground">Active Months</p>
-              </div>
-            </div>
-          )}
 
           {/* Breakdown by event */}
           {Object.keys(selectedData.byEvent).length > 0 && (
@@ -467,22 +429,6 @@ export default function Balance() {
                           <p className="text-xs text-muted-foreground">{eventDate}</p>
                         </div>
                         <span className="text-sm font-bold">{fmt(total)}</span>
-                      </div>
-                      <div className="space-y-1">
-                        {selectedData.type === "supplier"
-                          ? (items as Purchase[]).map(p => (
-                            <div key={p.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-1.5 text-xs">
-                              <span>{p.quantity}x {p.category} @ £{p.unit_cost.toFixed(2)}</span>
-                              <span className="font-medium">{fmt(p.total_cost_gbp || (p.quantity * p.unit_cost))}</span>
-                            </div>
-                          ))
-                          : (items as Order[]).map(o => (
-                            <div key={o.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-1.5 text-xs">
-                              <span>{o.quantity}x {o.category} · {fmt(o.sale_price)}</span>
-                              <span className="font-medium">{fmt(o.net_received || (o.sale_price - o.fees))}</span>
-                            </div>
-                          ))
-                        }
                       </div>
                     </div>
                   );
@@ -511,34 +457,46 @@ export default function Balance() {
               <div className="p-4 text-sm text-muted-foreground text-center">No entries yet</div>
             ) : (
               <div className="divide-y divide-border">
-                {selectedData.payments.map((pay, idx) => (
-                  <div key={pay.id} className="px-4 py-3">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className={cn("text-sm font-semibold", typeColor(pay.type))}>
-                            {typeIcon(pay.type)} {fmt(pay.amount)}
-                          </span>
-                          <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium",
-                            pay.type === "payment" ? "bg-success/10 text-success" :
-                            pay.type === "opening_balance" ? "bg-primary/10 text-primary" :
-                            "bg-warning/10 text-warning"
-                          )}>
-                            {typeLabel(pay.type)}
-                          </span>
+                {selectedData.payments.map((pay) => {
+                  const age = getPaymentAge(pay.payment_date);
+                  return (
+                    <div key={pay.id} className="px-4 py-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("text-sm font-semibold", typeColor(pay.type))}>
+                              {typeIcon(pay.type)} {fmt(pay.amount)}
+                            </span>
+                            <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium",
+                              pay.type === "payment" ? "bg-success/10 text-success" :
+                              pay.type === "opening_balance" ? "bg-primary/10 text-primary" :
+                              "bg-warning/10 text-warning"
+                            )}>
+                              {typeLabel(pay.type)}
+                            </span>
+                            {age.isOverdue && pay.type !== "payment" && (
+                              <span className="flex items-center gap-0.5 text-[10px] text-warning">
+                                <AlertTriangle className="h-3 w-3" /> {age.days}d ago
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground space-y-0.5">
+                            <p>📅 {format(new Date(pay.payment_date), "dd MMM yyyy 'at' HH:mm")}</p>
+                            {pay.notes && <p>📝 {pay.notes}</p>}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground space-y-0.5">
-                          <p>📅 {format(new Date(pay.payment_date), "dd MMM yyyy 'at' HH:mm")}</p>
-                          {pay.contact_name && <p>👤 Contact: {pay.contact_name}</p>}
-                          {pay.notes && <p>📝 {pay.notes}</p>}
+                        <div className="flex gap-1 shrink-0">
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => { setEditingPayment(pay); setEditAmount(String(pay.amount)); setEditNotes(pay.notes || ""); }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-xs text-destructive hover:text-destructive shrink-0" onClick={() => deletePayment(pay.id)}>
+                            Remove
+                          </Button>
                         </div>
                       </div>
-                      <Button size="sm" variant="ghost" className="text-xs text-destructive hover:text-destructive shrink-0" onClick={() => deletePayment(pay.id)}>
-                        Remove
-                      </Button>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -562,16 +520,6 @@ export default function Balance() {
                 }
                 {" "}<span className="font-medium text-foreground">{selectedData.displayName}</span>
               </div>
-              {dialogMode === "opening_balance" && (
-                <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
-                  Use this to bring in existing balances from before you started using this system. This amount will be added to the total owed.
-                </p>
-              )}
-              {dialogMode === "adjustment" && (
-                <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
-                  Use this for anything outside normal purchases/orders — e.g. a favour, extra charge, or ad-hoc fee. This will increase the balance owed.
-                </p>
-              )}
               <div className="space-y-1.5">
                 <Label>Amount (£)</Label>
                 <Input type="number" step="0.01" min="0" value={dialogAmount} onChange={e => setDialogAmount(e.target.value)} placeholder="0.00" />
@@ -582,6 +530,28 @@ export default function Balance() {
               </div>
               <Button onClick={handleAddEntry} disabled={dialogLoading || !dialogAmount} className="w-full">
                 {dialogLoading ? "Saving..." : dialogMode === "payment" ? "Record Payment" : dialogMode === "opening_balance" ? "Add Opening Balance" : "Add Charge"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit entry dialog */}
+        <Dialog open={!!editingPayment} onOpenChange={(v) => { if (!v) setEditingPayment(null); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Edit Balance Entry</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Amount (£)</Label>
+                <Input type="number" step="0.01" min="0" value={editAmount} onChange={e => setEditAmount(e.target.value)} placeholder="0.00" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Notes</Label>
+                <Textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2} maxLength={200} />
+              </div>
+              <Button onClick={handleEditEntry} disabled={editLoading || !editAmount} className="w-full">
+                {editLoading ? "Saving..." : "Update Entry"}
               </Button>
             </div>
           </DialogContent>
@@ -597,16 +567,11 @@ export default function Balance() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Balances</h1>
-            <p className="text-sm text-muted-foreground mt-1">Running balances across all events. Click a name to see details &amp; record payments.</p>
+            <p className="text-sm text-muted-foreground mt-1">Running balances across all events. Click a card to see details & record payments.</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowAddBalance(true)}>
-              <Plus className="h-4 w-4 mr-1.5" /> Add Balance
-            </Button>
-            <Button variant="outline" onClick={() => setShowAddOpening(true)}>
-              <BookOpen className="h-4 w-4 mr-1.5" /> Add Opening Balance
-            </Button>
-          </div>
+          <Button variant="outline" onClick={() => setShowAddOpening(true)}>
+            <BookOpen className="h-4 w-4 mr-1.5" /> Add Opening Balance
+          </Button>
         </div>
       </div>
 
@@ -630,7 +595,6 @@ export default function Balance() {
               <h3 className="text-sm font-semibold flex items-center gap-2">
                 <Inbox className="h-4 w-4 text-warning" /> Unassigned Balances
               </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">These need to be assigned to a supplier's running tab.</p>
             </div>
             <div className="divide-y divide-border">
               {unassignedBalances.map(ub => (
@@ -659,53 +623,53 @@ export default function Balance() {
           </div>
         )}
 
-        {/* Suppliers — Card Grid */}
+        {/* Suppliers — Card Grid (auto-populated from suppliers DB) */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <AlertCircle className="h-4 w-4 text-destructive" />
             <h3 className="text-sm font-semibold">I Owe — Suppliers</h3>
           </div>
-          {supplierBalances.length === 0 ? (
-            <div className="rounded-xl border bg-card p-8 text-center">
-              <p className="text-sm text-muted-foreground">No supplier balances yet</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {supplierBalances.map(b => {
-                const balance = b.totalOwed - b.totalPaid;
-                const isSettled = balance <= 0;
-                const supplier = suppliers.find(s => s.id === b.supplierId);
-                return (
-                  <button
-                    key={b.supplierId}
-                    onClick={() => setSelectedParty({ type: "supplier", id: b.supplierId })}
-                    className="rounded-xl border bg-card p-4 flex flex-col items-center gap-3 hover:bg-muted/40 hover:border-primary/30 transition-all text-center group"
-                  >
-                    <LogoAvatar
-                      name={b.displayName}
-                      logoUrl={supplier?.logo_url || null}
-                      entityType="supplier"
-                      entityId={supplier?.id || b.supplierId}
-                      size="lg"
-                    />
-                    <div className="w-full">
-                      <p className="text-sm font-semibold truncate">{b.displayName}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {b.purchases.length} purchase{b.purchases.length !== 1 ? "s" : ""}
-                      </p>
-                      {isSettled ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-success font-medium mt-2">
-                          <CheckCircle2 className="h-3 w-3" /> Settled
-                        </span>
-                      ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            {supplierBalances.map(b => {
+              const balance = b.totalOwed - b.totalPaid;
+              const isSettled = balance <= 0;
+              const supplier = suppliers.find(s => s.id === b.supplierId);
+              const age = getPaymentAge(b.lastActivity);
+              const hasBalance = balance > 0;
+              return (
+                <button
+                  key={b.supplierId}
+                  onClick={() => setSelectedParty({ type: "supplier", id: b.supplierId })}
+                  className={cn(
+                    "rounded-xl border bg-card p-4 flex flex-col items-center gap-3 hover:bg-muted/40 hover:border-primary/30 transition-all text-center group",
+                    hasBalance && age.isOverdue && "border-warning/40"
+                  )}
+                >
+                  <LogoAvatar name={b.displayName} logoUrl={supplier?.logo_url || null} entityType="supplier" entityId={supplier?.id || b.supplierId} size="lg" />
+                  <div className="w-full">
+                    <p className="text-sm font-semibold truncate">{b.displayName}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {b.purchases.length} purchase{b.purchases.length !== 1 ? "s" : ""}
+                    </p>
+                    {isSettled ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-success font-medium mt-2">
+                        <CheckCircle2 className="h-3 w-3" /> Settled
+                      </span>
+                    ) : (
+                      <>
                         <p className="text-lg font-bold text-destructive mt-1">{fmt(balance)}</p>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                        {age.isOverdue && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-warning mt-0.5">
+                            <AlertTriangle className="h-3 w-3" /> {age.days}d since activity
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Platforms — Card Grid */}
@@ -724,19 +688,17 @@ export default function Balance() {
                 const balance = b.totalOwed - b.totalPaid;
                 const isSettled = balance <= 0;
                 const platform = platforms.find(p => p.id === b.platformId);
+                const age = getPaymentAge(b.lastActivity);
                 return (
                   <button
                     key={b.platformId}
                     onClick={() => setSelectedParty({ type: "platform", id: b.platformId })}
-                    className="rounded-xl border bg-card p-4 flex flex-col items-center gap-3 hover:bg-muted/40 hover:border-primary/30 transition-all text-center group"
+                    className={cn(
+                      "rounded-xl border bg-card p-4 flex flex-col items-center gap-3 hover:bg-muted/40 hover:border-primary/30 transition-all text-center group",
+                      balance > 0 && age.isOverdue && "border-warning/40"
+                    )}
                   >
-                    <LogoAvatar
-                      name={b.displayName}
-                      logoUrl={platform?.logo_url || null}
-                      entityType="platform"
-                      entityId={platform?.id || b.platformId}
-                      size="lg"
-                    />
+                    <LogoAvatar name={b.displayName} logoUrl={platform?.logo_url || null} entityType="platform" entityId={platform?.id || b.platformId} size="lg" />
                     <div className="w-full">
                       <p className="text-sm font-semibold truncate">{b.displayName}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
@@ -747,7 +709,14 @@ export default function Balance() {
                           <CheckCircle2 className="h-3 w-3" /> Settled
                         </span>
                       ) : (
-                        <p className="text-lg font-bold text-success mt-1">{fmt(balance)}</p>
+                        <>
+                          <p className="text-lg font-bold text-success mt-1">{fmt(balance)}</p>
+                          {age.isOverdue && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-warning mt-0.5">
+                              <AlertTriangle className="h-3 w-3" /> {age.days}d since activity
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                   </button>
@@ -757,78 +726,6 @@ export default function Balance() {
           )}
         </div>
       </div>
-
-      {/* Add Balance dialog — goes to unassigned */}
-      <Dialog open={showAddBalance} onOpenChange={(v) => { if (!v) { setShowAddBalance(false); setAddBalSupplierId(""); setAddBalContactName(""); setAddBalAmount(""); setAddBalNotes(""); } }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Plus className="h-4 w-4" /> Add Balance</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
-              Add a balance entry. It will appear in "Unassigned Balances" so you can assign it to a supplier's running tab.
-            </p>
-            <div className="space-y-1.5">
-              <Label>Supplier (optional)</Label>
-              <Select value={addBalSupplierId} onValueChange={(v) => { setAddBalSupplierId(v); setAddBalContactName(""); }}>
-                <SelectTrigger><SelectValue placeholder="Select supplier (or leave blank)" /></SelectTrigger>
-                <SelectContent className="bg-popover z-50">
-                  {supplierOptions.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {addBalSupplierId && supplierMap[addBalSupplierId]?.name?.toLowerCase() === "trade" && (
-              <div className="space-y-1.5">
-                <Label>Contact Name</Label>
-                <Input value={addBalContactName} onChange={e => setAddBalContactName(e.target.value)} placeholder="e.g. John Smith" />
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label>Amount (£)</Label>
-              <Input type="number" step="0.01" min="0" value={addBalAmount} onChange={e => setAddBalAmount(e.target.value)} placeholder="0.00" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Notes (optional)</Label>
-              <Textarea value={addBalNotes} onChange={e => setAddBalNotes(e.target.value)} placeholder="e.g. Favour — sourced 2 tickets" rows={2} maxLength={200} />
-            </div>
-            <Button
-              onClick={async () => {
-                if (!addBalAmount) return;
-                setAddBalLoading(true);
-                try {
-                  const contactName = addBalContactName || (addBalSupplierId ? supplierMap[addBalSupplierId]?.name : null) || null;
-                  const { error } = await supabase.from("balance_payments").insert({
-                    party_type: null,
-                    party_id: null,
-                    amount: parseFloat(addBalAmount),
-                    notes: addBalNotes || null,
-                    type: "adjustment",
-                    contact_name: contactName,
-                  } as any);
-                  if (error) throw error;
-                  toast.success("Balance added to unassigned");
-                  setShowAddBalance(false);
-                  setAddBalSupplierId("");
-                  setAddBalContactName("");
-                  setAddBalAmount("");
-                  setAddBalNotes("");
-                  loadData();
-                } catch (err: any) {
-                  toast.error(err.message);
-                } finally {
-                  setAddBalLoading(false);
-                }
-              }}
-              disabled={addBalLoading || !addBalAmount}
-              className="w-full"
-            >
-              {addBalLoading ? "Saving..." : "Add Balance"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Assign unassigned balance dialog */}
       <Dialog open={!!assigningPayment} onOpenChange={(v) => { if (!v) setAssigningPayment(null); }}>
@@ -841,21 +738,15 @@ export default function Balance() {
               <div className="text-sm">
                 Assigning <span className="font-bold">{fmt(assigningPayment.amount)}</span>
                 {assigningPayment.contact_name && <span className="text-muted-foreground"> ({assigningPayment.contact_name})</span>}
-                {assigningPayment.notes && <span className="text-muted-foreground"> · {assigningPayment.notes}</span>}
               </div>
               <div className="space-y-1.5">
-                <Label>Assign to existing balance</Label>
+                <Label>Assign to supplier</Label>
                 <Select value={assignSupplierId} onValueChange={setAssignSupplierId}>
-                  <SelectTrigger><SelectValue placeholder="Select supplier with balance" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    {supplierBalances.filter(b => (b.totalOwed - b.totalPaid) > 0).map(b => (
-                      <SelectItem key={b.supplierId} value={b.supplierId}>
-                        {b.displayName} — {fmt(b.totalOwed - b.totalPaid)} outstanding
-                      </SelectItem>
+                    {suppliers.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                     ))}
-                    {supplierBalances.filter(b => (b.totalOwed - b.totalPaid) > 0).length === 0 && (
-                      <div className="px-3 py-2 text-xs text-muted-foreground">No ongoing balances to assign to</div>
-                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -864,22 +755,11 @@ export default function Balance() {
                   if (!assignSupplierId || !assigningPayment) return;
                   setAssignLoading(true);
                   try {
-                    const targetBal = supplierBalances.find(b => b.supplierId === assignSupplierId);
-                    const isTradeKey = assignSupplierId.startsWith("trade_");
-                    const realSupplierId = isTradeKey 
-                      ? payments.find(p => p.party_type === "supplier" && p.contact_name?.toLowerCase() === assignSupplierId.replace("trade_", ""))?.party_id
-                      : assignSupplierId;
-                    const contactName = targetBal?.displayName || null;
-                    
                     const { error } = await supabase.from("balance_payments")
-                      .update({ 
-                        party_type: "supplier", 
-                        party_id: realSupplierId,
-                        contact_name: contactName,
-                      } as any)
+                      .update({ party_type: "supplier", party_id: assignSupplierId } as any)
                       .eq("id", assigningPayment.id);
                     if (error) throw error;
-                    toast.success("Balance assigned to supplier");
+                    toast.success("Balance assigned");
                     setAssigningPayment(null);
                     setAssignSupplierId("");
                     loadData();
@@ -899,7 +779,7 @@ export default function Balance() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Opening Balance dialog (from overview) */}
+      {/* Add Opening Balance dialog */}
       <Dialog open={showAddOpening} onOpenChange={(v) => { if (!v) { setShowAddOpening(false); setOpeningPartyId(""); setOpeningContactName(""); setOpeningAmount(""); setOpeningNotes(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -907,7 +787,7 @@ export default function Balance() {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
-              Bring in existing balances from before you started using the system. Pick a supplier or platform and enter the amount still outstanding.
+              Bring in existing balances from before you started using the system.
             </p>
             <div className="space-y-1.5">
               <Label>Type</Label>
@@ -922,11 +802,11 @@ export default function Balance() {
             {openingPartyType === "supplier" ? (
               <div className="space-y-1.5">
                 <Label>Supplier</Label>
-                <Select value={openingPartyId} onValueChange={(v) => { setOpeningPartyId(v); setOpeningContactName(""); }}>
+                <Select value={openingPartyId} onValueChange={setOpeningPartyId}>
                   <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    {supplierOptions.filter(s => supplierMap[s.id]?.name?.toLowerCase() !== "trade").map(item => (
-                      <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                    {suppliers.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

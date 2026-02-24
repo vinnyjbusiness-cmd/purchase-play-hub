@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Upload, Apple, Smartphone, Download } from "lucide-react";
+import { Upload, Apple, Smartphone, Download, ChevronDown, ChevronRight } from "lucide-react";
 
 interface Props {
   inventoryId: string | null;
@@ -25,6 +26,10 @@ interface InvDetail {
   seat: string | null;
   face_value: number | null;
   ticket_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  password: string | null;
   supporter_id: string | null;
   iphone_pass_link: string | null;
   android_pass_link: string | null;
@@ -42,13 +47,18 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
   const [rowName, setRowName] = useState("");
   const [seat, setSeat] = useState("");
   const [faceValue, setFaceValue] = useState("");
-  const [ticketName, setTicketName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [supporterId, setSupporterId] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [iphonePassLink, setIphonePassLink] = useState("");
   const [androidPassLink, setAndroidPassLink] = useState("");
   const [pkPassUrl, setPkPassUrl] = useState("");
   const [status, setStatus] = useState("");
   const [pkPassFile, setPkPassFile] = useState<File | null>(null);
+  const [loginOpen, setLoginOpen] = useState(true);
+  const [ticketOpen, setTicketOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -67,8 +77,11 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
       setRowName(d.row_name || "");
       setSeat(d.seat || "");
       setFaceValue(d.face_value != null ? String(d.face_value) : "");
-      setTicketName(d.ticket_name || "");
+      setFirstName(d.first_name || "");
+      setLastName(d.last_name || "");
       setSupporterId(d.supporter_id || "");
+      setEmail(d.email || "");
+      setPassword(d.password || "");
       setIphonePassLink(d.iphone_pass_link || "");
       setAndroidPassLink(d.android_pass_link || "");
       setPkPassUrl(d.pk_pass_url || "");
@@ -97,8 +110,12 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
       row_name: rowName || null,
       seat: seat || null,
       face_value: faceValue ? parseFloat(faceValue) : null,
-      ticket_name: ticketName || null,
+      ticket_name: [firstName, lastName].filter(Boolean).join(" ") || null,
+      first_name: firstName || null,
+      last_name: lastName || null,
       supporter_id: supporterId || null,
+      email: email || null,
+      password: password || null,
       iphone_pass_link: iphonePassLink || null,
       android_pass_link: androidPassLink || null,
       pk_pass_url: finalPkPassUrl || null,
@@ -135,27 +152,6 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
             </div>
           </div>
 
-          {/* Pass links display */}
-          {(item.iphone_pass_link || item.android_pass_link || item.pk_pass_url) && (
-            <div className="flex items-center gap-3">
-              {item.iphone_pass_link && (
-                <a href={item.iphone_pass_link} target="_blank" rel="noopener" className="flex items-center gap-1.5 text-xs text-primary hover:underline">
-                  <Apple className="h-3.5 w-3.5" /> iPhone Pass
-                </a>
-              )}
-              {item.android_pass_link && (
-                <a href={item.android_pass_link} target="_blank" rel="noopener" className="flex items-center gap-1.5 text-xs text-primary hover:underline">
-                  <Smartphone className="h-3.5 w-3.5" /> Android Pass
-                </a>
-              )}
-              {item.pk_pass_url && (
-                <a href={item.pk_pass_url} target="_blank" rel="noopener" className="flex items-center gap-1.5 text-xs text-primary hover:underline">
-                  <Download className="h-3.5 w-3.5" /> PK Pass
-                </a>
-              )}
-            </div>
-          )}
-
           <Separator />
 
           <div className="space-y-4">
@@ -172,17 +168,7 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Name</Label>
-                <Input value={ticketName} onChange={e => setTicketName(e.target.value)} placeholder="Ticket holder" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Supporter ID</Label>
-                <Input value={supporterId} onChange={e => setSupporterId(e.target.value)} placeholder="e.g. LFC-12345" />
-              </div>
-            </div>
-
+            {/* Seating Info */}
             <div className="space-y-1.5">
               <Label>Category</Label>
               <Input value={category} onChange={e => setCategory(e.target.value)} />
@@ -212,56 +198,118 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
               </div>
             </div>
 
-            <Separator />
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>iPhone Pass Link</Label>
-                <Input value={iphonePassLink} onChange={e => setIphonePassLink(e.target.value)} placeholder="https://..." />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Android Pass Link</Label>
-                <Input value={androidPassLink} onChange={e => setAndroidPassLink(e.target.value)} placeholder="https://..." />
-              </div>
-            </div>
-
-            {/* PK Pass upload */}
-            <div className="space-y-1.5">
-              <Label>PK Pass File</Label>
-              <div
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const file = e.dataTransfer.files[0];
-                  if (file && (file.name.endsWith(".pkpass") || file.name.endsWith(".pk"))) setPkPassFile(file);
-                  else toast.error("Please drop a .pkpass file");
-                }}
-                onDragOver={(e) => e.preventDefault()}
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30"
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pkpass,.pk"
-                  className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) setPkPassFile(f); }}
-                />
-                {pkPassFile ? (
-                  <div className="flex items-center justify-center gap-2 text-sm">
-                    <Upload className="h-4 w-4 text-primary" />
-                    <span className="font-medium">{pkPassFile.name}</span>
-                    <button onClick={(e) => { e.stopPropagation(); setPkPassFile(null); }} className="text-muted-foreground hover:text-destructive ml-2">✕</button>
+            {/* Login Details — Collapsible */}
+            <Collapsible open={loginOpen} onOpenChange={setLoginOpen}>
+              <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full py-2 border-t border-border">
+                {loginOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                Login Details
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-3 pt-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>First Name</Label>
+                    <Input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John" />
                   </div>
-                ) : pkPassUrl ? (
-                  <div className="text-sm text-primary">PK Pass uploaded — drop new file to replace</div>
-                ) : (
-                  <div className="text-sm text-muted-foreground">
-                    <Upload className="h-4 w-4 mx-auto mb-1 opacity-50" />
-                    Drag & drop .pkpass or click to browse
+                  <div className="space-y-1.5">
+                    <Label>Last Name</Label>
+                    <Input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Supporter ID</Label>
+                  <Input value={supporterId} onChange={e => setSupporterId(e.target.value)} placeholder="e.g. LFC-12345" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Email</Label>
+                    <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="john@example.com" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Password</Label>
+                    <Input value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+            {/* Ticket Details — Collapsible */}
+            <Collapsible open={ticketOpen} onOpenChange={setTicketOpen}>
+              <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full py-2 border-t border-border">
+                {ticketOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                Ticket Details
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-3 pt-2">
+                {/* Pass links display */}
+                {(item.iphone_pass_link || item.android_pass_link || item.pk_pass_url) && (
+                  <div className="flex items-center gap-3 mb-2">
+                    {item.iphone_pass_link && (
+                      <a href={item.iphone_pass_link} target="_blank" rel="noopener" className="flex items-center gap-1.5 text-xs text-primary hover:underline">
+                        <Apple className="h-3.5 w-3.5" /> iPhone Pass
+                      </a>
+                    )}
+                    {item.android_pass_link && (
+                      <a href={item.android_pass_link} target="_blank" rel="noopener" className="flex items-center gap-1.5 text-xs text-primary hover:underline">
+                        <Smartphone className="h-3.5 w-3.5" /> Android Pass
+                      </a>
+                    )}
+                    {item.pk_pass_url && (
+                      <a href={item.pk_pass_url} target="_blank" rel="noopener" className="flex items-center gap-1.5 text-xs text-primary hover:underline">
+                        <Download className="h-3.5 w-3.5" /> PK Pass
+                      </a>
+                    )}
                   </div>
                 )}
-              </div>
-            </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>iPhone Pass Link</Label>
+                    <Input value={iphonePassLink} onChange={e => setIphonePassLink(e.target.value)} placeholder="https://..." />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Android Pass Link</Label>
+                    <Input value={androidPassLink} onChange={e => setAndroidPassLink(e.target.value)} placeholder="https://..." />
+                  </div>
+                </div>
+
+                {/* PK Pass upload */}
+                <div className="space-y-1.5">
+                  <Label>PK Pass File</Label>
+                  <div
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const file = e.dataTransfer.files[0];
+                      if (file && (file.name.endsWith(".pkpass") || file.name.endsWith(".pk"))) setPkPassFile(file);
+                      else toast.error("Please drop a .pkpass file");
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30"
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pkpass,.pk"
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) setPkPassFile(f); }}
+                    />
+                    {pkPassFile ? (
+                      <div className="flex items-center justify-center gap-2 text-sm">
+                        <Upload className="h-4 w-4 text-primary" />
+                        <span className="font-medium">{pkPassFile.name}</span>
+                        <button onClick={(e) => { e.stopPropagation(); setPkPassFile(null); }} className="text-muted-foreground hover:text-destructive ml-2">✕</button>
+                      </div>
+                    ) : pkPassUrl ? (
+                      <div className="text-sm text-primary">PK Pass uploaded — drop new file to replace</div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">
+                        <Upload className="h-4 w-4 mx-auto mb-1 opacity-50" />
+                        Drag & drop .pkpass or click to browse
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
 
             <Button onClick={handleSave} className="w-full">Save Changes</Button>
           </div>
