@@ -24,6 +24,8 @@ import Team from "./pages/Team";
 import Cashflow from "./pages/Cashflow";
 import ResetPassword from "./pages/ResetPassword";
 import ActivityLog from "./pages/ActivityLog";
+import Wallet from "./pages/Wallet";
+import TodoList from "./pages/TodoList";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -104,6 +106,8 @@ const App = () => (
               <Route path="/health" element={<AdminOnly><Reconciliation /></AdminOnly>} />
               <Route path="/team" element={<AdminOnly><Team /></AdminOnly>} />
               <Route path="/activity" element={<AdminOnly><ActivityLog /></AdminOnly>} />
+              <Route path="/wallet" element={<PinProtected><Wallet /></PinProtected>} />
+              <Route path="/todos" element={<TodoList />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

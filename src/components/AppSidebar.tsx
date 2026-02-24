@@ -17,6 +17,8 @@ import {
   BarChart3,
   ChevronDown,
   ClipboardList,
+  Wallet as WalletIcon,
+  ListTodo,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -137,16 +139,19 @@ export default function AppSidebar() {
   const adminBottomItems = [
     { to: "/purchases", icon: Package, label: "Purchases" },
     { to: "/balance", icon: Scale, label: "Balances" },
+    { to: "/wallet", icon: WalletIcon, label: "Wallet" },
     { to: "/platforms", icon: Globe, label: "Platforms" },
     { to: "/analytics", icon: BarChart3, label: "Analytics" },
     { to: "/cashflow", icon: Banknote, label: "Cashflow" },
     { to: "/health", icon: HeartPulse, label: "Health" },
+    { to: "/todos", icon: ListTodo, label: "To-Do List" },
     { to: "/team", icon: Users, label: "Team" },
     { to: "/activity", icon: ClipboardList, label: "Activity Log" },
   ];
 
   const viewerBottomItems = [
     { to: "/purchases", icon: Package, label: "Purchases" },
+    { to: "/todos", icon: ListTodo, label: "To-Do List" },
   ];
 
   return (
