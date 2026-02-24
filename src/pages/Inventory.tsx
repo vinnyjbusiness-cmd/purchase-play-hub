@@ -373,17 +373,33 @@ export default function Inventory() {
 
               {isExpanded && (
                 <div className="border-t divide-y divide-border">
-                  {(() => {
-                    const allGroups = groupByQuantity(group.items);
-                    return allGroups.map(qg => (
+                {(() => {
+                    // Group items by section first, then by quantity within each section
+                    const sectionMap: Record<string, InventoryItem[]> = {};
+                    group.items.forEach(item => {
+                      const sec = item.section || item.category || "Unknown";
+                      if (!sectionMap[sec]) sectionMap[sec] = [];
+                      sectionMap[sec].push(item);
+                    });
+
+                    return Object.entries(sectionMap).map(([sectionName, sectionItems]) => {
+                      const allGroups = groupByQuantity(sectionItems);
+                      return (
+                        <div key={sectionName}>
+                          {/* Section header */}
+                          <div className="px-5 py-2 bg-muted/30 border-b border-border">
+                            <span className="text-xs font-semibold text-foreground">{sectionName}</span>
+                            <span className="text-xs text-muted-foreground ml-2">({sectionItems.length} ticket{sectionItems.length !== 1 ? "s" : ""})</span>
+                          </div>
+                          {allGroups.map(qg => (
                       <div key={qg.key}>
-                        {/* Group header */}
-                        <div className="px-5 py-2 bg-muted/20 flex items-center gap-2">
+                        {/* Quantity group header */}
+                        <div className="px-5 py-2 bg-muted/10 flex items-center gap-2">
                           <Badge variant="outline" className={cn("text-[10px] font-bold", getQtyColor(qg.qty))}>
                             {getQtyLabel(qg.qty)} ({qg.qty})
                           </Badge>
                           <span className="text-xs text-muted-foreground">
-                            {qg.items[0]?.section || qg.items[0]?.category} {qg.items[0]?.block ? `• Block ${qg.items[0].block}` : ""}
+                            {qg.items[0]?.block ? `Block ${qg.items[0].block}` : ""}
                           </span>
                         </div>
                         {/* Individual tickets in group */}
@@ -402,8 +418,8 @@ export default function Inventory() {
                                     {/* Seating info — always visible */}
                                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1 flex-1 text-sm">
                                       <div>
-                                        <span className="text-[10px] uppercase text-muted-foreground block">Category</span>
-                                        <span className="font-medium truncate">{item.category}</span>
+                                        <span className="text-[10px] uppercase text-muted-foreground block">Section</span>
+                                        <span className="font-medium truncate">{item.section || item.category || "—"}</span>
                                       </div>
                                       <div>
                                         <span className="text-[10px] uppercase text-muted-foreground block">Block</span>
@@ -545,7 +561,10 @@ export default function Inventory() {
                           );
                         })}
                       </div>
-                    ));
+                    ))}
+                        </div>
+                      );
+                    });
                   })()}
                 </div>
               )}

@@ -170,8 +170,8 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
 
             {/* Seating Info */}
             <div className="space-y-1.5">
-              <Label>Category</Label>
-              <Input value={category} onChange={e => setCategory(e.target.value)} />
+              <Label>Section</Label>
+              <Input value={section} onChange={e => setSection(e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
