@@ -999,6 +999,44 @@ export type Database = {
           },
         ]
       }
+      sent_emails: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          org_id: string | null
+          recipient_user_ids: string[]
+          sent_by: string | null
+          subject: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          org_id?: string | null
+          recipient_user_ids?: string[]
+          sent_by?: string | null
+          subject: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          org_id?: string | null
+          recipient_user_ids?: string[]
+          sent_by?: string | null
+          subject?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sent_emails_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           contact_email: string | null
@@ -1055,6 +1093,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          due_date: string | null
           id: string
           org_id: string | null
           priority: string
@@ -1068,6 +1107,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          due_date?: string | null
           id?: string
           org_id?: string | null
           priority?: string
@@ -1081,6 +1121,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          due_date?: string | null
           id?: string
           org_id?: string | null
           priority?: string

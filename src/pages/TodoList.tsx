@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { Button } from "@/components/ui/button";
@@ -9,10 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ListTodo, Plus, Pencil, Trash2 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ListTodo, Plus, Pencil, Trash2, ChevronDown, PartyPopper, Calendar as CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 
 interface Todo {
   id: string;
@@ -24,6 +27,7 @@ interface Todo {
   created_by: string | null;
   sort_order: number;
   created_at: string;
+  due_date: string | null;
 }
 
 interface Profile {
@@ -32,10 +36,10 @@ interface Profile {
 }
 
 const PRIORITY_CONFIG = {
-  urgent: { label: "Urgent", color: "bg-red-500/15 text-red-500 border-red-500/30", dot: "bg-red-500" },
-  high: { label: "High", color: "bg-orange-500/15 text-orange-500 border-orange-500/30", dot: "bg-orange-500" },
-  medium: { label: "Medium", color: "bg-yellow-500/15 text-yellow-500 border-yellow-500/30", dot: "bg-yellow-500" },
-  low: { label: "Low", color: "bg-blue-500/15 text-blue-500 border-blue-500/30", dot: "bg-blue-500" },
+  urgent: { label: "Urgent", color: "bg-red-500/15 text-red-500 border-red-500/30", dot: "bg-red-500", card: "border-l-4 border-l-red-500" },
+  high: { label: "High", color: "bg-orange-500/15 text-orange-500 border-orange-500/30", dot: "bg-orange-500", card: "border-l-4 border-l-orange-500" },
+  medium: { label: "Medium", color: "bg-blue-500/15 text-blue-500 border-blue-500/30", dot: "bg-blue-500", card: "border-l-4 border-l-blue-500" },
+  low: { label: "Low", color: "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/30", dot: "bg-muted-foreground", card: "border-l-4 border-l-muted" },
 };
 
 const PRIORITIES: Array<"urgent" | "high" | "medium" | "low"> = ["urgent", "high", "medium", "low"];
@@ -51,8 +55,11 @@ export default function TodoList() {
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<string>("medium");
   const [assignedTo, setAssignedTo] = useState("");
+  const [dueDate, setDueDate] = useState<Date | undefined>();
   const [saving, setSaving] = useState(false);
   const [groupBy, setGroupBy] = useState<"priority" | "status">("priority");
+  const [showDone, setShowDone] = useState(false);
+  const [celebrateId, setCelebrateId] = useState<string | null>(null);
 
   const loadData = () => {
     if (!orgId) return;
@@ -79,13 +86,18 @@ export default function TodoList() {
     members.map(m => ({ id: m.user_id, name: profileMap[m.user_id] || "Unknown" })).sort((a, b) => a.name.localeCompare(b.name)),
   [members, profileMap]);
 
+  const pendingTodos = useMemo(() => todos.filter(t => t.status === "pending"), [todos]);
+  const completedTodos = useMemo(() => todos.filter(t => t.status === "completed"), [todos]);
+
   const openCreate = () => {
-    setEditing(null); setTitle(""); setDescription(""); setPriority("medium"); setAssignedTo(""); setShowDialog(true);
+    setEditing(null); setTitle(""); setDescription(""); setPriority("medium"); setAssignedTo(""); setDueDate(undefined); setShowDialog(true);
   };
 
   const openEdit = (todo: Todo) => {
     setEditing(todo); setTitle(todo.title); setDescription(todo.description || "");
-    setPriority(todo.priority); setAssignedTo(todo.assigned_to || ""); setShowDialog(true);
+    setPriority(todo.priority); setAssignedTo(todo.assigned_to || "");
+    setDueDate(todo.due_date ? new Date(todo.due_date) : undefined);
+    setShowDialog(true);
   };
 
   const handleSave = async () => {
@@ -98,6 +110,7 @@ export default function TodoList() {
         priority,
         assigned_to: assignedTo || null,
         org_id: orgId,
+        due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
       };
       if (editing) {
         const { error } = await supabase.from("todos").update(payload).eq("id", editing.id);
@@ -123,6 +136,12 @@ export default function TodoList() {
   const toggleComplete = async (todo: Todo) => {
     const newStatus = todo.status === "completed" ? "pending" : "completed";
     await supabase.from("todos").update({ status: newStatus } as any).eq("id", todo.id);
+
+    if (newStatus === "completed") {
+      setCelebrateId(todo.id);
+      toast("🎉 Well done!", { description: `"${todo.title}" completed!`, duration: 3000 });
+      setTimeout(() => setCelebrateId(null), 2000);
+    }
     loadData();
   };
 
@@ -132,24 +151,71 @@ export default function TodoList() {
     loadData();
   };
 
-  // Group tasks
   const grouped = useMemo(() => {
     if (groupBy === "priority") {
       return PRIORITIES.map(p => ({
         key: p,
         label: PRIORITY_CONFIG[p].label,
         config: PRIORITY_CONFIG[p],
-        items: todos.filter(t => t.priority === p).sort((a, b) => a.sort_order - b.sort_order),
+        items: pendingTodos.filter(t => t.priority === p).sort((a, b) => a.sort_order - b.sort_order),
       })).filter(g => g.items.length > 0);
     }
-    return [
-      { key: "pending", label: "Pending", config: null, items: todos.filter(t => t.status === "pending").sort((a, b) => a.sort_order - b.sort_order) },
-      { key: "completed", label: "Completed", config: null, items: todos.filter(t => t.status === "completed").sort((a, b) => a.sort_order - b.sort_order) },
-    ].filter(g => g.items.length > 0);
-  }, [todos, groupBy]);
+    return [{
+      key: "pending", label: "Pending", config: null,
+      items: pendingTodos.sort((a, b) => a.sort_order - b.sort_order),
+    }].filter(g => g.items.length > 0);
+  }, [pendingTodos, groupBy]);
 
-  const pendingCount = todos.filter(t => t.status === "pending").length;
-  const completedCount = todos.filter(t => t.status === "completed").length;
+  const pendingCount = pendingTodos.length;
+  const completedCount = completedTodos.length;
+
+  const TodoItem = ({ todo }: { todo: Todo }) => (
+    <div
+      className={cn(
+        "px-4 py-3 flex items-start gap-3 transition-all",
+        PRIORITY_CONFIG[todo.priority].card,
+        todo.status === "completed" && "opacity-50",
+        celebrateId === todo.id && "animate-scale-in bg-success/5"
+      )}
+    >
+      <Checkbox
+        checked={todo.status === "completed"}
+        onCheckedChange={() => toggleComplete(todo)}
+        className="mt-1"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className={cn("text-sm font-medium", todo.status === "completed" && "line-through")}>{todo.title}</p>
+          <Badge variant="outline" className={cn("text-[10px]", PRIORITY_CONFIG[todo.priority].color)}>
+            {PRIORITY_CONFIG[todo.priority].label}
+          </Badge>
+        </div>
+        {todo.description && (
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{todo.description}</p>
+        )}
+        <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+          {todo.assigned_to && <span>👤 {profileMap[todo.assigned_to] || "Unassigned"}</span>}
+          {todo.due_date && (
+            <span className={cn(
+              "flex items-center gap-1",
+              new Date(todo.due_date) < new Date() && todo.status === "pending" && "text-destructive font-medium"
+            )}>
+              📅 {format(new Date(todo.due_date), "dd MMM")}
+            </span>
+          )}
+          <span>{format(new Date(todo.created_at), "dd MMM")}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(todo)}>
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteTodo(todo.id)}>
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-6">
@@ -158,7 +224,6 @@ export default function TodoList() {
           <ListTodo className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-bold tracking-tight">To-Do List</h1>
           <Badge variant="secondary">{pendingCount} pending</Badge>
-          {completedCount > 0 && <Badge variant="outline" className="text-muted-foreground">{completedCount} done</Badge>}
         </div>
         <div className="flex items-center gap-2">
           <Select value={groupBy} onValueChange={(v) => setGroupBy(v as any)}>
@@ -176,7 +241,7 @@ export default function TodoList() {
         </div>
       </div>
 
-      {todos.length === 0 ? (
+      {pendingTodos.length === 0 && completedTodos.length === 0 ? (
         <div className="rounded-xl border bg-card p-12 text-center">
           <ListTodo className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
           <p className="text-lg font-medium">No tasks yet</p>
@@ -193,49 +258,32 @@ export default function TodoList() {
                 <Badge variant="secondary" className="text-xs">{group.items.length}</Badge>
               </div>
               <div className="divide-y divide-border">
-                {group.items.map(todo => (
-                  <div
-                    key={todo.id}
-                    className={cn(
-                      "px-4 py-3 flex items-start gap-3 transition-colors",
-                      todo.status === "completed" && "opacity-50"
-                    )}
-                  >
-                    <Checkbox
-                      checked={todo.status === "completed"}
-                      onCheckedChange={() => toggleComplete(todo)}
-                      className="mt-1"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className={cn("text-sm font-medium", todo.status === "completed" && "line-through")}>{todo.title}</p>
-                        {groupBy !== "priority" && (
-                          <Badge variant="outline" className={cn("text-[10px]", PRIORITY_CONFIG[todo.priority].color)}>
-                            {PRIORITY_CONFIG[todo.priority].label}
-                          </Badge>
-                        )}
-                      </div>
-                      {todo.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{todo.description}</p>
-                      )}
-                      <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
-                        {todo.assigned_to && <span>👤 {profileMap[todo.assigned_to] || "Unassigned"}</span>}
-                        <span>{format(new Date(todo.created_at), "dd MMM")}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(todo)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteTodo(todo.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                {group.items.map(todo => <TodoItem key={todo.id} todo={todo} />)}
               </div>
             </div>
           ))}
+
+          {/* Completed tasks collapsible */}
+          {completedCount > 0 && (
+            <Collapsible open={showDone} onOpenChange={setShowDone}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between text-muted-foreground hover:text-foreground">
+                  <span className="flex items-center gap-2">
+                    <PartyPopper className="h-4 w-4" />
+                    Done ({completedCount})
+                  </span>
+                  <ChevronDown className={cn("h-4 w-4 transition-transform", showDone && "rotate-180")} />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="rounded-xl border bg-card overflow-hidden mt-2">
+                  <div className="divide-y divide-border">
+                    {completedTodos.map(todo => <TodoItem key={todo.id} todo={todo} />)}
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
         </div>
       )}
 
@@ -283,6 +331,20 @@ export default function TodoList() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Due Date (optional)</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !dueDate && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dueDate ? format(dueDate, "dd MMM yyyy") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={dueDate} onSelect={setDueDate} initialFocus />
+                </PopoverContent>
+              </Popover>
             </div>
             <Button onClick={handleSave} disabled={saving || !title.trim()} className="w-full">
               {saving ? "Saving..." : editing ? "Update Task" : "Create Task"}
