@@ -16,6 +16,7 @@ import {
   Banknote,
   BarChart3,
   ChevronDown,
+  ClipboardList,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -141,6 +142,7 @@ export default function AppSidebar() {
     { to: "/cashflow", icon: Banknote, label: "Cashflow" },
     { to: "/health", icon: HeartPulse, label: "Health" },
     { to: "/team", icon: Users, label: "Team" },
+    { to: "/activity", icon: ClipboardList, label: "Activity Log" },
   ];
 
   const viewerBottomItems = [

@@ -23,6 +23,7 @@ import EventDetail from "./pages/EventDetail";
 import Team from "./pages/Team";
 import Cashflow from "./pages/Cashflow";
 import ResetPassword from "./pages/ResetPassword";
+import ActivityLog from "./pages/ActivityLog";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -102,6 +103,7 @@ const App = () => (
               <Route path="/cashflow" element={<PinProtected><Cashflow /></PinProtected>} />
               <Route path="/health" element={<AdminOnly><Reconciliation /></AdminOnly>} />
               <Route path="/team" element={<AdminOnly><Team /></AdminOnly>} />
+              <Route path="/activity" element={<AdminOnly><ActivityLog /></AdminOnly>} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
