@@ -65,6 +65,14 @@ export default function Balance() {
   const [openingNotes, setOpeningNotes] = useState("");
   const [openingLoading, setOpeningLoading] = useState(false);
 
+  // Add Balance dialog
+  const [showAddBalance, setShowAddBalance] = useState(false);
+  const [addBalPartyType, setAddBalPartyType] = useState<"supplier" | "platform">("supplier");
+  const [addBalPartyId, setAddBalPartyId] = useState("");
+  const [addBalAmount, setAddBalAmount] = useState("");
+  const [addBalNotes, setAddBalNotes] = useState("");
+  const [addBalLoading, setAddBalLoading] = useState(false);
+
   // Assign unassigned balance dialog
   const [assigningPayment, setAssigningPayment] = useState<BalancePayment | null>(null);
   const [assignSupplierId, setAssignSupplierId] = useState("");
@@ -288,6 +296,31 @@ export default function Balance() {
       toast.error(err.message);
     } finally {
       setOpeningLoading(false);
+    }
+  };
+
+  const handleAddBalance = async () => {
+    if (!addBalPartyId || !addBalAmount) return;
+    setAddBalLoading(true);
+    try {
+      const { error } = await supabase.from("balance_payments").insert({
+        party_type: addBalPartyType,
+        party_id: addBalPartyId,
+        amount: parseFloat(addBalAmount),
+        notes: addBalNotes || null,
+        type: "payment",
+      } as any);
+      if (error) throw error;
+      toast.success("Balance added");
+      setShowAddBalance(false);
+      setAddBalPartyId("");
+      setAddBalAmount("");
+      setAddBalNotes("");
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setAddBalLoading(false);
     }
   };
 
@@ -569,9 +602,14 @@ export default function Balance() {
             <h1 className="text-2xl font-bold tracking-tight">Balances</h1>
             <p className="text-sm text-muted-foreground mt-1">Running balances across all events. Click a card to see details & record payments.</p>
           </div>
-          <Button variant="outline" onClick={() => setShowAddOpening(true)}>
-            <BookOpen className="h-4 w-4 mr-1.5" /> Add Opening Balance
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={() => setShowAddBalance(true)}>
+              <Plus className="h-4 w-4 mr-1.5" /> Add Balance
+            </Button>
+            <Button variant="outline" onClick={() => setShowAddOpening(true)}>
+              <BookOpen className="h-4 w-4 mr-1.5" /> Add Opening Balance
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -827,6 +865,49 @@ export default function Balance() {
             </div>
             <Button onClick={handleAddOpening} disabled={openingLoading || !openingAmount || (openingPartyType === "supplier" && !openingPartyId) || (openingPartyType === "platform" && !openingContactName.trim())} className="w-full">
               {openingLoading ? "Saving..." : "Add Opening Balance"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Balance dialog */}
+      <Dialog open={showAddBalance} onOpenChange={(v) => { if (!v) { setShowAddBalance(false); setAddBalPartyId(""); setAddBalAmount(""); setAddBalNotes(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Plus className="h-4 w-4" /> Add Balance</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+              <Select value={addBalPartyType} onValueChange={(v) => { setAddBalPartyType(v as any); setAddBalPartyId(""); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-popover z-50">
+                  <SelectItem value="supplier">Supplier Payment</SelectItem>
+                  <SelectItem value="platform">Platform Payment</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{addBalPartyType === "supplier" ? "Supplier" : "Platform"}</Label>
+              <Select value={addBalPartyId} onValueChange={setAddBalPartyId}>
+                <SelectTrigger><SelectValue placeholder={`Select ${addBalPartyType}`} /></SelectTrigger>
+                <SelectContent className="bg-popover z-50">
+                  {(addBalPartyType === "supplier" ? suppliers : platforms).map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Amount (£)</Label>
+              <Input type="number" step="0.01" min="0" value={addBalAmount} onChange={e => setAddBalAmount(e.target.value)} placeholder="0.00" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notes (optional)</Label>
+              <Textarea value={addBalNotes} onChange={e => setAddBalNotes(e.target.value)} placeholder="Payment reference, notes..." rows={2} maxLength={200} />
+            </div>
+            <Button onClick={handleAddBalance} disabled={addBalLoading || !addBalPartyId || !addBalAmount} className="w-full">
+              {addBalLoading ? "Saving..." : "Add Balance"}
             </Button>
           </div>
         </DialogContent>
