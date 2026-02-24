@@ -369,204 +369,207 @@ export default function Inventory() {
                 </div>
               </button>
 
-              {isExpanded && (
-                <div className="border-t divide-y divide-border">
-                {(() => {
-                    // Group items by section first, then by quantity within each section
-                    const sectionMap: Record<string, InventoryItem[]> = {};
-                    group.items.forEach(item => {
-                      const sec = item.section || item.category || "Unknown";
-                      if (!sectionMap[sec]) sectionMap[sec] = [];
-                      sectionMap[sec].push(item);
-                    });
+              {isExpanded && (() => {
+                // Group items by section
+                const sectionMap: Record<string, InventoryItem[]> = {};
+                group.items.forEach(item => {
+                  const sec = item.section || item.category || "Unknown";
+                  if (!sectionMap[sec]) sectionMap[sec] = [];
+                  sectionMap[sec].push(item);
+                });
+                const sectionEntries = Object.entries(sectionMap);
+                const uniqueSections = sectionEntries.length;
 
-                    return Object.entries(sectionMap).map(([sectionName, sectionItems]) => {
+                return (
+                  <div className="border-t">
+                    {/* Event hero header */}
+                    <div className="px-6 py-6 bg-muted/20 text-center space-y-3">
+                      <h2 className="text-xl sm:text-2xl font-black tracking-tight uppercase">
+                        {group.event ? (
+                          <>{group.event.home_team} <span className="text-destructive">v</span> {group.event.away_team}</>
+                        ) : "Unknown Event"}
+                      </h2>
+                      {eventDate && (
+                        <p className="text-xs tracking-widest text-muted-foreground uppercase font-mono">
+                          {format(eventDate, "dd MMMM yyyy")} · {format(eventDate, "HH:mm")}
+                          {group.event?.venue && <> · {group.event.venue}</>}
+                        </p>
+                      )}
+                      {/* Stats bar */}
+                      <div className="inline-flex items-center gap-6 border rounded-lg px-6 py-3 bg-card mt-2">
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-primary font-mono">{total}</p>
+                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Total Tickets</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-primary font-mono">{assigned}</p>
+                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Assigned</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-primary font-mono">{uniqueSections}</p>
+                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Sections</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sections */}
+                    {sectionEntries.map(([sectionName, sectionItems]) => {
                       const allGroups = groupByQuantity(sectionItems);
                       return (
-                        <div key={sectionName}>
-                          {/* Section header */}
-                          <div className="px-5 py-2 bg-muted/30 border-b border-border">
-                            <span className="text-xs font-semibold text-foreground">{sectionName}</span>
-                            <span className="text-xs text-muted-foreground ml-2">({sectionItems.length} ticket{sectionItems.length !== 1 ? "s" : ""})</span>
+                        <div key={sectionName} className="px-5 py-4 space-y-3">
+                          {/* Section title */}
+                          <div className="flex items-center gap-3">
+                            <h3 className="text-sm font-black uppercase tracking-wide">{sectionName}</h3>
+                            <Badge className="bg-destructive text-destructive-foreground text-[10px] font-bold uppercase tracking-wider">
+                              {sectionItems.length} Ticket{sectionItems.length !== 1 ? "s" : ""}
+                            </Badge>
                           </div>
-                          {allGroups.map(qg => (
-                      <div key={qg.key} className="mx-3 my-3 rounded-xl border-2 border-dashed border-border bg-muted/10 overflow-hidden">
-                        {/* Quantity group header */}
-                        <div className="px-4 py-2 bg-muted/30 flex items-center gap-2 rounded-t-lg">
-                          <Badge variant="outline" className={cn("text-[10px] font-bold", getQtyColor(qg.qty))}>
-                            {getQtyLabel(qg.qty)} ({qg.qty})
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {qg.items[0]?.block ? `Block ${qg.items[0].block}` : ""}
-                            {qg.items[0]?.row_name ? ` · Row ${qg.items[0].row_name}` : ""}
-                            {qg.qty > 1 ? ` · Seats ${qg.items.map(i => i.seat).filter(Boolean).join(", ")}` : ""}
-                          </span>
-                        </div>
-                        {/* Individual tickets in group */}
-                        {qg.items.map(item => {
-                          const hasPassLinks = item.iphone_pass_link || item.android_pass_link || item.pk_pass_url;
-                          const hasLoginDetails = item.first_name || item.last_name || item.email || item.password || item.supporter_id;
-                          const isExpanded = expandedItems.has(item.id);
 
-                          return (
-                            <div key={item.id} className="border-t border-border/50 last:border-b-0">
-                              {/* Clickable main row */}
-                              <button
-                                onClick={() => toggleItemExpanded(item.id)}
-                                className="w-full px-5 py-3 hover:bg-muted/20 transition-colors text-left"
-                              >
-                                <div className="flex items-center justify-between gap-3">
-                                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1 flex-1 text-sm">
-                                    <div>
-                                      <span className="text-[10px] uppercase text-muted-foreground block">Section</span>
-                                      <span className="font-medium truncate">{item.section || item.category || "—"}</span>
+                          {/* Grouped ticket cards */}
+                          <div className="space-y-3">
+                            {allGroups.map(qg => {
+                              const email = qg.items[0]?.email;
+                              const area = qg.items[0]?.block;
+                              const row = qg.items[0]?.row_name;
+                              const seats = qg.items.map(i => i.seat).filter(Boolean).join(", ");
+
+                              return (
+                                <div key={qg.key} className="rounded-xl border bg-card overflow-hidden">
+                                  {/* Group header: email + area/row/seats + ticket count */}
+                                  <div className="px-5 py-3 flex items-start justify-between gap-4">
+                                    <div className="space-y-1">
+                                      {email && (
+                                        <p className="text-sm font-medium text-primary">{email}</p>
+                                      )}
+                                      <p className="text-xs text-muted-foreground font-mono">
+                                        {area && <>Area <span className="text-foreground font-semibold">{area}</span></>}
+                                        {row && <>{area ? " · " : ""}Row <span className="text-foreground font-semibold">{row}</span></>}
+                                        {seats && <>{(area || row) ? " · " : ""}Seats <span className="text-foreground font-semibold">{seats}</span></>}
+                                      </p>
                                     </div>
-                                    <div>
-                                      <span className="text-[10px] uppercase text-muted-foreground block">Block</span>
-                                      <span className="font-medium">{item.block || "—"}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] uppercase text-muted-foreground block">Row</span>
-                                      <span className="font-medium">{item.row_name || "—"}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] uppercase text-muted-foreground block">Seat</span>
-                                      <span className="font-medium">{item.seat || "—"}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] uppercase text-muted-foreground block">Face Value</span>
-                                      <span className="font-medium">{item.face_value != null ? `£${Number(item.face_value).toFixed(2)}` : "—"}</span>
+                                    <div className="text-right shrink-0">
+                                      <p className="text-xl font-bold text-destructive">{qg.qty}</p>
+                                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ticket{qg.qty !== 1 ? "s" : ""}</p>
                                     </div>
                                   </div>
 
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <Badge variant="outline" className={cn("text-[10px]", statusColor[item.status] || "")}>
-                                      {item.status}
-                                    </Badge>
-                                    <Badge variant="outline" className={cn("text-[10px]", assignedSet.has(item.id) ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground")}>
-                                      {assignedSet.has(item.id) ? "Assigned" : "Unassigned"}
-                                    </Badge>
-                                    {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                                  {/* Individual ticket chips */}
+                                  <div className="px-5 pb-4 flex flex-wrap gap-2">
+                                    {qg.items.map((item, idx) => (
+                                      <button
+                                        key={item.id}
+                                        onClick={() => toggleItemExpanded(item.id)}
+                                        className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 hover:bg-muted/60 transition-colors text-left"
+                                      >
+                                        <span className="flex items-center justify-center h-7 w-7 rounded bg-destructive/10 text-destructive text-xs font-bold font-mono">
+                                          {item.seat || (idx + 1)}
+                                        </span>
+                                        <div className="text-xs">
+                                          <p className="font-medium">{[item.first_name, item.last_name].filter(Boolean).join(" ") || "—"}</p>
+                                          <p className="text-muted-foreground">Ticket {idx + 1}/{qg.qty}</p>
+                                        </div>
+                                        {item.row_name && (
+                                          <Badge variant="outline" className="text-[9px] ml-1 font-mono">R{item.row_name}</Badge>
+                                        )}
+                                        <Badge variant="outline" className={cn("text-[9px] ml-auto", statusColor[item.status] || "")}>
+                                          {item.status}
+                                        </Badge>
+                                      </button>
+                                    ))}
                                   </div>
-                                </div>
-                              </button>
 
-                              {/* Expanded details */}
-                              {isExpanded && (
-                                <div className="px-5 pb-4 space-y-3">
-                                  {/* Login Details */}
-                                  {hasLoginDetails && (
-                                    <div className="rounded-lg bg-muted/30 p-3">
-                                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Login Details</p>
-                                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                                        {(item.first_name || item.last_name) && (
-                                          <div>
-                                            <span className="text-muted-foreground block">Name</span>
-                                            <span className="font-medium">{[item.first_name, item.last_name].filter(Boolean).join(" ")}</span>
-                                          </div>
-                                        )}
-                                        {item.supporter_id && (
-                                          <div className="flex items-center gap-1">
-                                            <div>
-                                              <span className="text-muted-foreground block">Supporter ID</span>
-                                              <span className="font-mono font-medium">{item.supporter_id}</span>
+                                  {/* Expanded details for individual tickets */}
+                                  {qg.items.filter(item => expandedItems.has(item.id)).map(item => {
+                                    const hasPassLinks = item.iphone_pass_link || item.android_pass_link || item.pk_pass_url;
+                                    const hasLoginDetails = item.first_name || item.last_name || item.email || item.password || item.supporter_id;
+                                    return (
+                                      <div key={`detail-${item.id}`} className="border-t px-5 py-3 space-y-3 bg-muted/10">
+                                        <p className="text-xs font-semibold text-muted-foreground">
+                                          Seat {item.seat || "—"} · {[item.first_name, item.last_name].filter(Boolean).join(" ") || "Unknown"}
+                                        </p>
+                                        {hasLoginDetails && (
+                                          <div className="rounded-lg bg-muted/30 p-3">
+                                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Login Details</p>
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                              {item.supporter_id && (
+                                                <div className="flex items-center gap-1">
+                                                  <div>
+                                                    <span className="text-muted-foreground block">Supporter ID</span>
+                                                    <span className="font-mono font-medium">{item.supporter_id}</span>
+                                                  </div>
+                                                  <CopyButton text={item.supporter_id} />
+                                                </div>
+                                              )}
+                                              {item.email && (
+                                                <div className="flex items-center gap-1">
+                                                  <div>
+                                                    <span className="text-muted-foreground block">Email</span>
+                                                    <span className="font-medium">{item.email}</span>
+                                                  </div>
+                                                  <CopyButton text={item.email} />
+                                                </div>
+                                              )}
+                                              {item.password && (
+                                                <div className="flex items-center gap-1">
+                                                  <div>
+                                                    <span className="text-muted-foreground block">Password</span>
+                                                    <span className="font-mono font-medium">{item.password}</span>
+                                                  </div>
+                                                  <CopyButton text={item.password} />
+                                                </div>
+                                              )}
                                             </div>
-                                            <CopyButton text={item.supporter_id} />
                                           </div>
                                         )}
-                                        {item.email && (
-                                          <div className="flex items-center gap-1">
-                                            <div>
-                                              <span className="text-muted-foreground block">Email</span>
-                                              <span className="font-medium">{item.email}</span>
+                                        {hasPassLinks && (
+                                          <div className="rounded-lg bg-muted/30 p-3">
+                                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Digital Passes</p>
+                                            <div className="space-y-2">
+                                              {item.iphone_pass_link && (
+                                                <div className="flex items-center gap-2 text-xs">
+                                                  <Apple className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                  <a href={item.iphone_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>{item.iphone_pass_link}</a>
+                                                  <CopyButton text={item.iphone_pass_link} />
+                                                </div>
+                                              )}
+                                              {item.android_pass_link && (
+                                                <div className="flex items-center gap-2 text-xs">
+                                                  <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                  <a href={item.android_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>{item.android_pass_link}</a>
+                                                  <CopyButton text={item.android_pass_link} />
+                                                </div>
+                                              )}
+                                              {item.pk_pass_url && (
+                                                <div className="flex items-center gap-2 text-xs">
+                                                  <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                  <a href={item.pk_pass_url} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>Download</a>
+                                                  <CopyButton text={item.pk_pass_url} />
+                                                </div>
+                                              )}
                                             </div>
-                                            <CopyButton text={item.email} />
                                           </div>
                                         )}
-                                        {item.password && (
-                                          <div className="flex items-center gap-1">
-                                            <div>
-                                              <span className="text-muted-foreground block">Password</span>
-                                              <span className="font-mono font-medium">{item.password}</span>
-                                            </div>
-                                            <CopyButton text={item.password} />
-                                          </div>
-                                        )}
+                                        <div className="flex items-center gap-2 pt-1">
+                                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSelectedId(item.id)}>
+                                            <Pencil className="h-3 w-3 mr-1" /> Edit
+                                          </Button>
+                                          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10" onClick={(e) => handleDelete(e, item)}>
+                                            <Trash2 className="h-3 w-3 mr-1" /> Delete
+                                          </Button>
+                                        </div>
                                       </div>
-                                    </div>
-                                  )}
-
-                                  {/* Ticket Details */}
-                                  {hasPassLinks && (
-                                    <div className="rounded-lg bg-muted/30 p-3">
-                                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Ticket Details</p>
-                                      <div className="space-y-2">
-                                        {item.iphone_pass_link && (
-                                          <div className="flex items-center gap-2 text-xs">
-                                            <Apple className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                            <span className="text-muted-foreground shrink-0">iPhone:</span>
-                                            <a href={item.iphone_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
-                                              {item.iphone_pass_link}
-                                            </a>
-                                            <CopyButton text={item.iphone_pass_link} />
-                                          </div>
-                                        )}
-                                        {item.android_pass_link && (
-                                          <div className="flex items-center gap-2 text-xs">
-                                            <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                            <span className="text-muted-foreground shrink-0">Android:</span>
-                                            <a href={item.android_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
-                                              {item.android_pass_link}
-                                            </a>
-                                            <CopyButton text={item.android_pass_link} />
-                                          </div>
-                                        )}
-                                        {item.pk_pass_url && (
-                                          <div className="flex items-center gap-2 text-xs">
-                                            <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                            <span className="text-muted-foreground shrink-0">PK Pass:</span>
-                                            <a href={item.pk_pass_url} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>
-                                              Download
-                                            </a>
-                                            <CopyButton text={item.pk_pass_url} />
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Action buttons */}
-                                  <div className="flex items-center gap-2 pt-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-7 text-xs"
-                                      onClick={() => setSelectedId(item.id)}
-                                    >
-                                      <Pencil className="h-3 w-3 mr-1" /> Edit
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={(e) => handleDelete(e, item)}
-                                    >
-                                      <Trash2 className="h-3 w-3 mr-1" /> Delete
-                                    </Button>
-                                  </div>
+                                    );
+                                  })}
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
+                              );
+                            })}
+                          </div>
                         </div>
                       );
-                    });
-                  })()}
-                </div>
-              )}
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
