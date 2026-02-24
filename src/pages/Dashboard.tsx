@@ -14,6 +14,7 @@ import {
   Package,
   CircleDot,
 } from "lucide-react";
+import { deduplicateEvents } from "@/lib/eventDedup";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -67,7 +68,8 @@ export default function Dashboard() {
 
       const now = new Date();
       const sevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-      setUpcomingEvents(allEvents.filter(e => {
+      const { unique: dedupedEvents } = deduplicateEvents(allEvents);
+      setUpcomingEvents(dedupedEvents.filter(e => {
         const d = new Date(e.event_date);
         return d >= now && d <= sevenDays;
       }));

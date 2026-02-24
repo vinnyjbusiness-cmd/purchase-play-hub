@@ -7,6 +7,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { CLUBS } from "@/lib/seatingSections";
 import { cn } from "@/lib/utils";
+import { deduplicateEvents } from "@/lib/eventDedup";
 
 interface Purchase {
   id: string;
@@ -86,19 +87,28 @@ export default function Finance() {
   const platformMap = useMemo(() => Object.fromEntries(platforms.map(p => [p.id, p])), [platforms]);
 
   // Filter events by club
+  const { unique: dedupedEvents, groupedIds } = useMemo(() => deduplicateEvents(events), [events]);
+
   const clubEvents = useMemo(() => {
-    const filtered = club ? events.filter(e => matchesClub(e, club)) : events;
+    const filtered = club ? dedupedEvents.filter(e => matchesClub(e, club)) : dedupedEvents;
     const eventIdsWithData = new Set([
       ...orders.map(o => o.event_id),
       ...purchases.map(p => p.event_id),
     ]);
     return filtered
-      .filter(ev => eventIdsWithData.has(ev.id))
+      .filter(ev => {
+        const allIds = groupedIds[ev.id] || [ev.id];
+        return allIds.some(id => eventIdsWithData.has(id));
+      })
       .sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
-  }, [events, orders, purchases, club]);
+  }, [dedupedEvents, groupedIds, orders, purchases, club]);
 
   // Totals for header
-  const clubEventIds = useMemo(() => new Set(clubEvents.map(e => e.id)), [clubEvents]);
+  const clubEventIds = useMemo(() => {
+    const ids = new Set<string>();
+    clubEvents.forEach(e => (groupedIds[e.id] || [e.id]).forEach(id => ids.add(id)));
+    return ids;
+  }, [clubEvents, groupedIds]);
   const clubPurchases = useMemo(() => purchases.filter(p => clubEventIds.has(p.event_id)), [purchases, clubEventIds]);
   const clubOrders = useMemo(() => orders.filter(o => clubEventIds.has(o.event_id)), [orders, clubEventIds]);
 
@@ -126,8 +136,9 @@ export default function Finance() {
 
   // Selected event data
   const selEvent = clubEvents.find(e => e.id === selectedEvent);
-  const selPurchases = useMemo(() => selectedEvent ? purchases.filter(p => p.event_id === selectedEvent) : [], [purchases, selectedEvent]);
-  const selOrders = useMemo(() => selectedEvent ? orders.filter(o => o.event_id === selectedEvent) : [], [orders, selectedEvent]);
+  const selEventIds = useMemo(() => selectedEvent ? new Set(groupedIds[selectedEvent] || [selectedEvent]) : new Set<string>(), [selectedEvent, groupedIds]);
+  const selPurchases = useMemo(() => selectedEvent ? purchases.filter(p => selEventIds.has(p.event_id)) : [], [purchases, selEventIds, selectedEvent]);
+  const selOrders = useMemo(() => selectedEvent ? orders.filter(o => selEventIds.has(o.event_id)) : [], [orders, selEventIds, selectedEvent]);
 
   // Helper: parse supplier/website name from notes
   const getSupplierDisplayName = (p: Purchase): string => {
@@ -183,8 +194,9 @@ export default function Finance() {
         <div className="flex flex-wrap gap-2">
           {clubEvents.map(ev => {
             const isSelected = selectedEvent === ev.id;
-            const evPurchasesUnpaid = purchases.filter(p => p.event_id === ev.id && !p.supplier_paid);
-            const evOrdersUnpaid = orders.filter(o => o.event_id === ev.id && !o.payment_received && o.status !== "cancelled" && o.status !== "refunded");
+            const allIds = groupedIds[ev.id] || [ev.id];
+            const evPurchasesUnpaid = purchases.filter(p => allIds.includes(p.event_id) && !p.supplier_paid);
+            const evOrdersUnpaid = orders.filter(o => allIds.includes(o.event_id) && !o.payment_received && o.status !== "cancelled" && o.status !== "refunded");
             const hasUnpaid = evPurchasesUnpaid.length > 0 || evOrdersUnpaid.length > 0;
             return (
               <button

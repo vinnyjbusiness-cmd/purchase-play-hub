@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, Smartphone, Copy, Check, Download, Zap, CheckCircle2, CalendarIcon, Trash2 } from "lucide-react";
+import { getEventKey } from "@/lib/eventDedup";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours, addDays, addWeeks, addMonths } from "date-fns";
 import { toast } from "sonner";
@@ -56,7 +57,7 @@ interface Order {
   currency: string;
   event_id: string;
   platform_id: string | null;
-  events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
+  events: { match_code: string; home_team: string; away_team: string; event_date: string; venue: string | null } | null;
   platforms: { name: string } | null;
 }
 
@@ -154,7 +155,7 @@ export default function Orders() {
   const load = useCallback(async () => {
     const { data: ordersData } = await supabase
       .from("orders")
-      .select("*, events(match_code, home_team, away_team, event_date), platforms(name)")
+      .select("*, events(match_code, home_team, away_team, event_date, venue), platforms(name)")
       .order("order_date", { ascending: false });
     const loadedOrders = (ordersData as any) || [];
     setOrders(loadedOrders);
@@ -225,7 +226,10 @@ export default function Orders() {
   const eventOptions = useMemo(() => {
     const seen = new Map<string, string>();
     orders.forEach(o => {
-      if (o.events) seen.set(o.events.match_code, `${o.events.match_code} — ${o.events.home_team} vs ${o.events.away_team}`);
+      if (o.events) {
+        const key = getEventKey(o.events.home_team, o.events.away_team, o.events.event_date);
+        if (!seen.has(key)) seen.set(key, `${o.events.home_team} vs ${o.events.away_team}`);
+      }
     });
     return [...seen.entries()].map(([value, label]) => ({ value, label }));
   }, [orders]);
@@ -268,7 +272,11 @@ export default function Orders() {
     }
 
     if (filterPlatform !== "all" && o.platforms?.name !== filterPlatform) return false;
-    if (filterEvent !== "all" && o.events?.match_code !== filterEvent) return false;
+    if (filterEvent !== "all") {
+      const ev = o.events;
+      if (!ev) return false;
+      if (getEventKey(ev.home_team, ev.away_team, ev.event_date) !== filterEvent) return false;
+    }
     if (filterDelivery !== "all" && (o.delivery_status || "pending") !== filterDelivery) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -287,13 +295,26 @@ export default function Orders() {
 
   // Group by event
   const grouped = useMemo(() => {
-    const map: Record<string, { event: Order["events"]; eventId: string; orders: Order[] }> = {};
+    const map = new Map<string, { event: Order["events"]; eventIds: string[]; orders: Order[] }>();
     filtered.forEach(o => {
-      const key = o.event_id;
-      if (!map[key]) map[key] = { event: o.events, eventId: key, orders: [] };
-      map[key].orders.push(o);
+      const ev = o.events;
+      if (!ev) {
+        const fallback = o.event_id;
+        if (!map.has(fallback)) map.set(fallback, { event: null, eventIds: [fallback], orders: [] });
+        map.get(fallback)!.orders.push(o);
+        return;
+      }
+      const key = getEventKey(ev.home_team, ev.away_team, ev.event_date);
+      if (!map.has(key)) {
+        map.set(key, { event: ev, eventIds: [o.event_id], orders: [] });
+      } else {
+        const group = map.get(key)!;
+        if (!group.eventIds.includes(o.event_id)) group.eventIds.push(o.event_id);
+        if (ev.venue && !group.event?.venue) group.event = ev;
+      }
+      map.get(key)!.orders.push(o);
     });
-    return Object.values(map).sort((a, b) => {
+    return [...map.values()].sort((a, b) => {
       const da = a.event?.event_date || "";
       const db = b.event?.event_date || "";
       return da.localeCompare(db);
@@ -415,20 +436,18 @@ export default function Orders() {
           const assignedCount = group.orders.filter(o => isFullyAssigned(o)).length;
 
           return (
-            <div key={group.eventId} className="rounded-xl border bg-card overflow-hidden shadow-sm">
+            <div key={group.eventIds[0]} className="rounded-xl border bg-card overflow-hidden shadow-sm">
               {/* Game header */}
               <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/40">
                 <div className="flex items-center gap-4">
                   <div>
                     <p className="font-bold text-base">
                       {group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event"}
+                      {group.event?.venue && <span className="text-muted-foreground font-normal text-sm ml-2">— {group.event.venue}</span>}
                     </p>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-xs text-muted-foreground font-mono">{group.event?.match_code}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {group.event?.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}
-                      </span>
-                    </div>
+                    <p className="text-sm font-bold text-foreground mt-0.5">
+                      {group.event?.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-5">
