@@ -78,6 +78,7 @@ export default function Inventory() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [orderLines, setOrderLines] = useState<OrderLine[]>([]);
   const [search, setSearch] = useState("");
+  const [filterEvent, setFilterEvent] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -99,7 +100,16 @@ export default function Inventory() {
 
   const assignedSet = useMemo(() => new Set(orderLines.map(ol => ol.inventory_id)), [orderLines]);
 
+  const eventOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    items.forEach(i => {
+      if (i.events) seen.set(i.events.match_code, `${i.events.match_code} — ${i.events.home_team} vs ${i.events.away_team}`);
+    });
+    return [...seen.entries()].map(([value, label]) => ({ value, label }));
+  }, [items]);
+
   const filtered = items.filter((i) => {
+    if (filterEvent !== "all" && i.events?.match_code !== filterEvent) return false;
     if (filterStatus !== "all" && i.status !== filterStatus) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -169,6 +179,7 @@ export default function Inventory() {
             <Input placeholder="Search inventory..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
           </div>
         </div>
+        <FilterSelect label="Game" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
         <FilterSelect label="Status" value={filterStatus} onValueChange={setFilterStatus} options={[
           { value: "available", label: "Available" },
           { value: "reserved", label: "Reserved" },
