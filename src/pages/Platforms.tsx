@@ -98,7 +98,7 @@ export default function Platforms() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Platforms</h1>
         <p className="text-muted-foreground">{platforms.length} platform{platforms.length !== 1 ? "s" : ""} configured</p>

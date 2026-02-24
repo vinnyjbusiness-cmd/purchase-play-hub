@@ -151,7 +151,7 @@ export default function EventDetail() {
   }, {});
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
       <div>
         <Button variant="ghost" size="sm" onClick={() => navigate("/events")} className="mb-2">

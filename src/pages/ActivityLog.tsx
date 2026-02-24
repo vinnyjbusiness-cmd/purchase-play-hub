@@ -159,7 +159,7 @@ export default function ActivityLog() {
   const changeCount = logs.filter((l: any) => ["INSERT", "UPDATE", "DELETE"].includes(l.action)).length;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center gap-3">
         <Activity className="h-6 w-6 text-primary" />
         <h1 className="text-2xl font-bold tracking-tight">Activity Log</h1>

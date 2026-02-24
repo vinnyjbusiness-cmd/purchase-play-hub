@@ -157,7 +157,7 @@ export default function Purchases() {
   const totalQtyAll = filtered.reduce((s, p) => s + p.quantity, 0);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Purchases</h1>

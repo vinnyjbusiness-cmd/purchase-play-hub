@@ -637,7 +637,7 @@ export default function Balance() {
 
   // ─── OVERVIEW ───
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden animate-fade-in">
       <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
         <div className="flex items-center justify-between">
           <div>
