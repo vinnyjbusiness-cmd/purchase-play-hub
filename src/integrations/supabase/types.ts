@@ -332,6 +332,7 @@ export type Database = {
           notes: string | null
           org_id: string
           payment_terms: string | null
+          signature_url: string | null
           sort_code: string | null
           swift_bic: string | null
           updated_at: string
@@ -350,6 +351,7 @@ export type Database = {
           notes?: string | null
           org_id: string
           payment_terms?: string | null
+          signature_url?: string | null
           sort_code?: string | null
           swift_bic?: string | null
           updated_at?: string
@@ -368,6 +370,7 @@ export type Database = {
           notes?: string | null
           org_id?: string
           payment_terms?: string | null
+          signature_url?: string | null
           sort_code?: string | null
           swift_bic?: string | null
           updated_at?: string
