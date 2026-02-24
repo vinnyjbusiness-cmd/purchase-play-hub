@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ListTodo, Plus, Pencil, Trash2, GripVertical } from "lucide-react";
+import { ListTodo, Plus, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -152,7 +152,7 @@ export default function TodoList() {
   const completedCount = todos.filter(t => t.status === "completed").length;
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <ListTodo className="h-6 w-6 text-primary" />

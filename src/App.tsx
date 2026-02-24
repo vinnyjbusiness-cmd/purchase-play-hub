@@ -30,6 +30,7 @@ import EventTimeline from "./pages/EventTimeline";
 import InvoiceGenerator from "./pages/InvoiceGenerator";
 import InventoryPage from "./pages/Inventory";
 import Communications from "./pages/Communications";
+import WarRoom from "./pages/WarRoom";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -116,6 +117,7 @@ const App = () => (
               <Route path="/todos" element={<TodoList />} />
               <Route path="/timeline" element={<AdminOnly><EventTimeline /></AdminOnly>} />
               <Route path="/invoices" element={<PinProtected><InvoiceGenerator /></PinProtected>} />
+              <Route path="/warroom" element={<AdminOnly><WarRoom /></AdminOnly>} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

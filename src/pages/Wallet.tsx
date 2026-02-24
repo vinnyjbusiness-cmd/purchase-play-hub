@@ -81,7 +81,7 @@ export default function Wallet() {
   const receivableChartData = platformReceivables.map(d => ({ name: d.name, value: d.balance }));
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       <div className="flex items-center gap-3">
         <WalletIcon className="h-6 w-6 text-primary" />
         <h1 className="text-2xl font-bold tracking-tight">Wallet</h1>
