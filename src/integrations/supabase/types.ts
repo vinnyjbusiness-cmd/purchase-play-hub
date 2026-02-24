@@ -327,11 +327,13 @@ export type Database = {
           business_name: string | null
           business_phone: string | null
           created_at: string
+          iban: string | null
           id: string
           notes: string | null
           org_id: string
           payment_terms: string | null
           sort_code: string | null
+          swift_bic: string | null
           updated_at: string
         }
         Insert: {
@@ -343,11 +345,13 @@ export type Database = {
           business_name?: string | null
           business_phone?: string | null
           created_at?: string
+          iban?: string | null
           id?: string
           notes?: string | null
           org_id: string
           payment_terms?: string | null
           sort_code?: string | null
+          swift_bic?: string | null
           updated_at?: string
         }
         Update: {
@@ -359,11 +363,13 @@ export type Database = {
           business_name?: string | null
           business_phone?: string | null
           created_at?: string
+          iban?: string | null
           id?: string
           notes?: string | null
           org_id?: string
           payment_terms?: string | null
           sort_code?: string | null
+          swift_bic?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -383,6 +389,7 @@ export type Database = {
           bank_name: string | null
           created_at: string
           due_date: string | null
+          iban: string | null
           id: string
           invoice_date: string
           invoice_number: number
@@ -400,6 +407,7 @@ export type Database = {
           sort_code: string | null
           status: string
           subtotal: number
+          swift_bic: string | null
           tax_amount: number | null
           tax_rate: number | null
           total: number
@@ -411,6 +419,7 @@ export type Database = {
           bank_name?: string | null
           created_at?: string
           due_date?: string | null
+          iban?: string | null
           id?: string
           invoice_date?: string
           invoice_number?: number
@@ -428,6 +437,7 @@ export type Database = {
           sort_code?: string | null
           status?: string
           subtotal?: number
+          swift_bic?: string | null
           tax_amount?: number | null
           tax_rate?: number | null
           total?: number
@@ -439,6 +449,7 @@ export type Database = {
           bank_name?: string | null
           created_at?: string
           due_date?: string | null
+          iban?: string | null
           id?: string
           invoice_date?: string
           invoice_number?: number
@@ -456,6 +467,7 @@ export type Database = {
           sort_code?: string | null
           status?: string
           subtotal?: number
+          swift_bic?: string | null
           tax_amount?: number | null
           tax_rate?: number | null
           total?: number
