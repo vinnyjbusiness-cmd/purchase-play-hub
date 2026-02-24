@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { format, startOfMonth, differenceInSeconds } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import {
   CalendarDays,
@@ -13,14 +13,47 @@ import {
   Zap,
   Package,
   CircleDot,
+  TrendingUp,
+  Clock,
+  Activity,
 } from "lucide-react";
 import { deduplicateEvents } from "@/lib/eventDedup";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface EventInfo { id: string; match_code: string; home_team: string; away_team: string; event_date: string; }
 interface OrderInfo { id: string; order_ref: string | null; status: string; delivery_status: string | null; event_id: string; quantity: number; sale_price: number; order_date: string; platform_id: string | null; }
 interface PlatformInfo { id: string; name: string; }
+interface AuditEntry { id: string; table_name: string; action: string; created_at: string; new_values: any; old_values: any; user_id: string | null; }
+
+const TABLE_LABELS: Record<string, string> = {
+  orders: "Order", purchases: "Purchase", events: "Event", inventory: "Inventory",
+  suppliers: "Supplier", balance_payments: "Payment", todos: "To-Do",
+  order_status_history: "Order Status", platforms: "Platform", refunds: "Refund",
+};
+
+function formatAuditAction(action: string, table: string): string {
+  const entity = TABLE_LABELS[table] || table;
+  if (action === "INSERT") return `New ${entity}`;
+  if (action === "UPDATE") return `Updated ${entity}`;
+  if (action === "DELETE") return `Removed ${entity}`;
+  return `${action} ${entity}`;
+}
+
+// Typewriter hook
+function useTypewriter(text: string, speed = 50) {
+  const [displayed, setDisplayed] = useState("");
+  useEffect(() => {
+    setDisplayed("");
+    let i = 0;
+    const interval = setInterval(() => {
+      i++;
+      setDisplayed(text.slice(0, i));
+      if (i >= text.length) clearInterval(interval);
+    }, speed);
+    return () => clearInterval(interval);
+  }, [text, speed]);
+  return displayed;
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -28,19 +61,23 @@ export default function Dashboard() {
   const [events, setEvents] = useState<EventInfo[]>([]);
   const [orders, setOrders] = useState<OrderInfo[]>([]);
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
-  const [todaySales, setTodaySales] = useState({ count: 0, tickets: 0 });
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, string>>({});
   const [awaitingDelivery, setAwaitingDelivery] = useState<OrderInfo[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<EventInfo[]>([]);
   const [openOrders, setOpenOrders] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [countdown, setCountdown] = useState("");
 
   useEffect(() => {
     async function load() {
-      const [profileRes, eventsRes, ordersRes, platformsRes] = await Promise.all([
+      const [profileRes, eventsRes, ordersRes, platformsRes, auditRes, profilesRes] = await Promise.all([
         supabase.from("profiles").select("display_name").limit(1).single(),
         supabase.from("events").select("id,match_code,home_team,away_team,event_date").order("event_date"),
         supabase.from("orders").select("id,order_ref,status,delivery_status,event_id,quantity,sale_price,order_date,platform_id"),
         supabase.from("platforms").select("id,name"),
+        supabase.from("audit_log").select("id,table_name,action,created_at,new_values,old_values,user_id").order("created_at", { ascending: false }).limit(5),
+        supabase.from("profiles").select("user_id,display_name"),
       ]);
 
       if (profileRes.data?.display_name) setDisplayName(profileRes.data.display_name);
@@ -52,13 +89,11 @@ export default function Dashboard() {
       setEvents(allEvents);
       setOrders(allOrders);
       setPlatforms(allPlatforms);
+      setAuditLogs(auditRes.data || []);
 
-      const todayStr = format(new Date(), "yyyy-MM-dd");
-      const todayOrders = allOrders.filter(o => o.order_date.startsWith(todayStr));
-      setTodaySales({
-        count: todayOrders.length,
-        tickets: todayOrders.reduce((s, o) => s + o.quantity, 0),
-      });
+      const pMap: Record<string, string> = {};
+      (profilesRes.data || []).forEach((p: any) => { pMap[p.user_id] = p.display_name || "Unknown"; });
+      setProfiles(pMap);
 
       const awaiting = allOrders.filter(o =>
         (o.status === "pending" || o.status === "fulfilled") &&
@@ -80,8 +115,7 @@ export default function Dashboard() {
     load();
   }, []);
 
-  const platformMap = Object.fromEntries(platforms.map(p => [p.id, p]));
-  const eventMap = Object.fromEntries(events.map(e => [e.id, e]));
+  const eventMap = useMemo(() => Object.fromEntries(events.map(e => [e.id, e])), [events]);
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -89,6 +123,50 @@ export default function Dashboard() {
     if (h < 18) return "Good afternoon";
     return "Good evening";
   };
+
+  const greetingText = `${greeting()}, ${displayName}`;
+  const typedGreeting = useTypewriter(loading ? "" : greetingText, 40);
+
+  // Next upcoming event (overall, not just 7 days)
+  const nextEvent = useMemo(() => {
+    const now = new Date();
+    const { unique } = deduplicateEvents(events);
+    return unique.find(e => new Date(e.event_date) > now) || null;
+  }, [events]);
+
+  // Countdown for next event
+  useEffect(() => {
+    if (!nextEvent) return;
+    const tick = () => {
+      const diff = differenceInSeconds(new Date(nextEvent.event_date), new Date());
+      if (diff <= 0) { setCountdown("NOW"); return; }
+      const d = Math.floor(diff / 86400);
+      const h = Math.floor((diff % 86400) / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      const s = diff % 60;
+      setCountdown(`${d}d ${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [nextEvent]);
+
+  // Monthly revenue
+  const monthlyRevenue = useMemo(() => {
+    const monthStart = startOfMonth(new Date());
+    return orders
+      .filter(o => new Date(o.order_date) >= monthStart && o.status !== "cancelled" && o.status !== "refunded")
+      .reduce((s, o) => s + Number(o.sale_price || 0), 0);
+  }, [orders]);
+
+  // Urgent actions
+  const urgentActions = useMemo(() => {
+    const actions: { label: string; count: number; color: string; path: string }[] = [];
+    if (awaitingDelivery.length > 0) actions.push({ label: "Deliveries pending", count: awaitingDelivery.length, color: "text-warning", path: "/orders" });
+    const openCount = orders.filter(o => o.status === "pending").length;
+    if (openCount > 0) actions.push({ label: "Orders need action", count: openCount, color: "text-destructive", path: "/orders" });
+    return actions;
+  }, [awaitingDelivery, orders]);
 
   if (loading) {
     return (
@@ -98,33 +176,27 @@ export default function Dashboard() {
     );
   }
 
-  // Combine upcoming events with their fulfillment data, sorted by date ascending
+  // Upcoming with fulfillment using dedup
+  const { groupedIds } = deduplicateEvents(events);
   const upcomingWithFulfillment = upcomingEvents
     .map(ev => {
-      const eventOrders = orders.filter(o => o.event_id === ev.id);
+      const allIds = groupedIds[ev.id] || [ev.id];
+      const eventOrders = orders.filter(o => allIds.includes(o.event_id));
       const unfulfilled = eventOrders.filter(o => o.delivery_status !== "delivered");
       const daysUntil = Math.ceil((new Date(ev.event_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
       return { ...ev, eventOrders, unfulfilled, daysUntil };
     })
     .sort((a, b) => a.daysUntil - b.daysUntil);
 
-  // Delivery queue - orders needing delivery for next 7 days events only
-  const next7dEventIds = new Set(upcomingEvents.map(e => e.id));
-  const deliveryQueue = awaitingDelivery
-    .filter(o => next7dEventIds.has(o.event_id))
-    .sort((a, b) => {
-      const evA = eventMap[a.event_id];
-      const evB = eventMap[b.event_id];
-      if (evA && evB) return new Date(evA.event_date).getTime() - new Date(evB.event_date).getTime();
-      return 0;
-    });
-
   return (
     <div className="p-6 space-y-6">
-      {/* Welcome header */}
-      <div className="rounded-xl border bg-gradient-to-r from-primary/5 via-primary/3 to-transparent p-6">
+      {/* Welcome header with typewriter */}
+      <div className="rounded-xl border bg-gradient-to-r from-primary/5 via-primary/3 to-transparent p-6 animate-fade-in">
         <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-3xl font-bold tracking-tight">{greeting()}, {displayName}</h1>
+          <h1 className="text-3xl font-bold tracking-tight min-h-[2.25rem]">
+            {typedGreeting}
+            <span className="inline-block w-0.5 h-7 bg-primary ml-1 animate-pulse align-middle" />
+          </h1>
           <span className="flex items-center gap-1.5">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
@@ -133,92 +205,131 @@ export default function Dashboard() {
             <span className="text-xs text-success font-semibold tracking-wide">LIVE</span>
           </span>
         </div>
-        <p className="text-muted-foreground flex items-center gap-2">
-          <CalendarDays className="h-4 w-4" />
-          <span className="text-sm font-medium">{format(new Date(), "EEEE, d MMMM yyyy")}</span>
+        <p className="flex items-center gap-2">
+          <CalendarDays className="h-4 w-4 text-primary" />
+          <span className="text-base font-bold text-foreground">{format(new Date(), "EEEE, d MMMM yyyy")}</span>
           <span className="text-muted-foreground/50">•</span>
-          <span className="font-mono text-sm">{format(new Date(), "HH:mm")}</span>
+          <span className="font-mono text-sm font-bold text-foreground">{format(new Date(), "HH:mm")}</span>
         </p>
       </div>
 
-      {/* KPI strip - 3 items */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          {
-            label: "Open Orders",
-            value: `${openOrders}`,
-            icon: ShoppingCart,
-            color: openOrders > 0 ? "text-warning" : "text-success",
-            bg: openOrders > 0 ? "bg-warning/5 border-warning/20" : "bg-success/5 border-success/20",
-          },
-          {
-            label: "Awaiting Delivery",
-            value: `${awaitingDelivery.length}`,
-            icon: Send,
-            color: awaitingDelivery.length > 0 ? "text-warning" : "text-success",
-            bg: awaitingDelivery.length > 0 ? "bg-warning/5 border-warning/20" : "bg-success/5 border-success/20",
-          },
-          {
-            label: "Upcoming Events",
-            value: `${upcomingEvents.length}`,
-            icon: CalendarDays,
-            color: "text-primary",
-            bg: "bg-primary/5 border-primary/20",
-          },
-        ].map((kpi) => (
-          <div key={kpi.label} className={`rounded-lg border p-3 ${kpi.bg} transition-colors`}>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{kpi.label}</span>
-              <kpi.icon className={`h-3.5 w-3.5 ${kpi.color}`} />
-            </div>
-            <p className={`font-mono text-lg font-bold ${kpi.color}`}>{kpi.value}</p>
+      {/* Smart Summary — Next Game + KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+        {/* Next Game Countdown */}
+        <div className="col-span-2 lg:col-span-1 rounded-xl border bg-gradient-to-br from-primary/10 to-primary/5 p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => nextEvent && navigate(`/events/${nextEvent.id}`)}>
+          <div className="flex items-center gap-2 mb-2">
+            <CalendarDays className="h-4 w-4 text-primary" />
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Next Game</span>
           </div>
-        ))}
+          {nextEvent ? (
+            <>
+              <p className="text-sm font-bold truncate">{nextEvent.home_team} vs {nextEvent.away_team}</p>
+              <p className="font-mono text-lg font-black text-primary mt-1">{countdown}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{format(new Date(nextEvent.event_date), "EEE dd MMM, HH:mm")}</p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No upcoming games</p>
+          )}
+        </div>
+
+        {/* Open Orders */}
+        <div className={`rounded-xl border p-4 ${openOrders > 0 ? "bg-warning/5 border-warning/20" : "bg-success/5 border-success/20"}`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Open Orders</span>
+            <ShoppingCart className={`h-4 w-4 ${openOrders > 0 ? "text-warning" : "text-success"}`} />
+          </div>
+          <p className={`font-mono text-2xl font-bold ${openOrders > 0 ? "text-warning" : "text-success"}`}>{openOrders}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{awaitingDelivery.length} awaiting delivery</p>
+        </div>
+
+        {/* Revenue This Month */}
+        <div className="rounded-xl border bg-success/5 border-success/20 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Revenue This Month</span>
+            <TrendingUp className="h-4 w-4 text-success" />
+          </div>
+          <p className="font-mono text-2xl font-bold text-success">£{monthlyRevenue.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{format(new Date(), "MMMM yyyy")}</p>
+        </div>
+
+        {/* Urgent Actions */}
+        <div className={`rounded-xl border p-4 ${urgentActions.length > 0 ? "bg-destructive/5 border-destructive/20" : "bg-success/5 border-success/20"}`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Urgent Actions</span>
+            {urgentActions.length > 0 ? <AlertTriangle className="h-4 w-4 text-destructive" /> : <Zap className="h-4 w-4 text-success" />}
+          </div>
+          {urgentActions.length > 0 ? (
+            <div className="space-y-1">
+              {urgentActions.map((a, i) => (
+                <button key={i} onClick={() => navigate(a.path)} className={`text-xs font-semibold ${a.color} hover:underline block`}>
+                  {a.count} {a.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="font-mono text-2xl font-bold text-success">✓</p>
+          )}
+          {urgentActions.length === 0 && <p className="text-[10px] text-muted-foreground mt-1">All clear</p>}
+        </div>
       </div>
 
-      {/* Today's Activity + Delivery Queue side by side */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Today's Sales */}
+      {/* Live Activity Feed + Delivery Queue side by side */}
+      <div className="grid gap-4 lg:grid-cols-2 animate-fade-in" style={{ animationDelay: "0.2s" }}>
+        {/* Live Activity Feed */}
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
-                <Zap className="h-4 w-4 text-primary" />
+                <Activity className="h-4 w-4 text-primary" />
               </div>
-              <span className="font-semibold text-sm">Today's Activity</span>
+              <span className="font-semibold text-sm">Live Activity</span>
             </div>
-            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{format(new Date(), "dd MMM yyyy")}</span>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/activity")} className="text-xs gap-1">
+              View all <ArrowRight className="h-3 w-3" />
+            </Button>
           </div>
           <CardContent className="pt-2">
-            {todaySales.count > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-md bg-muted/50 p-3 text-center">
-                  <p className="font-mono text-2xl font-bold">{todaySales.count}</p>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">New Sales</p>
-                </div>
-                <div className="rounded-md bg-muted/50 p-3 text-center">
-                  <p className="font-mono text-2xl font-bold">{todaySales.tickets}</p>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Tickets</p>
-                </div>
+            {auditLogs.length > 0 ? (
+              <div className="space-y-2">
+                {auditLogs.map((log) => (
+                  <div key={log.id} className="flex items-start gap-3 rounded-lg bg-muted/30 px-3 py-2.5">
+                    <div className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${
+                      log.action === "INSERT" ? "bg-success" : log.action === "UPDATE" ? "bg-primary" : "bg-destructive"
+                    }`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{formatAuditAction(log.action, log.table_name)}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {profiles[log.user_id || ""] || "System"} · {format(new Date(log.created_at), "HH:mm")}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className={`text-[9px] shrink-0 ${
+                      log.action === "INSERT" ? "bg-success/10 text-success border-success/20" :
+                      log.action === "UPDATE" ? "bg-primary/10 text-primary border-primary/20" :
+                      "bg-destructive/10 text-destructive border-destructive/20"
+                    }`}>
+                      {log.action}
+                    </Badge>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="rounded-md bg-muted/30 p-6 text-center">
-                <p className="text-sm text-muted-foreground font-mono">NO NEW SALES TODAY</p>
+                <p className="text-sm text-muted-foreground">No recent activity</p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Delivery Queue - Next 7 Days */}
+        {/* Delivery Queue */}
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-md bg-warning/10">
                 <Package className="h-4 w-4 text-warning" />
               </div>
-              <span className="font-semibold text-sm">Delivery Queue — Next 7 Days</span>
+              <span className="font-semibold text-sm">Delivery Queue</span>
             </div>
-            {deliveryQueue.length > 0 ? (
+            {awaitingDelivery.length > 0 ? (
               <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-warning/10 text-warning border border-warning/20">
                 <CircleDot className="h-3 w-3" /> Action Required
               </span>
@@ -231,23 +342,23 @@ export default function Dashboard() {
           <CardContent className="pt-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-md bg-muted/50 p-3 text-center">
-                <p className="font-mono text-2xl font-bold">{deliveryQueue.length}</p>
+                <p className="font-mono text-2xl font-bold">{awaitingDelivery.length}</p>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Orders</p>
               </div>
               <div className="rounded-md bg-muted/50 p-3 text-center">
-                <p className="font-mono text-2xl font-bold">{deliveryQueue.reduce((s, o) => s + o.quantity, 0)}</p>
+                <p className="font-mono text-2xl font-bold">{awaitingDelivery.reduce((s, o) => s + o.quantity, 0)}</p>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Tickets</p>
               </div>
             </div>
-            {deliveryQueue.length === 0 && (
+            {awaitingDelivery.length === 0 && (
               <p className="text-xs text-muted-foreground mt-3 text-center font-mono">ALL DELIVERIES COMPLETE</p>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Upcoming Fixtures & Fulfillment — combined */}
-      <Card className="overflow-hidden">
+      {/* Upcoming Fixtures */}
+      <Card className="overflow-hidden animate-fade-in" style={{ animationDelay: "0.3s" }}>
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
@@ -266,45 +377,38 @@ export default function Dashboard() {
               <p className="text-sm text-muted-foreground font-mono">NO FIXTURES IN NEXT 7 DAYS</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="text-[10px] uppercase tracking-wider">
-                    <TableHead className="text-[10px]">Match</TableHead>
-                    <TableHead className="text-[10px]">Code</TableHead>
-                    <TableHead className="text-[10px]">Kickoff</TableHead>
-                    <TableHead className="text-[10px]">Countdown</TableHead>
-                    <TableHead className="text-[10px]">Total Orders</TableHead>
-                    <TableHead className="text-[10px]">Delivery Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {upcomingWithFulfillment.map(ev => (
-                    <TableRow key={ev.id} className="cursor-pointer hover:bg-muted/50 font-mono text-xs" onClick={() => navigate(`/events/${ev.id}`)}>
-                      <TableCell className="font-sans font-semibold">{ev.home_team} vs {ev.away_team}</TableCell>
-                      <TableCell className="text-muted-foreground">{ev.match_code}</TableCell>
-                      <TableCell>{format(new Date(ev.event_date), "EEE dd MMM, HH:mm")}</TableCell>
-                      <TableCell>
-                        <span className={`font-bold ${ev.daysUntil <= 1 ? "text-destructive" : ev.daysUntil <= 3 ? "text-warning" : "text-muted-foreground"}`}>
-                          {ev.daysUntil <= 0 ? "TODAY" : `${ev.daysUntil}d`}
-                        </span>
-                      </TableCell>
-                      <TableCell className="font-bold">{ev.eventOrders.length}</TableCell>
-                      <TableCell>
-                        {ev.unfulfilled.length > 0 ? (
-                          <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase bg-warning/10 text-warning">
-                            <AlertTriangle className="h-3 w-3" />{ev.unfulfilled.length} pending
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase bg-success/10 text-success">
-                            ✓ clear
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="divide-y divide-border">
+              {upcomingWithFulfillment.map(ev => (
+                <div
+                  key={ev.id}
+                  className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => navigate(`/events/${ev.id}`)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`text-center min-w-[48px] font-mono text-sm font-bold ${
+                      ev.daysUntil <= 1 ? "text-destructive" : ev.daysUntil <= 3 ? "text-warning" : "text-muted-foreground"
+                    }`}>
+                      {ev.daysUntil <= 0 ? "TODAY" : `${ev.daysUntil}d`}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">{ev.home_team} vs {ev.away_team}</p>
+                      <p className="text-xs text-muted-foreground">{format(new Date(ev.event_date), "EEE dd MMM, HH:mm")}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-xs font-bold">{ev.eventOrders.length} orders</span>
+                    {ev.unfulfilled.length > 0 ? (
+                      <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/20">
+                        <AlertTriangle className="h-3 w-3 mr-1" />{ev.unfulfilled.length} pending
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] bg-success/10 text-success border-success/20">
+                        ✓ clear
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
