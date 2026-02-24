@@ -7,11 +7,12 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   X, Clock, Ticket, CheckCircle2, AlertTriangle, Package,
-  Send, Phone, MapPin, CalendarClock,
+  Send, Phone, MapPin, CalendarClock, Eye,
 } from "lucide-react";
 import { format, differenceInSeconds } from "date-fns";
 import { cn } from "@/lib/utils";
 import { deduplicateEvents } from "@/lib/eventDedup";
+import OrderDetailSheet from "@/components/OrderDetailSheet";
 
 interface EventRow {
   id: string; home_team: string; away_team: string; event_date: string;
@@ -38,6 +39,7 @@ export default function WarRoom() {
   const [todos, setTodos] = useState<TodoRow[]>([]);
   const [countdown, setCountdown] = useState("");
   const [loading, setLoading] = useState(true);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [eventsRes, ordersRes, invRes, todosRes] = await Promise.all([
@@ -249,17 +251,24 @@ export default function WarRoom() {
               </h2>
               <div className="space-y-2 max-h-[300px] overflow-y-auto">
                 {awaitingDelivery.map(o => (
-                  <div key={o.id} className="flex items-center justify-between rounded-lg border bg-card p-3">
+                  <div
+                    key={o.id}
+                    className="flex items-center justify-between rounded-lg border bg-card p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => setSelectedOrderId(o.id)}
+                  >
                     <div>
                       <p className="text-sm font-medium">{o.order_ref || o.id.slice(0, 8)}</p>
                       <p className="text-xs text-muted-foreground">{o.category} · {o.quantity} ticket{o.quantity !== 1 ? "s" : ""}</p>
                     </div>
-                    <Badge variant="outline" className={cn(
-                      "text-[10px]",
-                      o.status === "pending" ? "bg-warning/10 text-warning border-warning/20" : "bg-primary/10 text-primary border-primary/20"
-                    )}>
-                      {o.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className={cn(
+                        "text-[10px]",
+                        o.status === "pending" ? "bg-warning/10 text-warning border-warning/20" : "bg-primary/10 text-primary border-primary/20"
+                      )}>
+                        {o.status}
+                      </Badge>
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -299,6 +308,13 @@ export default function WarRoom() {
           )}
         </div>
       )}
+
+      {/* Order Detail Sheet */}
+      <OrderDetailSheet
+        orderId={selectedOrderId}
+        onClose={() => setSelectedOrderId(null)}
+        onUpdated={() => load()}
+      />
     </div>
   );
 }
