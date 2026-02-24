@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CalendarDays, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, subMonths, startOfQuarter, endOfQuarter } from "date-fns";
 import { CLUBS } from "@/lib/seatingSections";
+import { deduplicateEvents } from "@/lib/eventDedup";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   PieChart, Pie, Cell, LineChart, Line,
@@ -86,14 +87,18 @@ export default function Analytics() {
 
   // Per-game data
   const periodGames = useMemo(() => {
-    const filteredEvents = events.filter(ev => {
+    // Deduplicate events first
+    const { unique, groupedIds } = deduplicateEvents(events);
+
+    const filteredEvents = unique.filter(ev => {
       if (clubFilter !== "all" && !matchesClub(ev, clubFilter)) return false;
       return isInRange(ev.event_date);
     });
 
     return filteredEvents.map(ev => {
-      const evOrders = orders.filter(o => o.event_id === ev.id && o.status !== "cancelled" && o.status !== "refunded");
-      const evPurchases = purchases.filter(p => p.event_id === ev.id);
+      const allIds = groupedIds[ev.id] || [ev.id];
+      const evOrders = orders.filter(o => allIds.includes(o.event_id) && o.status !== "cancelled" && o.status !== "refunded");
+      const evPurchases = purchases.filter(p => allIds.includes(p.event_id));
       const revenue = evOrders.reduce((s, o) => s + Number(o.sale_price || 0), 0);
       const fees = evOrders.reduce((s, o) => s + Number(o.fees || 0), 0);
       const costs = evPurchases.reduce((s, p) => s + Number(p.total_cost || p.quantity * p.unit_cost || 0), 0);

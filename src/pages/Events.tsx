@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Search, CalendarDays, TrendingUp, TrendingDown, Package, ShoppingCart } from "lucide-react";
 import { format } from "date-fns";
 import { CLUBS } from "@/lib/seatingSections";
+import { getEventKey } from "@/lib/eventDedup";
 
 interface EventWithPL {
   id: string;
@@ -110,14 +111,25 @@ export default function Events() {
       const eventsWithOrders = rawEvents.filter((ev) => eventIdsWithOrders.has(ev.id));
       const seen = new Set<string>();
       const uniqueEvents = eventsWithOrders.filter((ev) => {
-        if (seen.has(ev.match_code)) return false;
-        seen.add(ev.match_code);
+        const key = getEventKey(ev.home_team, ev.away_team, ev.event_date);
+        if (seen.has(key)) return false;
+        seen.add(key);
         return true;
       });
 
+      // Build a map of canonical event key -> all event IDs for aggregation
+      const keyToIds = new Map<string, string[]>();
+      eventsWithOrders.forEach(ev => {
+        const key = getEventKey(ev.home_team, ev.away_team, ev.event_date);
+        if (!keyToIds.has(key)) keyToIds.set(key, []);
+        keyToIds.get(key)!.push(ev.id);
+      });
+
       const enriched: EventWithPL[] = uniqueEvents.map((ev) => {
-        const evOrders = orders.filter((o) => o.event_id === ev.id);
-        const evPurchases = purchases.filter((p) => p.event_id === ev.id);
+        const key = getEventKey(ev.home_team, ev.away_team, ev.event_date);
+        const allIds = keyToIds.get(key) || [ev.id];
+        const evOrders = orders.filter((o) => allIds.includes(o.event_id));
+        const evPurchases = purchases.filter((p) => allIds.includes(p.event_id));
 
         const revenue = evOrders.reduce((s, o) => s + Number(o.sale_price || 0), 0);
         const fees = evOrders.reduce((s, o) => s + Number(o.fees || 0), 0);
