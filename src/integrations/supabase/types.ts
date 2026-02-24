@@ -196,46 +196,61 @@ export type Database = {
       }
       inventory: {
         Row: {
+          android_pass_link: string | null
           block: string | null
           category: string
           created_at: string
           event_id: string
           face_value: number | null
           id: string
+          iphone_pass_link: string | null
           org_id: string | null
-          purchase_id: string
+          pk_pass_url: string | null
+          purchase_id: string | null
           row_name: string | null
           seat: string | null
           section: string | null
           status: Database["public"]["Enums"]["inventory_status"]
+          supporter_id: string | null
+          ticket_name: string | null
         }
         Insert: {
+          android_pass_link?: string | null
           block?: string | null
           category?: string
           created_at?: string
           event_id: string
           face_value?: number | null
           id?: string
+          iphone_pass_link?: string | null
           org_id?: string | null
-          purchase_id: string
+          pk_pass_url?: string | null
+          purchase_id?: string | null
           row_name?: string | null
           seat?: string | null
           section?: string | null
           status?: Database["public"]["Enums"]["inventory_status"]
+          supporter_id?: string | null
+          ticket_name?: string | null
         }
         Update: {
+          android_pass_link?: string | null
           block?: string | null
           category?: string
           created_at?: string
           event_id?: string
           face_value?: number | null
           id?: string
+          iphone_pass_link?: string | null
           org_id?: string | null
-          purchase_id?: string
+          pk_pass_url?: string | null
+          purchase_id?: string | null
           row_name?: string | null
           seat?: string | null
           section?: string | null
           status?: Database["public"]["Enums"]["inventory_status"]
+          supporter_id?: string | null
+          ticket_name?: string | null
         }
         Relationships: [
           {
