@@ -246,6 +246,160 @@ export type Database = {
           },
         ]
       }
+      invoice_settings: {
+        Row: {
+          account_name: string | null
+          account_number: string | null
+          bank_name: string | null
+          business_address: string | null
+          business_email: string | null
+          business_name: string | null
+          business_phone: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          org_id: string
+          payment_terms: string | null
+          sort_code: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_name?: string | null
+          account_number?: string | null
+          bank_name?: string | null
+          business_address?: string | null
+          business_email?: string | null
+          business_name?: string | null
+          business_phone?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          org_id: string
+          payment_terms?: string | null
+          sort_code?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_name?: string | null
+          account_number?: string | null
+          bank_name?: string | null
+          business_address?: string | null
+          business_email?: string | null
+          business_name?: string | null
+          business_phone?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          org_id?: string
+          payment_terms?: string | null
+          sort_code?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_settings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          account_name: string | null
+          account_number: string | null
+          bank_name: string | null
+          created_at: string
+          due_date: string | null
+          id: string
+          invoice_date: string
+          invoice_number: number
+          line_items: Json
+          notes: string | null
+          org_id: string
+          payment_terms: string | null
+          recipient_address: string | null
+          recipient_email: string | null
+          recipient_name: string | null
+          sender_address: string | null
+          sender_email: string | null
+          sender_name: string | null
+          sender_phone: string | null
+          sort_code: string | null
+          status: string
+          subtotal: number
+          tax_amount: number | null
+          tax_rate: number | null
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          account_name?: string | null
+          account_number?: string | null
+          bank_name?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number?: number
+          line_items?: Json
+          notes?: string | null
+          org_id: string
+          payment_terms?: string | null
+          recipient_address?: string | null
+          recipient_email?: string | null
+          recipient_name?: string | null
+          sender_address?: string | null
+          sender_email?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
+          sort_code?: string | null
+          status?: string
+          subtotal?: number
+          tax_amount?: number | null
+          tax_rate?: number | null
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          account_name?: string | null
+          account_number?: string | null
+          bank_name?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number?: number
+          line_items?: Json
+          notes?: string | null
+          org_id?: string
+          payment_terms?: string | null
+          recipient_address?: string | null
+          recipient_email?: string | null
+          recipient_name?: string | null
+          sender_address?: string | null
+          sender_email?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
+          sort_code?: string | null
+          status?: string
+          subtotal?: number
+          tax_amount?: number | null
+          tax_rate?: number | null
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_lines: {
         Row: {
           created_at: string
