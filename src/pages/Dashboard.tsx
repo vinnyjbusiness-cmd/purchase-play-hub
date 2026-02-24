@@ -1,9 +1,10 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, differenceInSeconds } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import confetti from "canvas-confetti";
 import {
   CalendarDays,
   ShoppingCart,
@@ -13,7 +14,7 @@ import {
   Zap,
   Package,
   CircleDot,
-  TrendingUp,
+  Bell,
   Clock,
   Activity,
 } from "lucide-react";
@@ -151,13 +152,31 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [nextEvent]);
 
-  // Monthly revenue
-  const monthlyRevenue = useMemo(() => {
-    const monthStart = startOfMonth(new Date());
-    return orders
-      .filter(o => new Date(o.order_date) >= monthStart && o.status !== "cancelled" && o.status !== "refunded")
-      .reduce((s, o) => s + Number(o.sale_price || 0), 0);
-  }, [orders]);
+  // Notifications summary
+  const notifications = useMemo(() => {
+    const items: { label: string; time: string }[] = [];
+    auditLogs.slice(0, 3).forEach(log => {
+      items.push({
+        label: formatAuditAction(log.action, log.table_name),
+        time: format(new Date(log.created_at), "HH:mm"),
+      });
+    });
+    return items;
+  }, [auditLogs]);
+
+  // Goal celebration animation
+  const celebrationFired = useRef(false);
+  useEffect(() => {
+    if (loading || celebrationFired.current) return;
+    celebrationFired.current = true;
+    const timer = setTimeout(() => {
+      // Football-style burst from left and right
+      const defaults = { startVelocity: 30, spread: 60, ticks: 80, zIndex: 100 };
+      confetti({ ...defaults, particleCount: 50, origin: { x: 0.2, y: 0.6 }, colors: ["#22c55e", "#3b82f6", "#ffffff"] });
+      confetti({ ...defaults, particleCount: 50, origin: { x: 0.8, y: 0.6 }, colors: ["#22c55e", "#3b82f6", "#ffffff"] });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   // Urgent actions
   const urgentActions = useMemo(() => {
@@ -190,20 +209,34 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Welcome header with typewriter */}
+      {/* Welcome header with typewriter + next game */}
       <div className="rounded-xl border bg-gradient-to-r from-primary/5 via-primary/3 to-transparent p-6 animate-fade-in">
-        <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-3xl font-bold tracking-tight min-h-[2.25rem]">
-            {typedGreeting}
-            <span className="inline-block w-0.5 h-7 bg-primary ml-1 animate-pulse align-middle" />
-          </h1>
-          <span className="flex items-center gap-1.5">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success"></span>
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold tracking-tight min-h-[2.25rem]">
+              {typedGreeting}
+              <span className="inline-block w-0.5 h-7 bg-primary ml-1 animate-pulse align-middle" />
+            </h1>
+            <span className="flex items-center gap-1.5">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success"></span>
+              </span>
+              <span className="text-xs text-success font-semibold tracking-wide">LIVE</span>
             </span>
-            <span className="text-xs text-success font-semibold tracking-wide">LIVE</span>
-          </span>
+          </div>
+          {nextEvent && (
+            <div
+              className="flex items-center gap-3 rounded-lg bg-primary/10 border border-primary/20 px-4 py-2 cursor-pointer hover:bg-primary/15 transition-colors"
+              onClick={() => navigate(`/events/${nextEvent.id}`)}
+            >
+              <CalendarDays className="h-4 w-4 text-primary shrink-0" />
+              <div className="text-right">
+                <p className="text-xs font-bold">{nextEvent.home_team} vs {nextEvent.away_team}</p>
+                <p className="font-mono text-xs text-primary font-black">{countdown}</p>
+              </div>
+            </div>
+          )}
         </div>
         <p className="flex items-center gap-2">
           <CalendarDays className="h-4 w-4 text-primary" />
@@ -242,14 +275,24 @@ export default function Dashboard() {
           <p className="text-[10px] text-muted-foreground mt-1">{awaitingDelivery.length} awaiting delivery</p>
         </div>
 
-        {/* Revenue This Month */}
-        <div className="rounded-xl border bg-success/5 border-success/20 p-4">
+        {/* Notifications */}
+        <div className="rounded-xl border bg-primary/5 border-primary/20 p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Revenue This Month</span>
-            <TrendingUp className="h-4 w-4 text-success" />
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Notifications</span>
+            <Bell className="h-4 w-4 text-primary" />
           </div>
-          <p className="font-mono text-2xl font-bold text-success">£{monthlyRevenue.toLocaleString("en-GB", { minimumFractionDigits: 0 })}</p>
-          <p className="text-[10px] text-muted-foreground mt-1">{format(new Date(), "MMMM yyyy")}</p>
+          {notifications.length > 0 ? (
+            <div className="space-y-1.5">
+              {notifications.map((n, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <span className="text-xs font-medium truncate">{n.label}</span>
+                  <span className="text-[10px] text-muted-foreground font-mono shrink-0 ml-2">{n.time}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No new notifications</p>
+          )}
         </div>
 
         {/* Urgent Actions */}
