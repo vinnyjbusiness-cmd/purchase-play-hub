@@ -209,7 +209,7 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Welcome header with typewriter + next game */}
+      {/* Welcome header with typewriter + next game inline */}
       <div className="rounded-xl border bg-gradient-to-r from-primary/5 via-primary/3 to-transparent p-6 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
           <div className="flex items-center gap-3">
@@ -224,19 +224,14 @@ export default function Dashboard() {
               </span>
               <span className="text-xs text-success font-semibold tracking-wide">LIVE</span>
             </span>
+            {nextEvent && (
+              <span className="text-lg font-bold text-foreground ml-2">
+                | <span className="text-sm font-semibold">Upcoming:</span>{" "}
+                <span className="text-sm">{nextEvent.home_team} vs {nextEvent.away_team}</span>{" "}
+                <span className="font-mono text-sm text-primary font-black">{countdown}</span>
+              </span>
+            )}
           </div>
-          {nextEvent && (
-            <div
-              className="flex items-center gap-3 rounded-lg bg-primary/10 border border-primary/20 px-4 py-2 cursor-pointer hover:bg-primary/15 transition-colors"
-              onClick={() => navigate(`/events/${nextEvent.id}`)}
-            >
-              <CalendarDays className="h-4 w-4 text-primary shrink-0" />
-              <div className="text-right">
-                <p className="text-xs font-bold">{nextEvent.home_team} vs {nextEvent.away_team}</p>
-                <p className="font-mono text-xs text-primary font-black">{countdown}</p>
-              </div>
-            </div>
-          )}
         </div>
         <p className="flex items-center gap-2">
           <CalendarDays className="h-4 w-4 text-primary" />
@@ -246,24 +241,20 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* Smart Summary — Next Game + KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 animate-fade-in" style={{ animationDelay: "0.1s" }}>
-        {/* Next Game Countdown */}
-        <div className="col-span-2 lg:col-span-1 rounded-xl border bg-gradient-to-br from-primary/10 to-primary/5 p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => nextEvent && navigate(`/events/${nextEvent.id}`)}>
-          <div className="flex items-center gap-2 mb-2">
-            <CalendarDays className="h-4 w-4 text-primary" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Next Game</span>
+      {/* Goal celebration animation */}
+      <div className="rounded-xl border bg-gradient-to-r from-success/5 via-primary/5 to-success/5 p-6 text-center animate-fade-in overflow-hidden relative" style={{ animationDelay: "0.05s" }}>
+        <div className="flex items-center justify-center gap-3">
+          <span className="text-4xl animate-bounce" style={{ animationDuration: "1.5s" }}>⚽</span>
+          <div>
+            <p className="text-xl font-black tracking-tight text-foreground">GOOOAAL!</p>
+            <p className="text-xs text-muted-foreground font-mono">Welcome back — let's smash it today 🎉</p>
           </div>
-          {nextEvent ? (
-            <>
-              <p className="text-sm font-bold truncate">{nextEvent.home_team} vs {nextEvent.away_team}</p>
-              <p className="font-mono text-lg font-black text-primary mt-1">{countdown}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{format(new Date(nextEvent.event_date), "EEE dd MMM, HH:mm")}</p>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">No upcoming games</p>
-          )}
+          <span className="text-4xl animate-bounce" style={{ animationDuration: "1.5s", animationDelay: "0.3s" }}>🥅</span>
         </div>
+      </div>
+
+      {/* Smart Summary — Next Game + KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-fade-in" style={{ animationDelay: "0.1s" }}>
 
         {/* Open Orders */}
         <div className={`rounded-xl border p-4 ${openOrders > 0 ? "bg-warning/5 border-warning/20" : "bg-success/5 border-success/20"}`}>
