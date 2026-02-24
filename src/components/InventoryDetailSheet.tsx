@@ -19,8 +19,10 @@ interface InvDetail {
   id: string;
   category: string;
   section: string | null;
+  block: string | null;
   row_name: string | null;
   seat: string | null;
+  face_value: number | null;
   status: string;
   created_at: string;
   events: { match_code: string; home_team: string; away_team: string } | null;
@@ -31,8 +33,10 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
   const [item, setItem] = useState<InvDetail | null>(null);
   const [category, setCategory] = useState("");
   const [section, setSection] = useState("");
+  const [block, setBlock] = useState("");
   const [rowName, setRowName] = useState("");
   const [seat, setSeat] = useState("");
+  const [faceValue, setFaceValue] = useState("");
   const [status, setStatus] = useState("");
 
   const load = useCallback(async () => {
@@ -47,8 +51,10 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
       setItem(d);
       setCategory(d.category);
       setSection(d.section || "");
+      setBlock(d.block || "");
       setRowName(d.row_name || "");
       setSeat(d.seat || "");
+      setFaceValue(d.face_value != null ? String(d.face_value) : "");
       setStatus(d.status);
     }
   }, [inventoryId]);
@@ -60,8 +66,10 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
     const { error } = await supabase.from("inventory").update({
       category,
       section: section || null,
+      block: block || null,
       row_name: rowName || null,
       seat: seat || null,
+      face_value: faceValue ? parseFloat(faceValue) : null,
       status: status as any,
     }).eq("id", inventoryId);
     if (error) { toast.error(error.message); return; }
@@ -99,6 +107,10 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
               <p className="text-muted-foreground">Cost</p>
               <p className="font-medium">{purchase ? `${sym(purchase.currency)}${Number(purchase.unit_cost).toFixed(2)}` : "—"}</p>
             </div>
+            <div>
+              <p className="text-muted-foreground">Face Value</p>
+              <p className="font-medium">{item.face_value != null ? `£${Number(item.face_value).toFixed(2)}` : "—"}</p>
+            </div>
           </div>
 
           <Separator />
@@ -120,11 +132,17 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
               <Label>Category</Label>
               <Input value={category} onChange={e => setCategory(e.target.value)} />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Section</Label>
                 <Input value={section} onChange={e => setSection(e.target.value)} />
               </div>
+              <div className="space-y-1.5">
+                <Label>Block</Label>
+                <Input value={block} onChange={e => setBlock(e.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label>Row</Label>
                 <Input value={rowName} onChange={e => setRowName(e.target.value)} />
@@ -132,6 +150,10 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
               <div className="space-y-1.5">
                 <Label>Seat</Label>
                 <Input value={seat} onChange={e => setSeat(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Face Value (£)</Label>
+                <Input type="number" min={0} step="0.01" value={faceValue} onChange={e => setFaceValue(e.target.value)} />
               </div>
             </div>
             <Button onClick={handleSave} className="w-full">Save Changes</Button>

@@ -196,9 +196,11 @@ export type Database = {
       }
       inventory: {
         Row: {
+          block: string | null
           category: string
           created_at: string
           event_id: string
+          face_value: number | null
           id: string
           org_id: string | null
           purchase_id: string
@@ -208,9 +210,11 @@ export type Database = {
           status: Database["public"]["Enums"]["inventory_status"]
         }
         Insert: {
+          block?: string | null
           category?: string
           created_at?: string
           event_id: string
+          face_value?: number | null
           id?: string
           org_id?: string | null
           purchase_id: string
@@ -220,9 +224,11 @@ export type Database = {
           status?: Database["public"]["Enums"]["inventory_status"]
         }
         Update: {
+          block?: string | null
           category?: string
           created_at?: string
           event_id?: string
+          face_value?: number | null
           id?: string
           org_id?: string | null
           purchase_id?: string
