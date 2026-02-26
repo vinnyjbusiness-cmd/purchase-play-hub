@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Smartphone, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { STANDARD_SECTIONS, HOSPITALITY_OPTIONS, CLUBS } from "@/lib/seatingSections";
+import { deduplicateEvents } from "@/lib/eventDedup";
+import { format } from "date-fns";
 
 interface Props {
   onCreated: () => void;
@@ -36,15 +38,17 @@ export default function AddOrderDialog({ onCreated }: Props) {
 
   const isWorldCup = form.club === "world-cup";
 
-  // Filter events by selected club
-  const filteredEvents = events.filter((e) => {
-    if (!form.club) return false;
-    if (form.club === "world-cup") return e.competition?.toLowerCase().includes("world cup");
-    const clubLabel = CLUBS.find((c) => c.value === form.club)?.label || "";
-    // Extract club name without venue, e.g. "Liverpool (Anfield)" -> "Liverpool"
-    const clubName = clubLabel.split(" (")[0].toLowerCase();
-    return e.home_team.toLowerCase().includes(clubName) || e.away_team.toLowerCase().includes(clubName);
-  });
+  // Filter events by selected club & deduplicate
+  const filteredEvents = (() => {
+    const matched = events.filter((e) => {
+      if (!form.club) return false;
+      if (form.club === "world-cup") return e.competition?.toLowerCase().includes("world cup");
+      const clubLabel = CLUBS.find((c) => c.value === form.club)?.label || "";
+      const clubName = clubLabel.split(" (")[0].toLowerCase();
+      return e.home_team.toLowerCase().includes(clubName) || e.away_team.toLowerCase().includes(clubName);
+    });
+    return deduplicateEvents(matched).unique;
+  })();
 
   useEffect(() => {
     if (open) {
@@ -130,7 +134,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
                 <SelectContent>
                   {filteredEvents.map((e) => (
                     <SelectItem key={e.id} value={e.id}>
-                      {e.home_team} vs {e.away_team}
+                      {format(new Date(e.event_date), "dd/M/yy")} {e.home_team} vs {e.away_team}
                     </SelectItem>
                   ))}
                 </SelectContent>
