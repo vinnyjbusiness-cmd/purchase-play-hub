@@ -1,72 +1,51 @@
 
 
-## Plan: Inventory Source & Profit Split + Spreadsheet Templates
+## Plan: Add Contact On-The-Fly from Order and Purchase Forms
 
-This plan covers two major features: (1) adding a "Source" field to inventory with IJK profit splitting, and (2) a Spreadsheet Templates page.
+### Overview
+Add a "+ Add New Contact" option to the contact selection in both the Add Order and Add Purchase dialogs. Clicking it reveals an inline mini-form to create a new contact without leaving the current form.
 
----
+### Changes
 
-### Part 1: Inventory Source & IJK Profit Split
+**1. Create a reusable InlineAddContact component**
+- New file: `src/components/InlineAddContact.tsx`
+- A small inline form with three fields: Name (required), Phone, Email
+- On save, inserts into the `suppliers` table and calls an `onCreated` callback with the new contact's ID and name
+- Shows a loading state while saving, displays toast on success/error
+- Can be toggled open/closed from the parent
 
-**Database Migration**
-- Add a `source` column to the `inventory` table (text, default `'IJK'`)
-- This tracks where each ticket was sourced from
+**2. Update Add Purchase Dialog (`src/components/AddPurchaseDialog.tsx`)**
+- Add a "+ Add New Contact" item at the bottom of the existing `CommandGroup` in the contact dropdown
+- Clicking it closes the popover and shows the `InlineAddContact` component below the dropdown
+- On successful creation, the new contact is added to the local suppliers list, auto-selected in the dropdown, and the inline form hides
+- Contact details (name, phone) auto-populate as they already do via the `set("supplier_id", ...)` logic
 
-**UI Changes to Inventory**
-- Add a "Source" dropdown to `AddInventoryDialog` and `InventoryDetailSheet` with options: "IJK", "Own", and a free-text option for other suppliers
-- Display the source badge on each ticket chip in the Inventory page
-
-**IJK Account Page**
-- Create a new page at `/ijk-account` that shows a full itemised breakdown of all IJK-sourced inventory
-- For each ticket, calculate: Sale Price (from linked order), Cost Price (face value or purchase unit cost), Net Profit, and IJK's 50% cut
-- Data is pulled by joining `inventory` (where source = 'IJK') with `order_lines` and `orders` to get sale prices, and with `purchases` to get cost prices
-- Include a summary row showing totals
-- Add a "Export CSV" button that exports the full IJK report with columns: Event, Section, Seat, Cost Price, Sale Price, Net Profit, IJK Share (50%)
-- Add navigation link in the sidebar under a logical grouping (near Suppliers)
-
-**Automatic Balance Tracking**
-- When the IJK report is viewed, it calculates IJK's 50% share of net profit on each sold ticket
-- This total can be cross-referenced with the Balances page (the user can manually add/reconcile payments to IJK there)
-
----
-
-### Part 2: Spreadsheet Templates Page
-
-**New Page at `/spreadsheet-templates`**
-- Create `src/pages/SpreadsheetTemplates.tsx` with three template cards:
-  1. **Member Export** -- columns: First Name, Last Name, Supporter ID, Email, Member Password, Email Password, Phone, DOB, Postcode, Address
-  2. **Inventory/Sales Export** -- columns: Event, Match Date, Ticket Category, Seat Details, Cost Price, Sale Price, Platform Sold On, Buyer Name, Sale Date, Profit, Source, IJK 50% Split Amount
-  3. **IJK Profit Split Report** -- filtered to only IJK-sourced inventory with columns: Event, Tickets Sold, Total Revenue, Total Cost, Net Profit, IJK Share (50%)
-
-- Each template card has two buttons:
-  - **Download Blank Template**: generates a CSV with just the headers (no data)
-  - **Fill and Export**: fetches live data from the database, populates the template, and downloads as CSV
-
-**Navigation**
-- Add "Spreadsheets" link to sidebar (Admin only) with a `FileSpreadsheet` icon
-- Add route `/spreadsheet-templates` in `App.tsx`
-
----
+**3. Update Add Order Dialog (`src/components/AddOrderDialog.tsx`)**
+- Replace the plain text "Customer Name" and "Customer Phone" inputs with a contact selection approach:
+  - Add a searchable contact dropdown (using Popover + Command, same pattern as purchases)
+  - Include a "+ Add New Contact" option at the bottom
+  - When a contact is selected, auto-fill `buyer_name` and `buyer_phone` from the contact record
+  - Keep the name/phone fields visible and editable so users can override if needed
+- Add the same `InlineAddContact` mini-form toggle
+- On creation, auto-select the new contact and fill the buyer fields
+- Load contacts from `suppliers` table when the dialog opens
 
 ### Technical Details
 
 **Files to create:**
-- `src/pages/IJKAccount.tsx` -- IJK account breakdown page
-- `src/pages/SpreadsheetTemplates.tsx` -- spreadsheet templates page
+- `src/components/InlineAddContact.tsx` -- reusable inline contact creation form
 
 **Files to modify:**
-- `src/components/AddInventoryDialog.tsx` -- add Source dropdown
-- `src/components/InventoryDetailSheet.tsx` -- add Source field
-- `src/pages/Inventory.tsx` -- show source badge on ticket chips
-- `src/App.tsx` -- add two new routes
-- `src/components/AppSidebar.tsx` -- add two new nav items
+- `src/components/AddOrderDialog.tsx` -- add contact dropdown with "+ Add New" option, auto-fill buyer fields
+- `src/components/AddPurchaseDialog.tsx` -- add "+ Add New Contact" item to existing command list
 
-**Database migration:**
-- `ALTER TABLE public.inventory ADD COLUMN source text NOT NULL DEFAULT 'IJK';`
+**No database changes required** -- uses the existing `suppliers` table.
 
-**Data flow for IJK profit calculation:**
-- Join inventory (source='IJK') -> order_lines -> orders (to get sale_price, fees)
-- Join inventory -> purchases (to get unit_cost)
-- Net Profit = (sale_price - fees) / order_quantity - unit_cost per ticket
-- IJK Share = Net Profit * 0.5
+**Flow:**
+1. User opens Add Order or Add Purchase
+2. In the contact dropdown, they see existing contacts plus "+ Add New Contact" at the bottom
+3. Clicking "+ Add New Contact" reveals an inline form (name, phone, email)
+4. Saving inserts into `suppliers` table, returns the new record
+5. The new contact is auto-selected in the dropdown
+6. The Contacts page will dynamically show Buyer/Supplier tags based on the resulting order/purchase records -- no manual tagging needed
 
