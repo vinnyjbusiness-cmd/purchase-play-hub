@@ -215,10 +215,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             <Popover open={supplierOpen} onOpenChange={setSupplierOpen}>
               <PopoverTrigger asChild>
                 <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
-                  {selectedSupplier
-                    ? `${selectedSupplier.name}${selectedSupplier.display_id ? ` (${selectedSupplier.display_id})` : ""}`
-                    : "Search contacts..."
-                  }
+                  {selectedSupplier ? selectedSupplier.name : "Search contacts..."}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
@@ -239,7 +236,6 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
                         >
                           <Check className={cn("mr-2 h-4 w-4", form.supplier_id === s.id ? "opacity-100" : "opacity-0")} />
                           <span className="font-medium">{s.name}</span>
-                          {s.display_id && <span className="ml-2 text-xs text-muted-foreground font-mono">{s.display_id}</span>}
                         </CommandItem>
                       ))}
                     </CommandGroup>
