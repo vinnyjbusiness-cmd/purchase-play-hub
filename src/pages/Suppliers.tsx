@@ -7,7 +7,7 @@ import { Search, Plus, Trash2, Pencil, Download, Phone } from "lucide-react";
 import { toast } from "sonner";
 import LogoAvatar from "@/components/LogoAvatar";
 import AddSupplierDialog from "@/components/AddSupplierDialog";
-import SupplierDetailSheet from "@/components/SupplierDetailSheet";
+import ContactProfileSheet from "@/components/ContactProfileSheet";
 import EditSupplierDialog from "@/components/EditSupplierDialog";
 
 interface Supplier {
@@ -30,12 +30,19 @@ interface SupplierStats {
   ticketsBought: number;
 }
 
+// Tracks which contacts have buyer/supplier roles
+interface ContactRoles {
+  isBuyer: boolean;
+  isSupplier: boolean;
+}
+
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [stats, setStats] = useState<Record<string, SupplierStats>>({});
+  const [roles, setRoles] = useState<Record<string, ContactRoles>>({});
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -49,8 +56,9 @@ export default function SuppliersPage() {
 
     if (list.length > 0) {
       const ids = list.map(s => s.id);
+      const names = list.map(s => s.name);
 
-      const [purchRes, balRes] = await Promise.all([
+      const [purchRes, balRes, orderRes] = await Promise.all([
         supabase
           .from("purchases")
           .select("id, supplier_id, quantity, unit_cost, total_cost_gbp, supplier_paid")
@@ -60,11 +68,20 @@ export default function SuppliersPage() {
           .select("party_id, amount, type")
           .eq("party_type", "supplier")
           .in("party_id", ids),
+        supabase
+          .from("orders")
+          .select("buyer_name")
+          .in("buyer_name", names),
       ]);
 
       const statsMap: Record<string, SupplierStats> = {};
-      ids.forEach(id => { statsMap[id] = { totalOwed: 0, totalPaid: 0, totalPurchases: 0, ticketsBought: 0 }; });
+      const rolesMap: Record<string, ContactRoles> = {};
+      ids.forEach(id => {
+        statsMap[id] = { totalOwed: 0, totalPaid: 0, totalPurchases: 0, ticketsBought: 0 };
+        rolesMap[id] = { isBuyer: false, isSupplier: false };
+      });
 
+      // Mark suppliers (have purchases from them)
       (purchRes.data || []).forEach((p: any) => {
         if (!statsMap[p.supplier_id]) return;
         statsMap[p.supplier_id].totalPurchases++;
@@ -72,6 +89,7 @@ export default function SuppliersPage() {
         const cost = p.total_cost_gbp || (p.quantity * p.unit_cost);
         statsMap[p.supplier_id].totalOwed += cost;
         if (p.supplier_paid) statsMap[p.supplier_id].totalPaid += cost;
+        rolesMap[p.supplier_id].isSupplier = true;
       });
 
       (balRes.data || []).forEach((b: any) => {
@@ -79,7 +97,16 @@ export default function SuppliersPage() {
         if (b.type === "payment") statsMap[b.party_id].totalPaid += b.amount;
       });
 
+      // Mark buyers (have sold to them)
+      const buyerNames = new Set((orderRes.data || []).map((o: any) => o.buyer_name?.toLowerCase()));
+      list.forEach(s => {
+        if (buyerNames.has(s.name.toLowerCase())) {
+          rolesMap[s.id].isBuyer = true;
+        }
+      });
+
       setStats(statsMap);
+      setRoles(rolesMap);
     }
   }, []);
 
@@ -90,7 +117,6 @@ export default function SuppliersPage() {
     const q = search.toLowerCase();
     return suppliers.filter(s =>
       s.name.toLowerCase().includes(q) ||
-      (s.display_id || "").toLowerCase().includes(q) ||
       (s.contact_name || "").toLowerCase().includes(q) ||
       (s.contact_phone || "").toLowerCase().includes(q)
     );
@@ -106,11 +132,10 @@ export default function SuppliersPage() {
   };
 
   const handleExportCSV = () => {
-    const headers = ["ID", "Name", "Contact", "Phone", "Total Owed", "Total Paid", "Balance", "Purchases", "Tickets Bought"];
+    const headers = ["Name", "Contact", "Phone", "Total Owed", "Total Paid", "Balance", "Purchases", "Tickets Bought"];
     const rows = suppliers.map(s => {
       const st = stats[s.id] || { totalOwed: 0, totalPaid: 0, totalPurchases: 0, ticketsBought: 0 };
       return [
-        s.display_id || "",
         s.name,
         s.contact_name || "",
         s.contact_phone || "",
@@ -133,11 +158,7 @@ export default function SuppliersPage() {
   };
 
   const selected = suppliers.find(s => s.id === selectedId) || null;
-
-  const getDisplayCode = (s: Supplier, index: number) => {
-    if (s.display_id) return s.display_id;
-    return `VJX-${String(index + 1).padStart(3, "0")}`;
-  };
+  const selectedRoles = roles[selectedId || ""] || { isBuyer: false, isSupplier: false };
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -172,10 +193,10 @@ export default function SuppliersPage() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((s, idx) => {
+          {filtered.map((s) => {
             const st = stats[s.id] || { totalOwed: 0, totalPaid: 0, totalPurchases: 0, ticketsBought: 0 };
+            const r = roles[s.id] || { isBuyer: false, isSupplier: false };
             const balance = st.totalOwed - st.totalPaid;
-            const code = getDisplayCode(s, suppliers.indexOf(s));
             return (
               <div
                 key={s.id}
@@ -203,7 +224,7 @@ export default function SuppliersPage() {
                   </Button>
                 </div>
 
-                <div className="flex items-center gap-3 mb-3">
+                <div className="flex items-center gap-3 mb-2">
                   <LogoAvatar
                     name={s.name}
                     logoUrl={s.logo_url}
@@ -220,9 +241,18 @@ export default function SuppliersPage() {
                         </span>
                       )}
                     </div>
-                    <Badge variant="outline" className="mt-0.5 text-[10px] font-mono font-bold tracking-wider bg-primary/5 text-primary border-primary/20">
-                      {code}
-                    </Badge>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {r.isBuyer && (
+                        <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-[10px] px-1.5 py-0">
+                          Buyer
+                        </Badge>
+                      )}
+                      {r.isSupplier && (
+                        <Badge className="bg-purple-500/15 text-purple-400 border-purple-500/30 text-[10px] px-1.5 py-0">
+                          Supplier
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -248,11 +278,12 @@ export default function SuppliersPage() {
         </div>
       )}
 
-      <SupplierDetailSheet
+      <ContactProfileSheet
         supplier={selected}
-        stats={stats[selectedId || ""] || { totalOwed: 0, totalPaid: 0, totalPurchases: 0, ticketsBought: 0 }}
         onClose={() => setSelectedId(null)}
         onUpdated={load}
+        isBuyer={selectedRoles.isBuyer}
+        isSupplier={selectedRoles.isSupplier}
       />
 
       {editingSupplier && (
