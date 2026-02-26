@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Smartphone, Copy, Check, Download, Zap, CheckCircle2, CalendarIcon, Trash2 } from "lucide-react";
+import { Search, Smartphone, Copy, Check, Download, Zap, CheckCircle2, CalendarIcon, Trash2, Pencil } from "lucide-react";
 import { getEventKey } from "@/lib/eventDedup";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours, addDays, addWeeks, addMonths } from "date-fns";
@@ -17,6 +17,7 @@ import FilterSelect from "@/components/FilterSelect";
 import AddOrderDialog from "@/components/AddOrderDialog";
 import OrderDetailSheet from "@/components/OrderDetailSheet";
 import AssignPurchaseDialog from "@/components/AssignPurchaseDialog";
+import EditOrderDialog from "@/components/EditOrderDialog";
 
 const CopyText = ({ text, className = "" }: { text: string; className?: string }) => {
   const [copied, setCopied] = useState(false);
@@ -150,6 +151,7 @@ export default function Orders() {
   const [customDateTo, setCustomDateTo] = useState<Date | undefined>();
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [assignOrder, setAssignOrder] = useState<Order | null>(null);
+  const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [assignments, setAssignments] = useState<Record<string, AssignmentInfo>>({});
 
   const load = useCallback(async () => {
@@ -637,6 +639,16 @@ export default function Orders() {
                             </Button>
                           </TableCell>
                           <TableCell className="py-2">
+                            <div className="flex items-center gap-0.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                              title="Edit order"
+                              onClick={(e) => { e.stopPropagation(); setEditOrder(o); }}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
                             <Button
                               size="sm"
                               variant="ghost"
@@ -664,6 +676,7 @@ export default function Orders() {
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -690,6 +703,14 @@ export default function Orders() {
           orderQuantity={assignOrder.quantity}
           onClose={() => setAssignOrder(null)}
           onAssigned={() => { setAssignOrder(null); load(); }}
+        />
+      )}
+
+      {editOrder && (
+        <EditOrderDialog
+          order={editOrder}
+          onClose={() => setEditOrder(null)}
+          onUpdated={() => { setEditOrder(null); load(); }}
         />
       )}
     </div>
