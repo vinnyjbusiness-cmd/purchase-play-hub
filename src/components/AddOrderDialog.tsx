@@ -45,6 +45,8 @@ export default function AddOrderDialog({ onCreated }: Props) {
     buyer_name: "",
     buyer_phone: "",
     category: "",
+    block: "",
+    split_type: "",
     quantity: "1",
     sale_price: "",
     delivery_type: "mobile_transfer" as "mobile_transfer" | "email",
@@ -97,20 +99,22 @@ export default function AddOrderDialog({ onCreated }: Props) {
         buyer_name: form.buyer_name || null,
         buyer_phone: form.buyer_phone || null,
         category: form.category || "General",
+        block: form.block || null,
+        split_type: form.split_type || null,
         quantity: parseInt(form.quantity),
         sale_price: parseFloat(form.sale_price),
         fees: 0,
         currency: "GBP",
         delivery_type: form.delivery_type,
         notes: form.notes || null,
-      });
+      } as any);
       if (error) throw error;
       toast.success("Order added");
       setOpen(false);
       setForm({
         platform_id: "", club: "", event_id: "", order_ref: "", contact_id: "",
-        buyer_name: "", buyer_phone: "", category: "", quantity: "1",
-        sale_price: "", delivery_type: "mobile_transfer", notes: "",
+        buyer_name: "", buyer_phone: "", category: "", block: "", split_type: "",
+        quantity: "1", sale_price: "", delivery_type: "mobile_transfer", notes: "",
       });
       onCreated();
     } catch (err: any) {
@@ -242,7 +246,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
             </div>
           </div>
 
-          {/* Category */}
+          {/* Category & Block */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Category *</Label>
@@ -268,8 +272,29 @@ export default function AddOrderDialog({ onCreated }: Props) {
               )}
             </div>
             <div className="space-y-1.5">
+              <Label>Block</Label>
+              <Input value={form.block} onChange={(e) => setForm({ ...form, block: e.target.value })} placeholder="e.g. 305" />
+            </div>
+          </div>
+
+          {/* Quantity & Split Type */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
               <Label>Quantity *</Label>
               <Input type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Split Type</Label>
+              <Select value={form.split_type} onValueChange={(v) => setForm({ ...form, split_type: v })}>
+                <SelectTrigger><SelectValue placeholder="Select split" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="singles">Singles</SelectItem>
+                  <SelectItem value="pairs">Pairs</SelectItem>
+                  <SelectItem value="trios">Trios</SelectItem>
+                  <SelectItem value="quads">Quads</SelectItem>
+                  <SelectItem value="all_together">All Together</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

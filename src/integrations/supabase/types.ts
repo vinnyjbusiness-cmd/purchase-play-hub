@@ -218,6 +218,7 @@ export type Database = {
           seat: string | null
           section: string | null
           source: string
+          split_type: string | null
           status: Database["public"]["Enums"]["inventory_status"]
           supporter_id: string | null
           ticket_name: string | null
@@ -242,6 +243,7 @@ export type Database = {
           seat?: string | null
           section?: string | null
           source?: string
+          split_type?: string | null
           status?: Database["public"]["Enums"]["inventory_status"]
           supporter_id?: string | null
           ticket_name?: string | null
@@ -266,6 +268,7 @@ export type Database = {
           seat?: string | null
           section?: string | null
           source?: string
+          split_type?: string | null
           status?: Database["public"]["Enums"]["inventory_status"]
           supporter_id?: string | null
           ticket_name?: string | null
@@ -681,6 +684,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          block: string | null
           buyer_email: string | null
           buyer_name: string | null
           buyer_phone: string | null
@@ -705,9 +709,11 @@ export type Database = {
           platform_id: string | null
           quantity: number
           sale_price: number
+          split_type: string | null
           status: Database["public"]["Enums"]["order_status"]
         }
         Insert: {
+          block?: string | null
           buyer_email?: string | null
           buyer_name?: string | null
           buyer_phone?: string | null
@@ -732,9 +738,11 @@ export type Database = {
           platform_id?: string | null
           quantity?: number
           sale_price: number
+          split_type?: string | null
           status?: Database["public"]["Enums"]["order_status"]
         }
         Update: {
+          block?: string | null
           buyer_email?: string | null
           buyer_name?: string | null
           buyer_phone?: string | null
@@ -759,6 +767,7 @@ export type Database = {
           platform_id?: string | null
           quantity?: number
           sale_price?: number
+          split_type?: string | null
           status?: Database["public"]["Enums"]["order_status"]
         }
         Relationships: [
@@ -980,6 +989,7 @@ export type Database = {
           purchase_date: string
           quantity: number
           section: string | null
+          split_type: string | null
           status: Database["public"]["Enums"]["purchase_status"]
           supplier_id: string
           supplier_order_id: string | null
@@ -1001,6 +1011,7 @@ export type Database = {
           purchase_date?: string
           quantity?: number
           section?: string | null
+          split_type?: string | null
           status?: Database["public"]["Enums"]["purchase_status"]
           supplier_id: string
           supplier_order_id?: string | null
@@ -1022,6 +1033,7 @@ export type Database = {
           purchase_date?: string
           quantity?: number
           section?: string | null
+          split_type?: string | null
           status?: Database["public"]["Enums"]["purchase_status"]
           supplier_id?: string
           supplier_order_id?: string | null
