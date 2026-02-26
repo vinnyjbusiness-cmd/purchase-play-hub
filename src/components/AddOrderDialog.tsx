@@ -5,15 +5,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Smartphone, Link2 } from "lucide-react";
+import { Plus, Smartphone, Link2, ChevronsUpDown, Check } from "lucide-react";
 import { toast } from "sonner";
 import { STANDARD_SECTIONS, HOSPITALITY_OPTIONS, CLUBS } from "@/lib/seatingSections";
 import { deduplicateEvents } from "@/lib/eventDedup";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import InlineAddContact from "@/components/InlineAddContact";
 
 interface Props {
   onCreated: () => void;
+}
+
+interface ContactRow {
+  id: string;
+  name: string;
+  contact_phone: string | null;
+  contact_email: string | null;
 }
 
 export default function AddOrderDialog({ onCreated }: Props) {
@@ -21,12 +32,16 @@ export default function AddOrderDialog({ onCreated }: Props) {
   const [loading, setLoading] = useState(false);
   const [platforms, setPlatforms] = useState<{ id: string; name: string }[]>([]);
   const [events, setEvents] = useState<{ id: string; match_code: string; home_team: string; away_team: string; event_date: string; competition: string }[]>([]);
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
 
   const [form, setForm] = useState({
     platform_id: "",
     club: "",
     event_id: "",
     order_ref: "",
+    contact_id: "",
     buyer_name: "",
     buyer_phone: "",
     category: "",
@@ -38,7 +53,6 @@ export default function AddOrderDialog({ onCreated }: Props) {
 
   const isWorldCup = form.club === "world-cup";
 
-  // Filter events by selected club & deduplicate
   const filteredEvents = (() => {
     const matched = events.filter((e) => {
       if (!form.club) return false;
@@ -54,13 +68,23 @@ export default function AddOrderDialog({ onCreated }: Props) {
     if (open) {
       supabase.from("platforms").select("id, name").then(({ data }) => setPlatforms(data || []));
       supabase.from("events").select("id, match_code, home_team, away_team, event_date, competition").order("event_date").then(({ data }) => setEvents(data || []));
+      supabase.from("suppliers").select("id, name, contact_phone, contact_email").then(({ data }) => setContacts(data || []));
     }
   }, [open]);
 
-  // Reset event & category when club changes
   useEffect(() => {
     setForm((f) => ({ ...f, event_id: "", category: "" }));
   }, [form.club]);
+
+  const handleSelectContact = (contact: ContactRow) => {
+    setForm((f) => ({
+      ...f,
+      contact_id: contact.id,
+      buyer_name: contact.name,
+      buyer_phone: contact.contact_phone || "",
+    }));
+    setContactOpen(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,8 +108,9 @@ export default function AddOrderDialog({ onCreated }: Props) {
       toast.success("Order added");
       setOpen(false);
       setForm({
-        platform_id: "", club: "", event_id: "", order_ref: "", buyer_name: "", buyer_phone: "",
-        category: "", quantity: "1", sale_price: "", delivery_type: "mobile_transfer", notes: "",
+        platform_id: "", club: "", event_id: "", order_ref: "", contact_id: "",
+        buyer_name: "", buyer_phone: "", category: "", quantity: "1",
+        sale_price: "", delivery_type: "mobile_transfer", notes: "",
       });
       onCreated();
     } catch (err: any) {
@@ -94,6 +119,8 @@ export default function AddOrderDialog({ onCreated }: Props) {
       setLoading(false);
     }
   };
+
+  const selectedContact = contacts.find((c) => c.id === form.contact_id);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -142,24 +169,80 @@ export default function AddOrderDialog({ onCreated }: Props) {
             </div>
           </div>
 
-          {/* Order Number & Customer */}
+          {/* Order Number */}
+          <div className="space-y-1.5">
+            <Label>Order Number</Label>
+            <Input value={form.order_ref} onChange={(e) => setForm({ ...form, order_ref: e.target.value })} placeholder="e.g. ORD-123" />
+          </div>
+
+          {/* Contact dropdown */}
+          <div className="space-y-1.5">
+            <Label>Customer (Contact)</Label>
+            <Popover open={contactOpen} onOpenChange={setContactOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                  {selectedContact ? selectedContact.name : "Search contacts..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Type name..." />
+                  <CommandList>
+                    <CommandEmpty>No contact found.</CommandEmpty>
+                    <CommandGroup>
+                      {contacts.map((c) => (
+                        <CommandItem
+                          key={c.id}
+                          value={c.name}
+                          onSelect={() => handleSelectContact(c)}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", form.contact_id === c.id ? "opacity-100" : "opacity-0")} />
+                          <span className="font-medium">{c.name}</span>
+                        </CommandItem>
+                      ))}
+                      <CommandItem
+                        value="__add_new_contact__"
+                        onSelect={() => {
+                          setContactOpen(false);
+                          setShowAddContact(true);
+                        }}
+                        className="text-primary"
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        <span className="font-medium">Add New Contact</span>
+                      </CommandItem>
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {showAddContact && (
+            <InlineAddContact
+              onCancel={() => setShowAddContact(false)}
+              onCreated={(contact) => {
+                setContacts((prev) => [...prev, contact]);
+                handleSelectContact(contact);
+                setShowAddContact(false);
+              }}
+            />
+          )}
+
+          {/* Editable name/phone */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Order Number</Label>
-              <Input value={form.order_ref} onChange={(e) => setForm({ ...form, order_ref: e.target.value })} placeholder="e.g. ORD-123" />
-            </div>
             <div className="space-y-1.5">
               <Label>Customer Name</Label>
               <Input value={form.buyer_name} onChange={(e) => setForm({ ...form, buyer_name: e.target.value })} placeholder="e.g. John Smith" />
             </div>
+            <div className="space-y-1.5">
+              <Label>Customer Phone</Label>
+              <Input value={form.buyer_phone} onChange={(e) => setForm({ ...form, buyer_phone: e.target.value })} placeholder="e.g. +44 7700 900000" />
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Customer Phone</Label>
-            <Input value={form.buyer_phone} onChange={(e) => setForm({ ...form, buyer_phone: e.target.value })} placeholder="e.g. +44 7700 900000" />
-          </div>
-
-          {/* Category — club-based */}
+          {/* Category */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Category *</Label>
@@ -196,26 +279,14 @@ export default function AddOrderDialog({ onCreated }: Props) {
             <Input type="number" step="0.01" min="0" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} placeholder="0.00" />
           </div>
 
-          {/* Delivery Type — compact toggle */}
+          {/* Delivery Type */}
           <div className="space-y-1.5">
             <Label>Delivery</Label>
             <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={form.delivery_type === "mobile_transfer" ? "default" : "outline"}
-                className="flex-1 gap-1.5"
-                onClick={() => setForm({ ...form, delivery_type: "mobile_transfer" })}
-              >
+              <Button type="button" size="sm" variant={form.delivery_type === "mobile_transfer" ? "default" : "outline"} className="flex-1 gap-1.5" onClick={() => setForm({ ...form, delivery_type: "mobile_transfer" })}>
                 <Smartphone className="h-3.5 w-3.5" /> Phone
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={form.delivery_type === "email" ? "default" : "outline"}
-                className="flex-1 gap-1.5"
-                onClick={() => setForm({ ...form, delivery_type: "email" })}
-              >
+              <Button type="button" size="sm" variant={form.delivery_type === "email" ? "default" : "outline"} className="flex-1 gap-1.5" onClick={() => setForm({ ...form, delivery_type: "email" })}>
                 <Link2 className="h-3.5 w-3.5" /> Link
               </Button>
             </div>
@@ -224,12 +295,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
           {/* Notes */}
           <div className="space-y-1.5">
             <Label>Notes</Label>
-            <Textarea
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              placeholder="Any additional info..."
-              rows={2}
-            />
+            <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Any additional info..." rows={2} />
           </div>
 
           <Button type="submit" className="w-full" disabled={loading || !form.event_id || !form.sale_price}>

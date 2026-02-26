@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { CLUBS, STANDARD_SECTIONS, HOSPITALITY_OPTIONS } from "@/lib/seatingSections";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import InlineAddContact from "@/components/InlineAddContact";
 
 interface Props {
   onCreated: () => void;
@@ -41,6 +42,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [supplierOpen, setSupplierOpen] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
 
   const [form, setForm] = useState({
     club: "",
@@ -238,12 +240,34 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
                           <span className="font-medium">{s.name}</span>
                         </CommandItem>
                       ))}
+                      <CommandItem
+                        value="__add_new_contact__"
+                        onSelect={() => {
+                          setSupplierOpen(false);
+                          setShowAddContact(true);
+                        }}
+                        className="text-primary"
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        <span className="font-medium">Add New Contact</span>
+                      </CommandItem>
                     </CommandGroup>
                   </CommandList>
                 </Command>
               </PopoverContent>
             </Popover>
           </div>
+
+          {showAddContact && (
+            <InlineAddContact
+              onCancel={() => setShowAddContact(false)}
+              onCreated={(contact) => {
+                setSuppliers((prev) => [...prev, { id: contact.id, name: contact.name, display_id: null, contact_name: null, contact_phone: contact.contact_phone }]);
+                set("supplier_id", contact.id);
+                setShowAddContact(false);
+              }}
+            />
+          )}
 
           {/* Trade fields */}
           {isTrade && (
