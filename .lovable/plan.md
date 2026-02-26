@@ -1,128 +1,72 @@
 
 
-# VJX Ticket Ops — Implementation Plan
+## Plan: Inventory Source & Profit Split + Spreadsheet Templates
 
-## Overview
-A clean, modern ticket trading operations dashboard that replaces Google Sheets. Light mode by default with dark mode toggle. Built with React + Lovable Cloud (Postgres, Auth, Edge Functions). Seeded with realistic demo data (World Cup matches, sample suppliers like Tixstock, FanPass, FootballTicketNet, P2P deals).
-
----
-
-## Phase 1: Foundation & Data Model
-
-### Database Schema
-Set up the full relational data model:
-- **Events** — competition, teams, date, venue
-- **Suppliers** — name, contact, payment terms
-- **Platforms** — name (Tixstock, FanPass, FootballTicketNet, P2P/WhatsApp, etc.), fee structure
-- **Purchases** — supplier buys with cost, currency (GBP/USD/EUR), exchange rate, fees, status
-- **Inventory** — individual tickets linked to purchases (event, category, section, seat, status)
-- **Orders (Sales)** — platform, buyer ref, sale price, fees, net received, delivery type/status
-- **Order Lines** — link each sold ticket to its inventory item (the chain: Purchase → Inventory → Sale)
-- **Transactions Ledger** — single source of truth for all money movement (sales, fees, refunds, payouts, supplier payments)
-- **Payouts** — platform payout tracking
-- **Refunds/Chargebacks**
-- **User Roles** — Admin / Viewer (secure role table, not on profiles)
-- **Audit Log** — tracks finance edits and manual overrides
-
-### Authentication
-- Email/password login
-- Admin and Viewer roles
-- Protected routes
-
-### Seed Data
-Populate with ~20 World Cup matches (M1–M20), sample suppliers, ~50 purchases, ~40 orders, inventory, and corresponding ledger entries so the app feels alive on first load.
+This plan covers two major features: (1) adding a "Source" field to inventory with IJK profit splitting, and (2) a Spreadsheet Templates page.
 
 ---
 
-## Phase 2: Dashboard (Home)
+### Part 1: Inventory Source & IJK Profit Split
 
-- **Summary cards**: Total Revenue, Total Profit, Owed to Suppliers, Pending Payouts, Open Orders, Completed Orders, Refunds
-- **Time period toggles**: Today / 7 days / 30 days / All time
-- **Charts**: Revenue over time (line), Profit by event (bar), Sales by platform (pie)
-- **Quick filters**: Competition, event, platform, supplier, date range, currency
-- Clicking any card drills down to the relevant page
+**Database Migration**
+- Add a `source` column to the `inventory` table (text, default `'IJK'`)
+- This tracks where each ticket was sourced from
 
----
+**UI Changes to Inventory**
+- Add a "Source" dropdown to `AddInventoryDialog` and `InventoryDetailSheet` with options: "IJK", "Own", and a free-text option for other suppliers
+- Display the source badge on each ticket chip in the Inventory page
 
-## Phase 3: Events / Matches Page
+**IJK Account Page**
+- Create a new page at `/ijk-account` that shows a full itemised breakdown of all IJK-sourced inventory
+- For each ticket, calculate: Sale Price (from linked order), Cost Price (face value or purchase unit cost), Net Profit, and IJK's 50% cut
+- Data is pulled by joining `inventory` (where source = 'IJK') with `order_lines` and `orders` to get sale prices, and with `purchases` to get cost prices
+- Include a summary row showing totals
+- Add a "Export CSV" button that exports the full IJK report with columns: Event, Section, Seat, Cost Price, Sale Price, Net Profit, IJK Share (50%)
+- Add navigation link in the sidebar under a logical grouping (near Suppliers)
 
-- List of all events with search and competition filter
-- Each event card shows: date, teams, total inventory, sold count, profit
-- **Event detail page** with tabs:
-  - **Inventory** — tickets on hand by category/section
-  - **Sales** — orders for this event
-  - **Purchases** — supplier buys for this event
-  - **Profit summary** — revenue, costs, fees, net profit
-  - **Ticket chain drilldown** — visual trail from Supplier → Purchase → Inventory → Sale
-
----
-
-## Phase 4: Orders (Sales) Page
-
-- Searchable, sortable table: Order ID, Platform, Event, Category, Qty, Sale Price, Fees, Net Received, Status, Delivery Type, Buyer Ref, Date
-- Filters: platform, event, status, date range
-- **Order detail drawer/page**:
-  - Linked supplier purchase(s)
-  - Line-by-line profit breakdown
-  - Notes & attachments section (links to PDFs/screenshots)
-- Status badges (Pending, Fulfilled, Delivered, Refunded)
-- CSV export
+**Automatic Balance Tracking**
+- When the IJK report is viewed, it calculates IJK's 50% share of net profit on each sold ticket
+- This total can be cross-referenced with the Balances page (the user can manually add/reconcile payments to IJK there)
 
 ---
 
-## Phase 5: Purchases (Supplier Buys) Page
+### Part 2: Spreadsheet Templates Page
 
-- Searchable table: Supplier, Supplier Order ID, Event, Category, Qty, Buy Price, Fees, Total Cost, Currency, Date, Status
-- Filters: supplier, event, currency, status
-- **Purchase detail**:
-  - Inventory items created from this purchase
-  - Which orders these tickets fulfilled
-  - Currency info with exchange rate (original + GBP converted)
-- CSV export
+**New Page at `/spreadsheet-templates`**
+- Create `src/pages/SpreadsheetTemplates.tsx` with three template cards:
+  1. **Member Export** -- columns: First Name, Last Name, Supporter ID, Email, Member Password, Email Password, Phone, DOB, Postcode, Address
+  2. **Inventory/Sales Export** -- columns: Event, Match Date, Ticket Category, Seat Details, Cost Price, Sale Price, Platform Sold On, Buyer Name, Sale Date, Profit, Source, IJK 50% Split Amount
+  3. **IJK Profit Split Report** -- filtered to only IJK-sourced inventory with columns: Event, Tickets Sold, Total Revenue, Total Cost, Net Profit, IJK Share (50%)
 
----
+- Each template card has two buttons:
+  - **Download Blank Template**: generates a CSV with just the headers (no data)
+  - **Fill and Export**: fetches live data from the database, populates the template, and downloads as CSV
 
-## Phase 6: Finance / Accounting Page
-
-- **Transaction Ledger** — full log of every financial event (sale, fee, refund, payout, supplier payment) with filters
-- **Profit & Loss view** — filterable by date, event, platform, supplier
-- **Cashflow chart** — money in/out over time
-- **Owed sections**:
-  - Owed to suppliers (unpaid purchases)
-  - Pending platform payouts
-- **Multi-currency**: each transaction stores original currency + GBP equivalent with exchange rate; manual rate override per transaction
-- CSV/PDF export
+**Navigation**
+- Add "Spreadsheets" link to sidebar (Admin only) with a `FileSpreadsheet` icon
+- Add route `/spreadsheet-templates` in `App.tsx`
 
 ---
 
-## Phase 7: Reconciliation & Exceptions Page
+### Technical Details
 
-- Automated checks surfaced as alerts:
-  - Sales with no linked supplier purchase
-  - Purchases not assigned to any sale
-  - Delivery overdue orders
-  - Negative profit deals (highlighted in red)
-  - Missing or unknown fees
-- Each exception is clickable to jump to the relevant order/purchase
-- Summary count badges on the sidebar
+**Files to create:**
+- `src/pages/IJKAccount.tsx` -- IJK account breakdown page
+- `src/pages/SpreadsheetTemplates.tsx` -- spreadsheet templates page
 
----
+**Files to modify:**
+- `src/components/AddInventoryDialog.tsx` -- add Source dropdown
+- `src/components/InventoryDetailSheet.tsx` -- add Source field
+- `src/pages/Inventory.tsx` -- show source badge on ticket chips
+- `src/App.tsx` -- add two new routes
+- `src/components/AppSidebar.tsx` -- add two new nav items
 
-## Phase 8: Integration Framework & Data Import
+**Database migration:**
+- `ALTER TABLE public.inventory ADD COLUMN source text NOT NULL DEFAULT 'IJK';`
 
-- **CSV Import** — upload CSV files mapped to orders, purchases, or inventory with column mapping UI
-- **Integration stub** — a clear pattern (edge function + sync log) for adding API-based integrations later (Tixstock, FanPass, etc.)
-- **Sync log** — records of all imports with success/failure details
-- **Manual "Sync Now" button** + scheduled sync placeholder
-- Documentation comments in code explaining how to add a new data source
-
----
-
-## Across All Pages
-- Sidebar navigation with collapsible menu
-- Global search bar
-- Persistent filters (saved in URL params)
-- Dark mode toggle
-- Responsive design
-- Audit log for finance edits
+**Data flow for IJK profit calculation:**
+- Join inventory (source='IJK') -> order_lines -> orders (to get sale_price, fees)
+- Join inventory -> purchases (to get unit_cost)
+- Net Profit = (sale_price - fees) / order_quantity - unit_cost per ticket
+- IJK Share = Net Profit * 0.5
 
