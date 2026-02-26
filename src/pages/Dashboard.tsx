@@ -28,7 +28,7 @@ interface AuditEntry { id: string; table_name: string; action: string; created_a
 
 const TABLE_LABELS: Record<string, string> = {
   orders: "Order", purchases: "Purchase", events: "Event", inventory: "Inventory",
-  suppliers: "Supplier", balance_payments: "Payment", todos: "To-Do",
+  suppliers: "Contact", balance_payments: "Payment", todos: "To-Do",
   order_status_history: "Order Status", platforms: "Platform", refunds: "Refund",
 };
 

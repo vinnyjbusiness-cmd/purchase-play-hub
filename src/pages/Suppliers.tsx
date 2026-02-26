@@ -42,7 +42,6 @@ export default function SuppliersPage() {
       .from("suppliers")
       .select("*")
       .order("created_at", { ascending: true });
-    // Filter out "websites" supplier type
     const list = ((data as Supplier[]) || []).filter(
       s => s.name.toLowerCase() !== "websites"
     );
@@ -99,10 +98,10 @@ export default function SuppliersPage() {
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Delete this supplier? This cannot be undone.")) return;
+    if (!confirm("Delete this contact? This cannot be undone.")) return;
     const { error } = await supabase.from("suppliers").delete().eq("id", id);
     if (error) { toast.error(error.message); return; }
-    toast.success("Supplier deleted");
+    toast.success("Contact deleted");
     load();
   };
 
@@ -127,7 +126,7 @@ export default function SuppliersPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `suppliers-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `contacts-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success("CSV exported");
@@ -135,7 +134,6 @@ export default function SuppliersPage() {
 
   const selected = suppliers.find(s => s.id === selectedId) || null;
 
-  // Generate a premium-style display code
   const getDisplayCode = (s: Supplier, index: number) => {
     if (s.display_id) return s.display_id;
     return `VJX-${String(index + 1).padStart(3, "0")}`;
@@ -145,9 +143,9 @@ export default function SuppliersPage() {
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Suppliers</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Contacts</h1>
           <p className="text-muted-foreground text-sm">
-            {suppliers.length} supplier{suppliers.length !== 1 ? "s" : ""} in database
+            {suppliers.length} contact{suppliers.length !== 1 ? "s" : ""} in database
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -161,7 +159,7 @@ export default function SuppliersPage() {
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search suppliers..."
+          placeholder="Search contacts..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9 h-9"
@@ -170,7 +168,7 @@ export default function SuppliersPage() {
 
       {filtered.length === 0 ? (
         <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">
-          No suppliers found
+          No contacts found
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -184,14 +182,13 @@ export default function SuppliersPage() {
                 onClick={() => setSelectedId(s.id)}
                 className="group relative rounded-xl border bg-card p-5 cursor-pointer hover:shadow-md hover:border-primary/30 transition-all"
               >
-                {/* Action buttons */}
                 <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Button
                     size="sm"
                     variant="ghost"
                     className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                     onClick={(e) => { e.stopPropagation(); setEditingSupplier(s); }}
-                    title="Edit supplier"
+                    title="Edit contact"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
@@ -200,7 +197,7 @@ export default function SuppliersPage() {
                     variant="ghost"
                     className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
                     onClick={(e) => handleDelete(s.id, e)}
-                    title="Delete supplier"
+                    title="Delete contact"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>

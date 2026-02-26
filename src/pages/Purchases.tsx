@@ -176,7 +176,7 @@ export default function Purchases() {
             <Input placeholder="Search purchases..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
           </div>
         </div>
-        <FilterSelect label="Supplier" value={filterSupplier} onValueChange={setFilterSupplier} options={supplierOptions} />
+        <FilterSelect label="Contact" value={filterSupplier} onValueChange={setFilterSupplier} options={supplierOptions} />
         <FilterSelect label="Game" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
         <FilterSelect label="Status" value={filterStatus} onValueChange={setFilterStatus} options={[
           { value: "pending", label: "Pending" },
@@ -240,7 +240,7 @@ export default function Purchases() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-[10px] uppercase tracking-wider">Source</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Supplier Name</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider">Contact Name</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]"><Phone className="h-3.5 w-3.5 mx-auto" /></TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider text-right">Qty</TableHead>

@@ -290,7 +290,7 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
         <SheetHeader>
           <div className="flex items-center justify-between">
             <SheetTitle className="flex items-center gap-2">
-              Purchase from {purchase.suppliers?.name || "Unknown"}
+              Purchase from {purchase.suppliers?.name || "Unknown Contact"}
               <Badge variant="outline">{purchase.status}</Badge>
             </SheetTitle>
             <AlertDialog>
@@ -345,7 +345,7 @@ export default function PurchaseDetailSheet({ purchaseId, onClose, onUpdated }: 
               <p className="font-medium">£{Number(purchase.total_cost).toFixed(2)}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">Supplier Paid</p>
+              <p className="text-muted-foreground">Contact Paid</p>
               <Switch checked={purchase.supplier_paid} onCheckedChange={togglePaid} />
             </div>
           </div>

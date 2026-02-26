@@ -148,7 +148,7 @@ export default function AppSidebar() {
   ];
 
   const adminBottomItems = [
-    { to: "/suppliers", icon: Truck, label: "Suppliers" },
+    { to: "/suppliers", icon: Truck, label: "Contacts" },
     { to: "/ijk-account", icon: Handshake, label: "IJK Account" },
     { to: "/members", icon: Contact, label: "Members" },
     { to: "/purchases", icon: Package, label: "Purchases" },
