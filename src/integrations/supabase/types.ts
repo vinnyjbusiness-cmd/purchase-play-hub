@@ -217,6 +217,7 @@ export type Database = {
           row_name: string | null
           seat: string | null
           section: string | null
+          source: string
           status: Database["public"]["Enums"]["inventory_status"]
           supporter_id: string | null
           ticket_name: string | null
@@ -240,6 +241,7 @@ export type Database = {
           row_name?: string | null
           seat?: string | null
           section?: string | null
+          source?: string
           status?: Database["public"]["Enums"]["inventory_status"]
           supporter_id?: string | null
           ticket_name?: string | null
@@ -263,6 +265,7 @@ export type Database = {
           row_name?: string | null
           seat?: string | null
           section?: string | null
+          source?: string
           status?: Database["public"]["Enums"]["inventory_status"]
           supporter_id?: string | null
           ticket_name?: string | null

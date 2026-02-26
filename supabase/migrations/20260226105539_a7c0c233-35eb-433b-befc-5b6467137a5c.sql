@@ -1,0 +1,1 @@
+ALTER TABLE public.inventory ADD COLUMN source text NOT NULL DEFAULT 'IJK';

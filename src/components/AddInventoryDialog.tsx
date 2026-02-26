@@ -48,6 +48,8 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const [iphonePassLink, setIphonePassLink] = useState("");
   const [androidPassLink, setAndroidPassLink] = useState("");
   const [pkPassFile, setPkPassFile] = useState<File | null>(null);
+  const [source, setSource] = useState("IJK");
+  const [customSource, setCustomSource] = useState("");
   const [loading, setLoading] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [ticketOpen, setTicketOpen] = useState(false);
@@ -121,6 +123,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
       pk_pass_url: pkPassUrl,
       org_id: orgId,
       status: "available" as const,
+      source: source === "__custom__" ? (customSource || "IJK") : source,
     }));
     const { error } = await supabase.from("inventory").insert(rows);
     if (error) { toast.error(error.message); setLoading(false); return; }
@@ -225,6 +228,22 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
               </Select>
             </div>
           )}
+
+          {/* Source */}
+          <div className="space-y-1.5">
+            <Label>Source</Label>
+            <Select value={source} onValueChange={setSource}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="IJK">IJK</SelectItem>
+                <SelectItem value="Own">Own</SelectItem>
+                <SelectItem value="__custom__">Other…</SelectItem>
+              </SelectContent>
+            </Select>
+            {source === "__custom__" && (
+              <Input value={customSource} onChange={e => setCustomSource(e.target.value)} placeholder="Enter source name" className="mt-1.5" />
+            )}
+          </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">

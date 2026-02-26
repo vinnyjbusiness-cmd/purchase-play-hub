@@ -27,6 +27,8 @@ import {
   Truck,
   Contact,
   MessageSquareText,
+  FileSpreadsheet,
+  Handshake,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -147,6 +149,7 @@ export default function AppSidebar() {
 
   const adminBottomItems = [
     { to: "/suppliers", icon: Truck, label: "Suppliers" },
+    { to: "/ijk-account", icon: Handshake, label: "IJK Account" },
     { to: "/members", icon: Contact, label: "Members" },
     { to: "/purchases", icon: Package, label: "Purchases" },
     { to: "/inventory", icon: Boxes, label: "Inventory" },
@@ -162,6 +165,7 @@ export default function AppSidebar() {
     { to: "/team", icon: Users, label: "Team" },
     { to: "/team/communications", icon: Mail, label: "Communications" },
     { to: "/templates", icon: MessageSquareText, label: "Templates" },
+    { to: "/spreadsheet-templates", icon: FileSpreadsheet, label: "Spreadsheets" },
     { to: "/activity", icon: ClipboardList, label: "Activity Log" },
   ];
 

@@ -34,6 +34,8 @@ import WarRoom from "./pages/WarRoom";
 import SuppliersPage from "./pages/Suppliers";
 import MembersPage from "./pages/Members";
 import TemplatesPage from "./pages/Templates";
+import IJKAccountPage from "./pages/IJKAccount";
+import SpreadsheetTemplatesPage from "./pages/SpreadsheetTemplates";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -123,6 +125,8 @@ const App = () => (
               <Route path="/suppliers" element={<AdminOnly><SuppliersPage /></AdminOnly>} />
               <Route path="/members" element={<AdminOnly><MembersPage /></AdminOnly>} />
               <Route path="/templates" element={<AdminOnly><TemplatesPage /></AdminOnly>} />
+              <Route path="/ijk-account" element={<AdminOnly><IJKAccountPage /></AdminOnly>} />
+              <Route path="/spreadsheet-templates" element={<AdminOnly><SpreadsheetTemplatesPage /></AdminOnly>} />
               <Route path="/warroom" element={<AdminOnly><WarRoom /></AdminOnly>} />
             </Route>
             <Route path="*" element={<NotFound />} />

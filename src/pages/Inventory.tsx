@@ -29,6 +29,7 @@ interface InventoryItem {
   iphone_pass_link: string | null;
   android_pass_link: string | null;
   pk_pass_url: string | null;
+  source: string | null;
   status: string;
   created_at: string;
   event_id: string;
@@ -477,6 +478,11 @@ export default function Inventory() {
                                         <Badge variant="outline" className={cn("text-[9px]", statusColor[item.status] || "")}>
                                           {item.status}
                                         </Badge>
+                                        {item.source && item.source !== "Own" && (
+                                          <Badge variant="outline" className="text-[9px] bg-accent text-accent-foreground">
+                                            {item.source}
+                                          </Badge>
+                                        )}
                                         {expandedItems.has(item.id) ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                                       </button>
                                     ))}
