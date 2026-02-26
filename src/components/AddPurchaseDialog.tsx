@@ -211,13 +211,13 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
 
           {/* Searchable Supplier dropdown */}
           <div className="space-y-1.5">
-            <Label>Supplier *</Label>
+            <Label>Contact *</Label>
             <Popover open={supplierOpen} onOpenChange={setSupplierOpen}>
               <PopoverTrigger asChild>
                 <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
                   {selectedSupplier
                     ? `${selectedSupplier.name}${selectedSupplier.display_id ? ` (${selectedSupplier.display_id})` : ""}`
-                    : "Search suppliers..."
+                    : "Search contacts..."
                   }
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -226,7 +226,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
                 <Command>
                   <CommandInput placeholder="Type name or code..." />
                   <CommandList>
-                    <CommandEmpty>No supplier found.</CommandEmpty>
+                    <CommandEmpty>No contact found.</CommandEmpty>
                     <CommandGroup>
                       {suppliers.map((s) => (
                         <CommandItem
@@ -266,7 +266,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
           {/* Order ID — only for non-Trade */}
           {!isTrade && selectedSupplier && (
             <div className="space-y-1.5">
-              <Label>Supplier Order ID</Label>
+              <Label>Contact Order ID</Label>
               <Input value={form.supplier_order_id} onChange={(e) => set("supplier_order_id", e.target.value)} placeholder="Reference number" />
             </div>
           )}

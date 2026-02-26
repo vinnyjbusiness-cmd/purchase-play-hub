@@ -36,7 +36,7 @@ export default function AddSupplierDialog({ onCreated }: Props) {
         notes: form.notes.trim() || null,
       });
       if (error) throw error;
-      toast.success("Supplier added");
+      toast.success("Contact added");
       setForm({ name: "", contact_name: "", contact_phone: "", notes: "" });
       setOpen(false);
       onCreated();
@@ -50,20 +50,20 @@ export default function AddSupplierDialog({ onCreated }: Props) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add Supplier</Button>
+        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add Contact</Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Supplier</DialogTitle>
+          <DialogTitle>Add Contact</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Supplier Name *</Label>
+            <Label>Contact Name *</Label>
             <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. StubHub, Viagogo" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Contact Name</Label>
+              <Label>Person Name</Label>
               <Input value={form.contact_name} onChange={(e) => set("contact_name", e.target.value)} placeholder="John Smith" />
             </div>
             <div className="space-y-1.5">
@@ -76,7 +76,7 @@ export default function AddSupplierDialog({ onCreated }: Props) {
             <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Any additional info..." rows={2} />
           </div>
           <Button type="submit" className="w-full" disabled={loading || !form.name.trim()}>
-            {loading ? "Saving..." : "Add Supplier"}
+            {loading ? "Saving..." : "Add Contact"}
           </Button>
         </form>
       </DialogContent>

@@ -53,7 +53,7 @@ export default function EditSupplierDialog({ supplier, onClose, onUpdated }: Pro
         logo_url: logoUrl,
       }).eq("id", supplier.id);
       if (error) throw error;
-      toast.success("Supplier updated");
+      toast.success("Contact updated");
       onUpdated();
     } catch (err: any) {
       toast.error(err.message);
@@ -66,7 +66,7 @@ export default function EditSupplierDialog({ supplier, onClose, onUpdated }: Pro
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit Supplier</DialogTitle>
+          <DialogTitle>Edit Contact</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex justify-center">
@@ -81,12 +81,12 @@ export default function EditSupplierDialog({ supplier, onClose, onUpdated }: Pro
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Supplier Name *</Label>
+            <Label>Contact Name *</Label>
             <Input value={form.name} onChange={(e) => set("name", e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Contact Name</Label>
+              <Label>Person Name</Label>
               <Input value={form.contact_name} onChange={(e) => set("contact_name", e.target.value)} placeholder="John Smith" />
             </div>
             <div className="space-y-1.5">
