@@ -25,6 +25,7 @@ import {
   Mail,
   Siren,
   Truck,
+  Contact,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -145,6 +146,7 @@ export default function AppSidebar() {
 
   const adminBottomItems = [
     { to: "/suppliers", icon: Truck, label: "Suppliers" },
+    { to: "/members", icon: Contact, label: "Members" },
     { to: "/purchases", icon: Package, label: "Purchases" },
     { to: "/inventory", icon: Boxes, label: "Inventory" },
     { to: "/timeline", icon: CalendarClock, label: "Event Timeline" },
