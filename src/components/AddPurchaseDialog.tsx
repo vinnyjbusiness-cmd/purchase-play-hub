@@ -57,6 +57,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
     supplier_order_id: "",
     quantity: "1",
     unit_cost: "",
+    split_type: "",
     notes: "",
   });
 
@@ -99,7 +100,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
     setForm({
       club: "", event_id: "", supplier_id: "", supplier_name: "", supplier_number: "",
       category_type: "", section: "", block: "", hospitality_option: "",
-      supplier_order_id: "", quantity: "1", unit_cost: "", notes: "",
+      supplier_order_id: "", quantity: "1", unit_cost: "", split_type: "", notes: "",
     });
   };
 
@@ -136,8 +137,9 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
         currency: "GBP" as const,
         exchange_rate: 1,
         status: "confirmed" as const,
+        split_type: form.split_type || null,
         notes: noteParts.length > 0 ? noteParts.join(" | ") : null,
-      });
+      } as any);
       if (error) throw error;
       toast.success("Purchase added");
       resetForm();
@@ -360,8 +362,8 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             </>
           )}
 
-          {/* Quantity & Cost */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Quantity, Cost & Split Type */}
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label>Quantity *</Label>
               <Input type="number" min="1" value={form.quantity} onChange={(e) => set("quantity", e.target.value)} />
@@ -369,6 +371,19 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             <div className="space-y-1.5">
               <Label>Cost Per Ticket *</Label>
               <Input type="number" step="0.01" min="0" value={form.unit_cost} onChange={(e) => set("unit_cost", e.target.value)} placeholder="0.00" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Split Type</Label>
+              <Select value={form.split_type} onValueChange={(v) => set("split_type", v)}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="singles">Singles</SelectItem>
+                  <SelectItem value="pairs">Pairs</SelectItem>
+                  <SelectItem value="trios">Trios</SelectItem>
+                  <SelectItem value="quads">Quads</SelectItem>
+                  <SelectItem value="all_together">All Together</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

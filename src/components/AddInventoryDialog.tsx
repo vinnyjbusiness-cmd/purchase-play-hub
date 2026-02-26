@@ -38,6 +38,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const [seat, setSeat] = useState("");
   const [faceValue, setFaceValue] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [splitType, setSplitType] = useState("");
   // Login details
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -124,8 +125,9 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
       org_id: orgId,
       status: "available" as const,
       source: source === "__custom__" ? (customSource || "IJK") : source,
+      split_type: splitType || null,
     }));
-    const { error } = await supabase.from("inventory").insert(rows);
+    const { error } = await supabase.from("inventory").insert(rows as any);
     if (error) { toast.error(error.message); setLoading(false); return; }
     toast.success(`${quantity} ticket${quantity !== 1 ? "s" : ""} added`);
     setLoading(false);
@@ -179,7 +181,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
           </div>
 
           {/* Seating Info */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label>Category</Label>
               <Select value={category} onValueChange={(v) => { setCategory(v as "GA" | "HOSPO"); setSection(""); setBlock(""); }}>
@@ -193,6 +195,19 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
             <div className="space-y-1.5">
               <Label>Quantity</Label>
               <Input type="number" min={1} value={quantity} onChange={e => setQuantity(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Split Type</Label>
+              <Select value={splitType} onValueChange={setSplitType}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="singles">Singles</SelectItem>
+                  <SelectItem value="pairs">Pairs</SelectItem>
+                  <SelectItem value="trios">Trios</SelectItem>
+                  <SelectItem value="quads">Quads</SelectItem>
+                  <SelectItem value="all_together">All Together</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
