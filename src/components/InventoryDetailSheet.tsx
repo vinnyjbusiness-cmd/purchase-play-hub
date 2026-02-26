@@ -56,6 +56,8 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
   const [androidPassLink, setAndroidPassLink] = useState("");
   const [pkPassUrl, setPkPassUrl] = useState("");
   const [status, setStatus] = useState("");
+  const [source, setSource] = useState("IJK");
+  const [customSource, setCustomSource] = useState("");
   const [pkPassFile, setPkPassFile] = useState<File | null>(null);
   const [loginOpen, setLoginOpen] = useState(true);
   const [ticketOpen, setTicketOpen] = useState(false);
@@ -86,6 +88,14 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
       setAndroidPassLink(d.android_pass_link || "");
       setPkPassUrl(d.pk_pass_url || "");
       setStatus(d.status);
+      const src = d.source || "IJK";
+      if (src === "IJK" || src === "Own") {
+        setSource(src);
+        setCustomSource("");
+      } else {
+        setSource("__custom__");
+        setCustomSource(src);
+      }
     }
   }, [inventoryId]);
 
@@ -120,6 +130,7 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
       android_pass_link: androidPassLink || null,
       pk_pass_url: finalPkPassUrl || null,
       status: status as any,
+      source: source === "__custom__" ? (customSource || "IJK") : source,
     }).eq("id", inventoryId);
     if (error) { toast.error(error.message); return; }
     toast.success("Inventory updated");
@@ -166,6 +177,22 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Source */}
+            <div className="space-y-1.5">
+              <Label>Source</Label>
+              <Select value={source} onValueChange={setSource}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="IJK">IJK</SelectItem>
+                  <SelectItem value="Own">Own</SelectItem>
+                  <SelectItem value="__custom__">Other…</SelectItem>
+                </SelectContent>
+              </Select>
+              {source === "__custom__" && (
+                <Input value={customSource} onChange={e => setCustomSource(e.target.value)} placeholder="Enter source name" className="mt-1.5" />
+              )}
             </div>
 
             {/* Seating Info */}
