@@ -32,6 +32,7 @@ import InventoryPage from "./pages/Inventory";
 import Communications from "./pages/Communications";
 import WarRoom from "./pages/WarRoom";
 import SuppliersPage from "./pages/Suppliers";
+import MembersPage from "./pages/Members";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -119,6 +120,7 @@ const App = () => (
               <Route path="/timeline" element={<AdminOnly><EventTimeline /></AdminOnly>} />
               <Route path="/invoices" element={<PinProtected><InvoiceGenerator /></PinProtected>} />
               <Route path="/suppliers" element={<AdminOnly><SuppliersPage /></AdminOnly>} />
+              <Route path="/members" element={<AdminOnly><MembersPage /></AdminOnly>} />
               <Route path="/warroom" element={<AdminOnly><WarRoom /></AdminOnly>} />
             </Route>
             <Route path="*" element={<NotFound />} />

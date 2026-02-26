@@ -501,6 +501,65 @@ export type Database = {
           },
         ]
       }
+      members: {
+        Row: {
+          address: string | null
+          created_at: string
+          date_of_birth: string | null
+          email: string | null
+          email_password: string | null
+          first_name: string
+          id: string
+          last_name: string
+          member_password: string | null
+          org_id: string | null
+          phone_number: string | null
+          postcode: string | null
+          supporter_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          date_of_birth?: string | null
+          email?: string | null
+          email_password?: string | null
+          first_name: string
+          id?: string
+          last_name: string
+          member_password?: string | null
+          org_id?: string | null
+          phone_number?: string | null
+          postcode?: string | null
+          supporter_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          date_of_birth?: string | null
+          email?: string | null
+          email_password?: string | null
+          first_name?: string
+          id?: string
+          last_name?: string
+          member_password?: string | null
+          org_id?: string | null
+          phone_number?: string | null
+          postcode?: string | null
+          supporter_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "members_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_lines: {
         Row: {
           created_at: string
