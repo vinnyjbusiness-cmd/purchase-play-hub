@@ -26,6 +26,7 @@ import {
   Siren,
   Truck,
   Contact,
+  MessageSquareText,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -160,6 +161,7 @@ export default function AppSidebar() {
     { to: "/todos", icon: ListTodo, label: "To-Do List" },
     { to: "/team", icon: Users, label: "Team" },
     { to: "/team/communications", icon: Mail, label: "Communications" },
+    { to: "/templates", icon: MessageSquareText, label: "Templates" },
     { to: "/activity", icon: ClipboardList, label: "Activity Log" },
   ];
 
