@@ -219,6 +219,42 @@ export default function Inventory() {
     load();
   };
 
+  const handleDeleteEvent = async (e: React.MouseEvent, eventId: string, eventLabel: string) => {
+    e.stopPropagation();
+    if (!confirm(`Delete "${eventLabel}" and ALL its inventory, orders, purchases, and related data? This cannot be undone.`)) return;
+    // Delete order_lines for orders of this event
+    const { data: eventOrders } = await supabase.from("orders").select("id").eq("event_id", eventId);
+    const orderIds = (eventOrders || []).map(o => o.id);
+    if (orderIds.length > 0) {
+      await supabase.from("order_lines").delete().in("order_id", orderIds);
+      await supabase.from("order_status_history").delete().in("order_id", orderIds);
+      await supabase.from("refunds").delete().in("order_id", orderIds);
+      await supabase.from("orders").delete().in("id", orderIds);
+    }
+    // Delete inventory order_lines
+    const { data: eventInv } = await supabase.from("inventory").select("id").eq("event_id", eventId);
+    const invIds = (eventInv || []).map(i => i.id);
+    if (invIds.length > 0) {
+      await supabase.from("order_lines").delete().in("inventory_id", invIds);
+    }
+    await supabase.from("inventory").delete().eq("event_id", eventId);
+    await supabase.from("purchases").delete().eq("event_id", eventId);
+    await supabase.from("events").delete().eq("id", eventId);
+    toast.success("Event and all related data deleted");
+    load();
+  };
+
+  const handleDeleteGroup = async (e: React.MouseEvent, groupItems: InventoryItem[]) => {
+    e.stopPropagation();
+    if (!confirm(`Delete ${groupItems.length} ticket${groupItems.length !== 1 ? "s" : ""} in this group?`)) return;
+    const ids = groupItems.map(i => i.id);
+    await supabase.from("order_lines").delete().in("inventory_id", ids);
+    const { error } = await supabase.from("inventory").delete().in("id", ids);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`${groupItems.length} ticket${groupItems.length !== 1 ? "s" : ""} deleted`);
+    load();
+  };
+
   const toggleItemExpanded = (id: string) => {
     setExpandedItems(prev => {
       const next = new Set(prev);
@@ -366,6 +402,14 @@ export default function Inventory() {
                       <p className="text-sm font-bold font-mono">{assigned}/{total}</p>
                     </div>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    onClick={(e) => handleDeleteEvent(e, group.eventId, group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event")}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                   {isExpanded ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
                 </div>
               </button>
@@ -448,9 +492,19 @@ export default function Inventory() {
                                         {seats && <>{(area || row) ? " · " : ""}Seats <span className="text-foreground font-semibold">{seats}</span></>}
                                       </p>
                                     </div>
-                                    <div className="text-right shrink-0">
-                                      <p className="text-xl font-bold text-destructive">{qg.qty}</p>
-                                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ticket{qg.qty !== 1 ? "s" : ""}</p>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                        onClick={(e) => handleDeleteGroup(e, qg.items)}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <div className="text-right">
+                                        <p className="text-xl font-bold text-destructive">{qg.qty}</p>
+                                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ticket{qg.qty !== 1 ? "s" : ""}</p>
+                                      </div>
                                     </div>
                                   </div>
 
