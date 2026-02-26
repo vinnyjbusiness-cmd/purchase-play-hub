@@ -41,7 +41,9 @@ export default function AddOrderDialog({ onCreated }: Props) {
     if (!form.club) return false;
     if (form.club === "world-cup") return e.competition?.toLowerCase().includes("world cup");
     const clubLabel = CLUBS.find((c) => c.value === form.club)?.label || "";
-    return e.home_team === clubLabel || e.away_team === clubLabel;
+    // Extract club name without venue, e.g. "Liverpool (Anfield)" -> "Liverpool"
+    const clubName = clubLabel.split(" (")[0].toLowerCase();
+    return e.home_team.toLowerCase().includes(clubName) || e.away_team.toLowerCase().includes(clubName);
   });
 
   useEffect(() => {
