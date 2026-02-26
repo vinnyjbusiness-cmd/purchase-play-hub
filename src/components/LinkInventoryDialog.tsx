@@ -84,7 +84,7 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
             seat: inv.seat,
             purchase_id: inv.purchase_id,
             face_value: inv.face_value,
-            supplier_name: p?.suppliers?.name || (inv.purchase_id ? "Unknown" : "Direct / No Purchase"),
+            supplier_name: p?.suppliers?.name || (inv.purchase_id ? "Unknown" : "Manual Entry"),
             supplier_order_id: p?.supplier_order_id || null,
             unit_cost: unitCost > 0 ? unitCost : faceValue,
             currency: p?.currency || "GBP",
@@ -223,8 +223,7 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          {t.category}
-          {t.section && ` · ${t.section}`}
+          {t.section && `${t.section}`}
           {t.row_name && ` · Row ${t.row_name}`}
           {t.seat && ` · Seat ${t.seat}`}
         </p>
