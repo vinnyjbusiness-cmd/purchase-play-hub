@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { CLUBS } from "@/lib/seatingSections";
 import FilterSelect from "@/components/FilterSelect";
 import AddOrderDialog from "@/components/AddOrderDialog";
 import OrderDetailSheet from "@/components/OrderDetailSheet";
@@ -267,8 +268,9 @@ export default function Orders() {
         const isWC = matchCode.includes("stadium") || home.includes("tbc") || away.includes("tbc");
         if (!isWC) return false;
       } else {
-        const clubName = clubFilter.replace(/-/g, " ").toLowerCase();
-        if (!home.includes(clubName) && !away.includes(clubName)) return false;
+        const club = CLUBS.find(c => c.value === clubFilter);
+        const clubLabel = club ? club.label.toLowerCase().split(" (")[0] : clubFilter.replace(/-/g, " ");
+        if (!home.includes(clubLabel) && !away.includes(clubLabel)) return false;
       }
     }
 
@@ -346,14 +348,20 @@ export default function Orders() {
     return info && info.linked_count >= order.quantity;
   };
 
-  // Dynamic club names from events data
-  const clubNames = useMemo(() => {
-    const teams = new Set<string>();
-    orders.forEach(o => {
-      if (o.events?.home_team) teams.add(o.events.home_team);
-      if (o.events?.away_team) teams.add(o.events.away_team);
+  // Filter CLUBS to only those with matching orders
+  const activeClubs = useMemo(() => {
+    return CLUBS.filter(club => {
+      const clubLabel = club.label.toLowerCase().split(" (")[0];
+      return orders.some(o => {
+        if (club.value === "world-cup") {
+          return (o.events?.match_code || "").toLowerCase().includes("stadium") ||
+            (o.events?.home_team || "").toLowerCase().includes("tbc");
+        }
+        const home = (o.events?.home_team || "").toLowerCase();
+        const away = (o.events?.away_team || "").toLowerCase();
+        return home.includes(clubLabel) || away.includes(clubLabel);
+      });
     });
-    return [...teams].sort();
   }, [orders]);
 
   return (
@@ -369,21 +377,18 @@ export default function Orders() {
         >
           All
         </button>
-        {clubNames.map(name => {
-          const slug = name.toLowerCase().replace(/\s+/g, "-");
-          return (
-            <button
-              key={name}
-              onClick={() => setClubFilter(slug === clubFilter ? "all" : slug)}
-              className={cn(
-                "text-sm font-medium whitespace-nowrap transition-colors",
-                clubFilter === slug ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {name}
-            </button>
-          );
-        })}
+        {activeClubs.map(club => (
+          <button
+            key={club.value}
+            onClick={() => setClubFilter(club.value === clubFilter ? "all" : club.value)}
+            className={cn(
+              "text-sm font-medium whitespace-nowrap transition-colors",
+              clubFilter === club.value ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {club.label.split(" (")[0]}
+          </button>
+        ))}
       </div>
 
       <div className="p-6 space-y-6 flex-1 overflow-y-auto">
