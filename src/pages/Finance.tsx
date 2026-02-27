@@ -133,14 +133,17 @@ export default function Finance() {
     }).filter(c => c.eventCount > 0);
   }, [dedupedEvents, groupedIds, purchases, orders]);
 
-  // Dynamic club names from events
-  const dynamicClubNames = useMemo(() => {
-    const teams = new Set<string>();
-    events.forEach(e => {
-      if (e.home_team) teams.add(e.home_team);
-      if (e.away_team) teams.add(e.away_team);
+  // Filter CLUBS to only those with matching events
+  const activeClubs = useMemo(() => {
+    return CLUBS.filter(club => {
+      const clubLabel = club.label.toLowerCase().split(" (")[0];
+      return events.some(e => {
+        if (club.value === "world-cup") {
+          return e.competition.toLowerCase().includes("world cup");
+        }
+        return e.home_team.toLowerCase().includes(clubLabel) || e.away_team.toLowerCase().includes(clubLabel);
+      });
     });
-    return [...teams].sort();
   }, [events]);
   // Toggle handlers
   const toggleSupplierPaid = async (purchaseId: string, currentVal: boolean) => {
@@ -166,9 +169,11 @@ export default function Finance() {
         events: dedupedEvents,
       };
     }
-    const clubSlug = selectedClub.toLowerCase();
+    const club = CLUBS.find(c => c.value === selectedClub);
+    const clubLabel = club ? club.label.toLowerCase().split(" (")[0] : selectedClub;
     const matchingEvents = dedupedEvents.filter(e => {
-      return e.home_team.toLowerCase().includes(clubSlug) || e.away_team.toLowerCase().includes(clubSlug);
+      if (selectedClub === "world-cup") return e.competition.toLowerCase().includes("world cup");
+      return e.home_team.toLowerCase().includes(clubLabel) || e.away_team.toLowerCase().includes(clubLabel);
     });
     const matchingEventIds = new Set<string>();
     matchingEvents.forEach(e => (groupedIds[e.id] || [e.id]).forEach(id => matchingEventIds.add(id)));
@@ -213,21 +218,18 @@ export default function Finance() {
         >
           All
         </button>
-        {dynamicClubNames.map(name => {
-          const slug = name.toLowerCase();
-          return (
-            <button
-              key={name}
-              onClick={() => setSelectedClub(slug === selectedClub ? "all" : slug)}
-              className={cn(
-                "text-sm font-medium whitespace-nowrap transition-colors",
-                selectedClub === slug ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {name}
-            </button>
-          );
-        })}
+        {activeClubs.map(club => (
+          <button
+            key={club.value}
+            onClick={() => setSelectedClub(club.value === selectedClub ? "all" : club.value)}
+            className={cn(
+              "text-sm font-medium whitespace-nowrap transition-colors",
+              selectedClub === club.value ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {club.label.split(" (")[0]}
+          </button>
+        ))}
       </div>
 
       <div className="flex-1 overflow-y-auto">
