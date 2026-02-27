@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -145,7 +144,7 @@ export default function Orders() {
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [filterEvent, setFilterEvent] = useState("all");
   const [filterDelivery, setFilterDelivery] = useState("all");
-  const { club } = useParams<{ club?: string }>();
+  const [clubFilter, setClubFilter] = useState("all");
   const [filterTimeRange, setFilterTimeRange] = useState("upcoming");
   const [customDateFrom, setCustomDateFrom] = useState<Date | undefined>();
   const [customDateTo, setCustomDateTo] = useState<Date | undefined>();
@@ -259,16 +258,16 @@ export default function Orders() {
     }
     // "all" shows everything including past
 
-    // Club/tournament filter from URL param
-    if (club) {
+    // Club filter (in-page)
+    if (clubFilter !== "all") {
       const home = (o.events?.home_team || "").toLowerCase();
       const away = (o.events?.away_team || "").toLowerCase();
       const matchCode = (o.events?.match_code || "").toLowerCase();
-      if (club === "world-cup") {
+      if (clubFilter === "world-cup") {
         const isWC = matchCode.includes("stadium") || home.includes("tbc") || away.includes("tbc");
         if (!isWC) return false;
       } else {
-        const clubName = club.replace(/-/g, " ").toLowerCase();
+        const clubName = clubFilter.replace(/-/g, " ").toLowerCase();
         if (!home.includes(clubName) && !away.includes(clubName)) return false;
       }
     }
@@ -347,24 +346,61 @@ export default function Orders() {
     return info && info.linked_count >= order.quantity;
   };
 
+  // Dynamic club names from events data
+  const clubNames = useMemo(() => {
+    const teams = new Set<string>();
+    orders.forEach(o => {
+      if (o.events?.home_team) teams.add(o.events.home_team);
+      if (o.events?.away_team) teams.add(o.events.away_team);
+    });
+    return [...teams].sort();
+  }, [orders]);
+
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {club ? `${club.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())} Orders` : "All Orders"}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {filtered.length} order{filtered.length !== 1 ? "s" : ""} across {grouped.length} game{grouped.length !== 1 ? "s" : ""}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => exportToCSV(filtered)} disabled={filtered.length === 0}>
-            <Download className="h-4 w-4 mr-1" /> Export CSV
-          </Button>
-          <AddOrderDialog onCreated={load} />
-        </div>
+    <div className="flex flex-col h-full animate-fade-in">
+      {/* Sticky club filter bar */}
+      <div className="sticky top-0 z-10 bg-background border-b border-border px-6 py-3 flex items-center gap-4 overflow-x-auto shrink-0">
+        <button
+          onClick={() => setClubFilter("all")}
+          className={cn(
+            "text-sm font-medium whitespace-nowrap transition-colors",
+            clubFilter === "all" ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          All
+        </button>
+        {clubNames.map(name => {
+          const slug = name.toLowerCase().replace(/\s+/g, "-");
+          return (
+            <button
+              key={name}
+              onClick={() => setClubFilter(slug === clubFilter ? "all" : slug)}
+              className={cn(
+                "text-sm font-medium whitespace-nowrap transition-colors",
+                clubFilter === slug ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {name}
+            </button>
+          );
+        })}
       </div>
+
+      <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
+            <p className="text-muted-foreground text-sm">
+              {filtered.length} order{filtered.length !== 1 ? "s" : ""} across {grouped.length} game{grouped.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => exportToCSV(filtered)} disabled={filtered.length === 0}>
+              <Download className="h-4 w-4 mr-1" /> Export CSV
+            </Button>
+            <AddOrderDialog onCreated={load} />
+          </div>
+        </div>
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm space-y-1">
@@ -713,6 +749,7 @@ export default function Orders() {
           onUpdated={() => { setEditOrder(null); load(); }}
         />
       )}
+      </div>
     </div>
   );
 }

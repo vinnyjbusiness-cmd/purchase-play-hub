@@ -105,12 +105,10 @@ const App = () => (
               <Route path="/events" element={<AdminOnly><Events /></AdminOnly>} />
               <Route path="/events/:id" element={<AdminOnly><EventDetail /></AdminOnly>} />
               <Route path="/orders" element={<Orders />} />
-              <Route path="/orders/:club" element={<Orders />} />
               <Route path="/purchases" element={<Purchases />} />
               <Route path="/inventory" element={<InventoryPage />} />
               <Route path="/platforms" element={<AdminOnly><Platforms /></AdminOnly>} />
               <Route path="/finance" element={<PinProtected><Finance /></PinProtected>} />
-              <Route path="/finance/:club" element={<PinProtected><Finance /></PinProtected>} />
               <Route path="/analytics" element={<PinProtected><Analytics /></PinProtected>} />
               <Route path="/balance" element={<PinProtected><Balance /></PinProtected>} />
               <Route path="/cashflow" element={<PinProtected><Cashflow /></PinProtected>} />
