@@ -242,16 +242,20 @@ function exportToCSV(orders: Order[]) {
 function getSourceDisplay(o: Order, assignments: Record<string, AssignmentInfo>) {
   const assignInfo = assignments[o.id];
   const contactName = assignInfo?.supplier_contact_name;
-  // Contact-sourced order
+  // Contact-sourced order (sold via a contact, not a platform)
   if (o.contact_id) {
     const contactLabel = (o as any).contacts?.name || o.buyer_name || "Contact";
     const buyerLabel = o.buyer_name && o.buyer_name !== contactLabel ? o.buyer_name : null;
     return { primary: contactLabel, secondary: buyerLabel ? `→ ${buyerLabel}` : "Contact" };
   }
-  if (contactName) {
-    return { primary: contactName, secondary: o.buyer_name ? `→ ${o.buyer_name}` : o.platforms?.name || "" };
+  // Platform-sourced order — always show platform as primary, even if a purchase supplier is assigned
+  if (o.platform_id && o.platforms?.name) {
+    return { primary: o.platforms.name, secondary: contactName ? `→ ${o.buyer_name || ""}` : o.buyer_name || null };
   }
-  return { primary: o.platforms?.name || "Direct", secondary: o.buyer_name || null };
+  if (contactName) {
+    return { primary: contactName, secondary: o.buyer_name ? `→ ${o.buyer_name}` : "" };
+  }
+  return { primary: "Direct", secondary: o.buyer_name || null };
 }
 
 export default function Orders() {
