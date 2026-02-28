@@ -76,6 +76,7 @@ export default function AppSidebar() {
   const adminNavItems = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard" },
     { to: "/warroom", icon: Siren, label: "War Room" },
+    { to: "/world-cup", icon: Globe, label: "World Cup 2026" },
     { to: "/events", icon: CalendarDays, label: "Events" },
     { to: "/orders", icon: ShoppingCart, label: "Orders" },
     { to: "/finance", icon: Wallet, label: "Finance" },

@@ -31,6 +31,7 @@ import InvoiceGenerator from "./pages/InvoiceGenerator";
 import InventoryPage from "./pages/Inventory";
 import Communications from "./pages/Communications";
 import WarRoom from "./pages/WarRoom";
+import WorldCup from "./pages/WorldCup";
 import SuppliersPage from "./pages/Suppliers";
 import MembersPage from "./pages/Members";
 import TemplatesPage from "./pages/Templates";
@@ -126,6 +127,7 @@ const App = () => (
               <Route path="/ijk-account" element={<AdminOnly><IJKAccountPage /></AdminOnly>} />
               <Route path="/spreadsheet-templates" element={<AdminOnly><SpreadsheetTemplatesPage /></AdminOnly>} />
               <Route path="/warroom" element={<AdminOnly><WarRoom /></AdminOnly>} />
+              <Route path="/world-cup" element={<AdminOnly><WorldCup /></AdminOnly>} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
