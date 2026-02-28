@@ -694,9 +694,9 @@ export default function Orders() {
                       const sgQty = sg.orders.reduce((s, o) => s + o.quantity, 0);
                       return (
                         <div key={sg.sourceName}>
-                          <div className={cn("flex items-center justify-between px-3 py-1.5 rounded-t-lg mt-2", `bg-${SOURCE_COLORS[sg.sourceIdx].split('bg-')[1]?.split(' ')[0] || 'muted/10'}`)}>
-                            <span className={cn("font-bold text-sm", SOURCE_TEXT_COLORS[sg.sourceIdx])}>{sg.sourceName}</span>
-                            <span className="text-xs text-white/60 font-mono">{sgQty} tickets · £{sgTotal.toLocaleString()}</span>
+                          <div className="flex items-center justify-between px-3 py-2 rounded-t-lg mt-2 bg-white/5">
+                            <span className={cn("font-extrabold text-base", SOURCE_TEXT_COLORS[sg.sourceIdx])}>{sg.sourceName}</span>
+                            <span className="text-sm text-white/70 font-semibold">{sgQty} tickets · £{sgTotal.toLocaleString()}</span>
                           </div>
                           <div className="space-y-2 pb-1">
                           {sg.orders.map(o => {
@@ -704,15 +704,13 @@ export default function Orders() {
                             const statusConf = ORDER_STATUS_CONFIG[o.status] || ORDER_STATUS_CONFIG.outstanding;
                             const src = getSourceDisplay(o, assignments);
                             const orderTotal = Number(o.sale_price) * o.quantity;
-                            const srcIdx = sg.sourceIdx;
                             return (
                               <div
                                 key={o.id}
                                 onClick={() => setEditOrder(o)}
                                 className={cn(
-                                  "rounded-lg border-l-4 border p-3 space-y-2 cursor-pointer transition-colors",
-                                  SOURCE_COLORS[srcIdx],
-                                  o.status === "delivered" && "ring-1 ring-success/30"
+                                  "rounded-lg border p-3 space-y-2 cursor-pointer transition-colors",
+                                  o.status === "delivered" ? "bg-green-500/10 ring-1 ring-success/30" : "bg-white/5"
                                 )}
                               >
                                 <div className="flex items-center justify-between">
@@ -773,10 +771,10 @@ export default function Orders() {
                           if (sourceGroupList.length > 1) {
                             rows.push(
                               <TableRow key={`src-${sg.sourceName}`} className="border-0 hover:bg-transparent">
-                                <TableCell colSpan={13} className="py-1.5 px-4">
-                                  <div className="flex items-center gap-2">
-                                    <span className={cn("font-bold text-sm", SOURCE_TEXT_COLORS[sg.sourceIdx])}>{sg.sourceName}</span>
-                                    <span className="text-[10px] text-white/40 font-mono">({sg.orders.length} orders · {sgQty} tickets · £{sgTotal.toLocaleString()})</span>
+                                <TableCell colSpan={13} className="py-2 px-4">
+                                  <div className="flex items-center gap-3">
+                                    <span className={cn("font-extrabold text-base", SOURCE_TEXT_COLORS[sg.sourceIdx])}>{sg.sourceName}</span>
+                                    <span className="text-sm text-white/70 font-semibold">({sg.orders.length} orders · {sgQty} tickets · £{sgTotal.toLocaleString()})</span>
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -793,9 +791,8 @@ export default function Orders() {
                             <TableRow
                               key={o.id}
                               className={cn(
-                                "cursor-pointer text-xs h-10 transition-colors border-l-4",
-                                SOURCE_COLORS[srcIdx],
-                                o.status === "delivered" && "ring-1 ring-inset ring-success/20"
+                                "cursor-pointer text-xs h-10 transition-colors",
+                                o.status === "delivered" && "bg-green-500/10 ring-1 ring-inset ring-success/20"
                               )}
                               onClick={() => setSelectedOrderId(o.id)}
                             >
