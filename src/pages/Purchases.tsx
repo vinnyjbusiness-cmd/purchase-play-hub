@@ -4,10 +4,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Scissors, Phone, CheckCircle2, Link2, Trash2 } from "lucide-react";
+import { Search, Scissors, Phone, CheckCircle2, Link2, Trash2, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import FilterSelect from "@/components/FilterSelect";
 import AddPurchaseDialog from "@/components/AddPurchaseDialog";
+import EditPurchaseDialog from "@/components/EditPurchaseDialog";
 import PurchaseDetailSheet from "@/components/PurchaseDetailSheet";
 import SplitPurchaseDialog from "@/components/SplitPurchaseDialog";
 import { deduplicateEvents, getEventKey } from "@/lib/eventDedup";
@@ -25,6 +26,7 @@ interface Purchase {
   purchase_date: string;
   notes: string | null;
   event_id: string;
+  split_type: string | null;
   suppliers: { name: string; contact_name: string | null; contact_phone: string | null } | null;
   events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
 }
@@ -58,7 +60,18 @@ export default function Purchases() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
   const [splitPurchase, setSplitPurchase] = useState<Purchase | null>(null);
+  const [editPurchase, setEditPurchase] = useState<Purchase | null>(null);
   const [allocations, setAllocations] = useState<Record<string, { sold: number; total: number }>>({});
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -68,6 +81,29 @@ export default function Purchases() {
     const purchaseList = (data as any) || [];
     setPurchases(purchaseList);
 
+    // Auto-sync: ensure every purchase has inventory records
+    for (const p of purchaseList) {
+      const { data: inv } = await supabase
+        .from("inventory")
+        .select("id")
+        .eq("purchase_id", p.id);
+      const existingCount = (inv || []).length;
+      if (existingCount < p.quantity) {
+        const toCreate = Array.from({ length: p.quantity - existingCount }, () => ({
+          event_id: p.event_id,
+          purchase_id: p.id,
+          category: p.category,
+          section: p.section,
+          face_value: p.unit_cost,
+          source: p.suppliers?.name || "IJK",
+          split_type: p.split_type || null,
+          status: "available" as const,
+        }));
+        await supabase.from("inventory").insert(toCreate as any);
+      }
+    }
+
+    // Re-fetch allocations after sync
     if (purchaseList.length > 0) {
       const { data: invData } = await supabase
         .from("inventory")
@@ -94,7 +130,6 @@ export default function Purchases() {
     return [...seen.entries()].map(([value, label]) => ({ value, label }));
   }, [purchases]);
 
-  // Deduplicate events for filter dropdown
   const eventOptions = useMemo(() => {
     const eventsFromPurchases = purchases
       .filter(p => p.events)
@@ -116,7 +151,6 @@ export default function Purchases() {
   }, [purchases]);
 
   const filtered = purchases.filter((p) => {
-    // Hide £0.00 entries
     if (Number(p.total_cost || 0) <= 0 && Number(p.unit_cost || 0) <= 0) return false;
     if (filterSupplier !== "all" && p.suppliers?.name !== filterSupplier) return false;
     if (filterEvent !== "all" && p.events) {
@@ -138,7 +172,6 @@ export default function Purchases() {
     return true;
   });
 
-  // Group by deduplicated event key
   const grouped = useMemo(() => {
     const map: Record<string, { event: Purchase["events"]; eventKey: string; purchases: Purchase[] }> = {};
     filtered.forEach(p => {
@@ -197,11 +230,20 @@ export default function Purchases() {
           const groupQty = group.purchases.reduce((s, p) => s + p.quantity, 0);
           const unpaidCount = group.purchases.filter(p => !p.supplier_paid).length;
           const paidCount = group.purchases.filter(p => p.supplier_paid).length;
+          const isCollapsed = collapsedGroups.has(group.eventKey);
 
           return (
             <div key={group.eventKey} className="rounded-xl border bg-card overflow-hidden shadow-sm">
-              <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/40">
-                <div className="flex items-center gap-4">
+              <div
+                className="flex items-center justify-between px-5 py-3 border-b bg-muted/40 cursor-pointer select-none"
+                onClick={() => toggleGroup(group.eventKey)}
+              >
+                <div className="flex items-center gap-3">
+                  {isCollapsed ? (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                  )}
                   <div>
                     <p className="font-bold text-base">
                       {group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event"}
@@ -237,125 +279,139 @@ export default function Purchases() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Source</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Contact Name</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]"><Phone className="h-3.5 w-3.5 mx-auto" /></TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider text-right">Qty</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider text-right">Cost/Ticket</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider text-right">Total</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Allocated</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Paid</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider">Date</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider text-center">Allocate</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider text-center">Split</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider text-center">Delete</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {group.purchases.map((p) => {
-                      const contact = parseNotesContact(p.notes);
-                      const alloc = allocations[p.id] || { sold: 0, total: 0 };
-                      const allocated = alloc.sold;
-                      const total = p.quantity;
-                      const fullyAllocated = allocated >= total && total > 0;
-                      const hasAny = allocated > 0;
-                      return (
-                      <TableRow key={p.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedPurchaseId(p.id)}>
-                        <TableCell className="font-medium">{p.suppliers?.name || "—"}</TableCell>
-                        <TableCell>{contact.name || p.suppliers?.contact_name || "—"}</TableCell>
-                        <TableCell className="text-center text-xs text-muted-foreground">{contact.phone || p.suppliers?.contact_phone || "—"}</TableCell>
-                        <TableCell>{p.category}</TableCell>
-                        <TableCell className="text-right">{p.quantity}</TableCell>
-                        <TableCell className="text-right">£{Number(p.unit_cost).toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-medium">£{Number(p.total_cost).toFixed(2)}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2 min-w-[100px]">
-                            <div className="flex gap-0.5">
-                              {Array.from({ length: total }, (_, i) => (
-                                <div
-                                  key={i}
-                                  className={`w-3 h-3 rounded-sm text-[8px] flex items-center justify-center font-bold ${
-                                    i < allocated
-                                      ? "bg-success/30 text-success border border-success/40"
-                                      : "bg-destructive/15 text-destructive/60 border border-destructive/20"
-                                  }`}
-                                >
-                                  {i < allocated ? "✓" : ""}
-                                </div>
-                              ))}
+              {!isCollapsed && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-[10px] uppercase tracking-wider">Source</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider">Contact Name</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]"><Phone className="h-3.5 w-3.5 mx-auto" /></TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider text-right">Qty</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider text-right">Cost/Ticket</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider text-right">Total</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider">Allocated</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider">Paid</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider">Date</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider text-center">Allocate</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider text-center">Edit</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider text-center">Split</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wider text-center">Delete</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {group.purchases.map((p) => {
+                        const contact = parseNotesContact(p.notes);
+                        const alloc = allocations[p.id] || { sold: 0, total: 0 };
+                        const allocated = alloc.sold;
+                        const total = p.quantity;
+                        const fullyAllocated = allocated >= total && total > 0;
+                        const hasAny = allocated > 0;
+                        return (
+                        <TableRow key={p.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedPurchaseId(p.id)}>
+                          <TableCell className="font-medium">{p.suppliers?.name || "—"}</TableCell>
+                          <TableCell>{contact.name || p.suppliers?.contact_name || "—"}</TableCell>
+                          <TableCell className="text-center text-xs text-muted-foreground">{contact.phone || p.suppliers?.contact_phone || "—"}</TableCell>
+                          <TableCell>{p.category}</TableCell>
+                          <TableCell className="text-right">{p.quantity}</TableCell>
+                          <TableCell className="text-right">£{Number(p.unit_cost).toFixed(2)}</TableCell>
+                          <TableCell className="text-right font-medium">£{Number(p.total_cost).toFixed(2)}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2 min-w-[100px]">
+                              <div className="flex gap-0.5">
+                                {Array.from({ length: total }, (_, i) => (
+                                  <div
+                                    key={i}
+                                    className={`w-3 h-3 rounded-sm text-[8px] flex items-center justify-center font-bold ${
+                                      i < allocated
+                                        ? "bg-success/30 text-success border border-success/40"
+                                        : "bg-destructive/15 text-destructive/60 border border-destructive/20"
+                                    }`}
+                                  >
+                                    {i < allocated ? "✓" : ""}
+                                  </div>
+                                ))}
+                              </div>
+                              <span className={`text-[10px] font-mono whitespace-nowrap ${fullyAllocated ? "text-success" : hasAny ? "text-warning" : "text-muted-foreground"}`}>
+                                {allocated}/{total}
+                              </span>
                             </div>
-                            <span className={`text-[10px] font-mono whitespace-nowrap ${fullyAllocated ? "text-success" : hasAny ? "text-warning" : "text-muted-foreground"}`}>
-                              {allocated}/{total}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={p.supplier_paid ? "bg-success/10 text-success border-success/20" : "bg-warning/10 text-warning border-warning/20"}>
-                            {p.supplier_paid ? "Paid" : "Unpaid"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-xs">{format(new Date(p.purchase_date), "dd MMM yy, HH:mm")}</TableCell>
-                        <TableCell className="text-center">
-                          {fullyAllocated ? (
-                            <CheckCircle2 className="h-4 w-4 text-success mx-auto" />
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 text-primary hover:text-primary"
-                              title="Allocate tickets"
-                              onClick={(e) => { e.stopPropagation(); setSelectedPurchaseId(p.id); }}
-                            >
-                              <Link2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {p.quantity > 1 && (
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={p.supplier_paid ? "bg-success/10 text-success border-success/20" : "bg-warning/10 text-warning border-warning/20"}>
+                              {p.supplier_paid ? "Paid" : "Unpaid"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-xs">{format(new Date(p.purchase_date), "dd MMM yy, HH:mm")}</TableCell>
+                          <TableCell className="text-center">
+                            {fullyAllocated ? (
+                              <CheckCircle2 className="h-4 w-4 text-success mx-auto" />
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-primary hover:text-primary"
+                                title="Allocate tickets"
+                                onClick={(e) => { e.stopPropagation(); setSelectedPurchaseId(p.id); }}
+                              >
+                                <Link2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
                             <Button
                               size="sm"
                               variant="ghost"
                               className="h-7 w-7 p-0"
-                              title="Split purchase"
-                              onClick={(e) => { e.stopPropagation(); setSplitPurchase(p); }}
+                              title="Edit purchase"
+                              onClick={(e) => { e.stopPropagation(); setEditPurchase(p); }}
                             >
-                              <Scissors className="h-3.5 w-3.5" />
+                              <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            title="Delete purchase"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (!confirm("Delete this purchase? Any assigned inventory will be unlinked from orders.")) return;
-                              const { data: inv } = await supabase.from("inventory").select("id").eq("purchase_id", p.id);
-                              const invIds = (inv || []).map(i => i.id);
-                              if (invIds.length > 0) {
-                                await supabase.from("order_lines").delete().in("inventory_id", invIds);
-                                await supabase.from("inventory").delete().eq("purchase_id", p.id);
-                              }
-                              await supabase.from("purchases").delete().eq("id", p.id);
-                              load();
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {p.quantity > 1 && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                title="Split purchase"
+                                onClick={(e) => { e.stopPropagation(); setSplitPurchase(p); }}
+                              >
+                                <Scissors className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              title="Delete purchase"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!confirm("Delete this purchase? Any assigned inventory will be unlinked from orders.")) return;
+                                const { data: inv } = await supabase.from("inventory").select("id").eq("purchase_id", p.id);
+                                const invIds = (inv || []).map(i => i.id);
+                                if (invIds.length > 0) {
+                                  await supabase.from("order_lines").delete().in("inventory_id", invIds);
+                                  await supabase.from("inventory").delete().eq("purchase_id", p.id);
+                                }
+                                await supabase.from("purchases").delete().eq("id", p.id);
+                                load();
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </div>
           );
         })}
@@ -364,6 +420,12 @@ export default function Purchases() {
       <PurchaseDetailSheet
         purchaseId={selectedPurchaseId}
         onClose={() => setSelectedPurchaseId(null)}
+        onUpdated={load}
+      />
+      <EditPurchaseDialog
+        purchase={editPurchase}
+        open={!!editPurchase}
+        onClose={() => setEditPurchase(null)}
         onUpdated={load}
       />
       {splitPurchase && (
