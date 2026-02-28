@@ -5,14 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import { Smartphone, Link2 } from "lucide-react";
+import { Smartphone, Link2, ChevronsUpDown, Check } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { STANDARD_SECTIONS, HOSPITALITY_OPTIONS } from "@/lib/seatingSections";
 
 interface OrderData {
   id: string;
   platform_id: string | null;
+  contact_id?: string | null;
   event_id: string;
   order_ref: string | null;
   buyer_name: string | null;
@@ -37,9 +41,12 @@ interface Props {
 export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
   const [loading, setLoading] = useState(false);
   const [platforms, setPlatforms] = useState<{ id: string; name: string }[]>([]);
+  const [contacts, setContacts] = useState<{ id: string; name: string; contact_phone: string | null }[]>([]);
+  const [contactOpen, setContactOpen] = useState(false);
 
   const [form, setForm] = useState({
-    platform_id: order.platform_id || "",
+    platform_id: order.contact_id ? "__contact__" : (order.platform_id || ""),
+    contact_id: (order as any).contact_id || "",
     order_ref: order.order_ref || "",
     buyer_name: order.buyer_name || "",
     buyer_phone: order.buyer_phone || "",
@@ -56,16 +63,21 @@ export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
 
   useEffect(() => {
     supabase.from("platforms").select("id, name").then(({ data }) => setPlatforms(data || []));
+    supabase.from("suppliers").select("id, name, contact_phone").then(({ data }) => setContacts(data || []));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
+      const isContactSource = form.platform_id === "__contact__" && form.contact_id;
+      const wasContactSource = !!(order as any).contact_id;
+
       const { error } = await supabase
         .from("orders")
         .update({
-          platform_id: form.platform_id || null,
+          platform_id: isContactSource ? null : (form.platform_id || null),
+          contact_id: isContactSource ? form.contact_id : null,
           order_ref: form.order_ref || null,
           buyer_name: form.buyer_name || null,
           buyer_phone: form.buyer_phone || null,
@@ -81,6 +93,26 @@ export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
         } as any)
         .eq("id", order.id);
       if (error) throw error;
+
+      // Handle balance_payments sync
+      const autoNotes = `Auto: Order ${order.id}`;
+      if (isContactSource) {
+        // Delete old balance entry and create new one
+        await supabase.from("balance_payments").delete().ilike("notes", autoNotes);
+        const contactName = contacts.find(c => c.id === form.contact_id)?.name || "Unknown";
+        await supabase.from("balance_payments").insert({
+          party_type: "supplier",
+          party_id: form.contact_id,
+          amount: parseFloat(form.sale_price),
+          type: "adjustment",
+          notes: autoNotes,
+          contact_name: contactName,
+        } as any);
+      } else if (wasContactSource) {
+        // Switched away from contact — delete balance entry
+        await supabase.from("balance_payments").delete().ilike("notes", autoNotes);
+      }
+
       toast.success("Order updated");
       onUpdated();
       onClose();
@@ -99,14 +131,54 @@ export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="space-y-1.5">
-            <Label>Platform</Label>
-            <Select value={form.platform_id} onValueChange={(v) => setForm({ ...form, platform_id: v })}>
-              <SelectTrigger><SelectValue placeholder="Select platform" /></SelectTrigger>
+            <Label>Source</Label>
+            <Select value={form.platform_id} onValueChange={(v) => {
+              if (v === "__contact__") {
+                setForm({ ...form, platform_id: "__contact__" });
+              } else {
+                setForm({ ...form, platform_id: v, contact_id: "" });
+              }
+            }}>
+              <SelectTrigger><SelectValue placeholder="Select source" /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="__contact__">Contact</SelectItem>
                 {platforms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
+
+          {form.platform_id === "__contact__" && (
+            <div className="space-y-1.5">
+              <Label>Contact *</Label>
+              <Popover open={contactOpen} onOpenChange={setContactOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                    {contacts.find(c => c.id === form.contact_id)?.name || "Search contacts..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Type name..." />
+                    <CommandList>
+                      <CommandEmpty>No contact found.</CommandEmpty>
+                      <CommandGroup>
+                        {contacts.map((c) => (
+                          <CommandItem key={c.id} value={c.name} onSelect={() => {
+                            setForm(f => ({ ...f, contact_id: c.id, buyer_name: c.name, buyer_phone: c.contact_phone || f.buyer_phone }));
+                            setContactOpen(false);
+                          }}>
+                            <Check className={cn("mr-2 h-4 w-4", form.contact_id === c.id ? "opacity-100" : "opacity-0")} />
+                            <span className="font-medium">{c.name}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label>Order Number</Label>

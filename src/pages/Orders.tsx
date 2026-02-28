@@ -582,6 +582,15 @@ export default function Orders() {
                               const assignInfo = assignments[o.id];
                               const contactName = assignInfo?.supplier_contact_name;
                               const platformName = o.platforms?.name || "NA";
+                              // Contact-sourced order
+                              if ((o as any).contact_id) {
+                                return (
+                                  <div>
+                                    <span className="font-medium text-foreground text-xs">{o.buyer_name || "Contact"}</span>
+                                    <span className="block text-[10px] text-muted-foreground">Contact</span>
+                                  </div>
+                                );
+                              }
                               if (contactName) {
                                 return (
                                   <div>
@@ -723,6 +732,10 @@ export default function Orders() {
                                 await supabase.from("order_lines").delete().eq("order_id", o.id);
                                 // Delete refunds
                                 await supabase.from("refunds").delete().eq("order_id", o.id);
+                                // Delete auto balance entry if contact-sourced
+                                if ((o as any).contact_id) {
+                                  await supabase.from("balance_payments").delete().ilike("notes", `Auto: Order ${o.id}`);
+                                }
                                 // Delete the order
                                 const { error } = await supabase.from("orders").delete().eq("id", o.id);
                                 if (error) { toast.error(error.message); return; }

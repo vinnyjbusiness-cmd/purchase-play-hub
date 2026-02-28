@@ -690,6 +690,7 @@ export type Database = {
           buyer_phone: string | null
           buyer_ref: string | null
           category: string
+          contact_id: string | null
           contacted: boolean
           created_at: string
           currency: Database["public"]["Enums"]["currency_code"]
@@ -719,6 +720,7 @@ export type Database = {
           buyer_phone?: string | null
           buyer_ref?: string | null
           category?: string
+          contact_id?: string | null
           contacted?: boolean
           created_at?: string
           currency?: Database["public"]["Enums"]["currency_code"]
@@ -748,6 +750,7 @@ export type Database = {
           buyer_phone?: string | null
           buyer_ref?: string | null
           category?: string
+          contact_id?: string | null
           contacted?: boolean
           created_at?: string
           currency?: Database["public"]["Enums"]["currency_code"]
@@ -771,6 +774,13 @@ export type Database = {
           status?: Database["public"]["Enums"]["order_status"]
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orders_event_id_fkey"
             columns: ["event_id"]
