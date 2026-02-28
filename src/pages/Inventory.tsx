@@ -468,6 +468,12 @@ export default function Inventory() {
                             <Badge className="bg-destructive text-destructive-foreground text-[10px] font-bold uppercase tracking-wider">
                               {sectionItems.length} Ticket{sectionItems.length !== 1 ? "s" : ""}
                             </Badge>
+                            {(() => {
+                              const src = sectionItems[0]?.source;
+                              return src && src !== "IJK" ? (
+                                <span className="text-[10px] text-muted-foreground font-medium">via {src}</span>
+                              ) : null;
+                            })()}
                           </div>
 
                           {/* Grouped ticket cards */}

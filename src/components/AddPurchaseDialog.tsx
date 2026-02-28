@@ -125,7 +125,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
 
       const section = form.category_type === "standard" ? form.block || null : null;
 
-      const { error } = await supabase.from("purchases").insert({
+      const { data: inserted, error } = await supabase.from("purchases").insert({
         supplier_id: form.supplier_id,
         event_id: form.event_id,
         supplier_order_id: form.supplier_order_id || null,
@@ -139,8 +139,22 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
         status: "confirmed" as const,
         split_type: form.split_type || null,
         notes: noteParts.length > 0 ? noteParts.join(" | ") : null,
-      } as any);
+      } as any).select("id").single();
       if (error) throw error;
+
+      // Auto-create inventory records
+      const inventoryRows = Array.from({ length: parseInt(form.quantity) }, () => ({
+        event_id: form.event_id,
+        purchase_id: inserted.id,
+        category,
+        section,
+        face_value: parseFloat(form.unit_cost),
+        source: selectedSupplier?.name || "IJK",
+        split_type: form.split_type || null,
+        status: "available" as const,
+      }));
+      await supabase.from("inventory").insert(inventoryRows as any);
+
       toast.success("Purchase added");
       resetForm();
       setOpen(false);
