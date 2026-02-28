@@ -577,7 +577,22 @@ export default function Orders() {
                           <TableCell className="font-mono font-bold text-xs py-2">
                             {o.order_ref ? <CopyText text={o.order_ref} className="font-mono font-bold text-foreground text-xs" /> : "—"}
                           </TableCell>
-                          <TableCell className="py-2 text-muted-foreground">{o.platforms?.name || "NA"}</TableCell>
+                          <TableCell className="py-2">
+                            {(() => {
+                              const assignInfo = assignments[o.id];
+                              const contactName = assignInfo?.supplier_contact_name;
+                              const platformName = o.platforms?.name || "NA";
+                              if (contactName) {
+                                return (
+                                  <div>
+                                    <span className="font-medium text-foreground text-xs">{contactName}</span>
+                                    <span className="block text-[10px] text-muted-foreground">{platformName}</span>
+                                  </div>
+                                );
+                              }
+                              return <span className="text-muted-foreground">{platformName}</span>;
+                            })()}
+                          </TableCell>
                           <TableCell className="text-center text-base py-2">{flag || "NA"}</TableCell>
                           <TableCell className="py-2">
                             <span className="font-medium">{o.buyer_name || "NA"}</span>
