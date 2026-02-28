@@ -1,129 +1,105 @@
 
 
-## Plan: Full Responsive Redesign + PWA Conversion
+## Plan: Orders Page Overhaul — Collapsible Events, Logos, Pricing, Contact Display, Mobile Edit
 
-This is a large-scale change touching the layout system, every page, and adding PWA capabilities. To keep it manageable and avoid breaking things, we'll implement it in phases.
+### 1. Collapsible Event Rows
 
----
+Replace the current always-expanded event groups with an accordion-style collapsible pattern using React state.
 
-### Phase 1: Core Layout — Mobile Bottom Nav + Responsive Sidebar
+**Implementation:**
+- Add `expandedEvents` state (`Set<string>`) tracking which event groups are open
+- The event header row becomes a clickable toggle showing: event name, date, total tickets, total value, and a chevron icon
+- Clicking toggles the event key in/out of the set (multiple can be open simultaneously)
+- Order details (table on desktop, cards on mobile) are only rendered when the group is expanded
+- Smooth height animation using Tailwind `animate-accordion-down`/`animate-accordion-up` or a simple conditional render
 
-**AppLayout.tsx + AppSidebar.tsx**
-
-- Create a new `MobileBottomNav` component with 5 tabs: Dashboard, Orders, Finance, Wallet, Balances (icons + labels, 44px min tap targets)
-- On mobile (`< 768px`): Hide the sidebar entirely, show bottom nav fixed at the bottom, move the search bar into the main content area (full width)
-- On iPad portrait (`768px-1024px`): Collapse sidebar to a narrow 64px icon-only rail; tapping an icon opens a temporary overlay with full labels
-- On iPad landscape / desktop (`> 1024px`): Keep current full sidebar — no changes
-- Adjust the main content area to account for bottom nav padding on mobile
-
-**Files**: `src/components/MobileBottomNav.tsx` (new), `src/components/AppLayout.tsx`, `src/components/AppSidebar.tsx`
+**File:** `src/pages/Orders.tsx`
 
 ---
 
-### Phase 2: Responsive Table Component
+### 2. Unique Colour per Event
 
-Create a shared `ResponsiveTable` wrapper or use Tailwind breakpoints to convert all data tables into stacked card layouts on mobile.
+Add a rotating colour palette for event header rows so no two consecutive events share the same colour.
 
-- On mobile: Each table row becomes a card showing key fields (event name, quantity, price, status) in a stacked layout
-- On tablet/desktop: Standard table view unchanged
-- Apply to: Orders, Finance, Purchases, Inventory, Members, Platforms, Analytics, Cashflow, Activity Log, Team, To-Do List, Invoices
+**Implementation:**
+- Define 8-10 dark-theme-friendly accent colours (e.g., emerald, violet, blue, amber, rose, cyan, indigo, orange)
+- Assign colours by index in the grouped array (`index % palette.length`)
+- Apply as a 4px left border stripe on the event header row
+- Works identically on all screen sizes as it's just a CSS border
 
-**Approach**: Rather than a generic wrapper (which would be complex given each table's unique columns), we'll add responsive classes directly to each page's table section using `hidden md:table` for the table and a `md:hidden` card list alternative.
-
-**Files**: All page files listed above (each gets a mobile card view alongside the existing table)
-
----
-
-### Phase 3: Page-Specific Responsive Fixes
-
-**Dashboard** (`src/pages/Dashboard.tsx`):
-- Stat cards: `grid-cols-2` on mobile (2x2 grid), `grid-cols-3` on tablet/desktop
-- Welcome banner: Stack the greeting and countdown vertically on mobile
-- Activity feed + Delivery queue: Stack vertically on mobile instead of side-by-side
-
-**Orders + Finance** (`src/pages/Orders.tsx`, `src/pages/Finance.tsx`):
-- Club filter bar: Already has `overflow-x-auto`, add `-webkit-overflow-scrolling: touch` and hide scrollbar on mobile
-- Search + filter row: Stack vertically on mobile
-- Action buttons: Full width on mobile
-
-**Wallet** (`src/pages/Wallet.tsx`):
-- Platform income cards: Single column on mobile, 2 columns on tablet, 3 on desktop
-- Virtual cards: Single column stack on mobile
-
-**Balance** (`src/pages/Balance.tsx`):
-- Contact/platform cards: Single column on mobile, 2 on tablet
-- Detail view: Full width on mobile
-
-**All other pages**: Apply consistent `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` patterns for card grids and ensure no horizontal overflow.
+**File:** `src/pages/Orders.tsx`
 
 ---
 
-### Phase 4: Modal/Dialog Responsiveness
+### 3. Club Logos on Event Headers
 
-- Update the shared `Dialog` component (`src/components/ui/dialog.tsx`) to render as a full-screen bottom sheet on mobile using Tailwind responsive classes
-- On mobile: `DialogContent` gets `fixed inset-0 rounded-none` or uses Vaul drawer
-- On iPad: Centered, ~80% width
-- On desktop: Unchanged
+Display home and away club logos next to the event name on each header row.
 
-**Files**: `src/components/ui/dialog.tsx`, `src/components/ui/sheet.tsx`
+**Implementation:**
+- The `suppliers` table has `logo_url` but clubs/teams don't have a dedicated table. Rather than a migration, use a static logo map keyed by team name that maps to known logo URLs (or use the existing `LogoAvatar` component's initial-badge fallback)
+- Create a small `TeamLogo` inline component: if a logo URL exists in the map, show it as a 28px rounded image; otherwise fall back to a coloured initial badge (same gradient logic as `LogoAvatar`)
+- Show `[HomeLogo] Home vs Away [AwayLogo]` in the header
+- On mobile, logos are slightly smaller (24px)
 
----
-
-### Phase 5: Touch Target + Typography Fixes
-
-- Add global CSS for minimum 44px touch targets on all interactive elements on mobile
-- Ensure font sizes are readable without zooming (minimum 14px body text on mobile)
-- Add `touch-action: manipulation` to prevent double-tap zoom
-
-**Files**: `src/index.css`
+**File:** `src/pages/Orders.tsx` (add `TeamLogo` component inline or as a small shared component)
 
 ---
 
-### Phase 6: PWA Setup
+### 4. Price x Quantity Calculation
 
-- Install `vite-plugin-pwa` dependency
-- Configure in `vite.config.ts` with manifest, service worker, and offline caching
-- Add PWA meta tags to `index.html` (apple-touch-icon, theme-color, apple-mobile-web-app-capable)
-- Create PWA icons (192x192, 512x512) using VJX branding text
-- Add splash screen configuration for iOS
-- Configure `navigateFallbackDenylist` to exclude `/~oauth`
-- Enable offline-friendly caching with a network-first strategy for API calls and cache-first for static assets
+Ensure `sale_price` is treated as **per-ticket price** and totals are always `sale_price * quantity`.
 
-**Files**: `vite.config.ts`, `index.html`, `public/manifest.json` (auto-generated by plugin), `public/pwa-192x192.svg`, `public/pwa-512x512.svg`
+**Current behaviour:** `sale_price` appears to be stored as a single value and displayed as-is. The display shows `£{sale_price}` without multiplying by quantity.
+
+**Changes:**
+- On the collapsed event header: show total value as `sum(order.sale_price * order.quantity)` across all orders in the group
+- On each order row/card: display both the per-ticket price and the total (e.g., "12 x £135 = £1,620")
+- In the `OrderDetailSheet` P&L section: use `sale_price * quantity` as the sale total
+- In `AddOrderDialog` and `EditOrderDialog`: clarify the label as "Price per Ticket (£)" so users know this is per-ticket
+- Balance auto-entries: update to use `sale_price * quantity` when creating balance_payments for contact-sourced orders
+
+**Files:** `src/pages/Orders.tsx`, `src/components/OrderDetailSheet.tsx`, `src/components/AddOrderDialog.tsx`, `src/components/EditOrderDialog.tsx`
 
 ---
 
-### Technical Details
+### 5. Full Order Editing on Mobile
 
-**Breakpoints used (Tailwind defaults)**:
-- Mobile: `< 768px` (default / no prefix)
-- Tablet: `md:` (768px+)
-- Desktop: `lg:` (1024px+)
+On mobile/iPad, tapping an order should open the `EditOrderDialog` as a full-screen sheet where all fields are editable.
 
-**Key Tailwind classes pattern**:
-```
-grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3  (cards)
-hidden md:table  (tables on desktop only)
-md:hidden  (mobile card views)
-fixed bottom-0 md:hidden  (bottom nav)
-hidden md:flex md:w-16 lg:w-[240px]  (sidebar)
-```
+**Implementation:**
+- The `Dialog` component already renders as a full-screen bottom sheet on mobile (per earlier responsive work)
+- Change the mobile card tap handler: instead of opening `OrderDetailSheet` (read-only), open `EditOrderDialog` directly
+- Ensure the Save button in `EditOrderDialog` has `sticky bottom-0` positioning so it's always visible without scrolling
+- Keep the desktop click behaviour opening `OrderDetailSheet` (with an Edit button inside)
 
-**Bottom Nav structure**:
-```text
-[Dashboard] [Orders] [Finance] [Wallet] [Balances]
-   icon       icon     icon      icon      icon
-   label      label    label     label     label
-```
-Tapping "More" or using a hamburger could show remaining nav items in a slide-up sheet.
+**File:** `src/pages/Orders.tsx` (change mobile card `onClick`), `src/components/EditOrderDialog.tsx` (sticky save button)
 
-**PWA manifest**:
-- `name`: "VJX"
-- `short_name`: "VJX"
-- `theme_color`: matches the primary colour
-- `background_color`: matches the sidebar dark background
-- `display`: "standalone"
-- `start_url`: "/"
+---
 
-**Estimated files to modify**: ~25 files total across all phases.
+### 6. Show Contact Name Instead of Platform
+
+Replace the Platform column with the contact/supplier name as the primary display.
+
+**Current behaviour:** The Platform column shows the supplier contact name (from linked purchase) as primary with platform as secondary, or just the platform name.
+
+**Changes:**
+- **Desktop table:** Rename column header from "Platform" to "Source". Show contact name (from `contact_id` link or assignment info) as primary bold label. Show buyer name as secondary line underneath. Format: "Affy → John Smith"
+- **Mobile cards:** Same pattern — primary line shows contact/source name, secondary shows buyer name
+- **Collapsed header row:** Include a summary like "Affy → John Smith · 4 tickets · £400" for each order visible in a compact preview list (show first 2-3 orders as one-line summaries when collapsed)
+- **Fallback:** If no contact is linked, show the platform name as before
+
+**File:** `src/pages/Orders.tsx`
+
+---
+
+### Summary of Files to Modify
+
+| File | Changes |
+|---|---|
+| `src/pages/Orders.tsx` | Collapsible events, colour palette, team logos, price*qty totals, mobile edit tap, contact name display, collapsed preview |
+| `src/components/OrderDetailSheet.tsx` | Price*qty in P&L section |
+| `src/components/EditOrderDialog.tsx` | "Price per Ticket" label, sticky save button, price*qty for balance entries |
+| `src/components/AddOrderDialog.tsx` | "Price per Ticket" label, price*qty for balance entries |
+
+All changes use responsive Tailwind classes and will work identically across iPhone, iPad portrait/landscape, and desktop.
 
