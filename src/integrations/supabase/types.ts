@@ -1452,6 +1452,8 @@ export type Database = {
         | "delivered"
         | "refunded"
         | "cancelled"
+        | "outstanding"
+        | "partially_delivered"
       payout_status: "pending" | "processing" | "completed" | "failed"
       purchase_status: "pending" | "confirmed" | "received" | "cancelled"
       refund_status: "pending" | "approved" | "completed" | "rejected"
@@ -1606,6 +1608,8 @@ export const Constants = {
         "delivered",
         "refunded",
         "cancelled",
+        "outstanding",
+        "partially_delivered",
       ],
       payout_status: ["pending", "processing", "completed", "failed"],
       purchase_status: ["pending", "confirmed", "received", "cancelled"],
