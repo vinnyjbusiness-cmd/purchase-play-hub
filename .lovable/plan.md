@@ -1,55 +1,54 @@
 
 
-## Fix: Contact Balance Detail Page — Single Scrollable View on Mobile
+## Add Order Status Field with Inline Editing
 
-### Problem
-The detail view uses a split layout (`flex flex-col h-full overflow-hidden`) with:
-- A fixed header section (`shrink-0`) containing the back button, avatar, name, and stat cards
-- A scrollable body (`flex-1 overflow-y-auto`) containing the heatmap, breakdown, and Activity Log
+### Overview
+Add a clear, color-coded status system to each order with four states: Outstanding (amber), Delivered (green), Partially Delivered (blue), and Cancelled (red). The status will be tappable inline on the orders page and prominently displayed at the top of the edit dialog.
 
-On mobile/iPad, this creates a nested scroll area where the Activity Log is trapped inside a small scrollable region, making it nearly impossible to scroll through.
+### 1. Database Migration
+Add two new values to the existing `order_status` enum: `outstanding` and `partially_delivered`.
 
-### Solution
-On mobile and iPad portrait (`< 1024px`), convert the entire detail view to a single scrollable page with no fixed sections. On desktop/iPad landscape, keep the current split layout.
-
-### Changes — `src/pages/Balance.tsx`
-
-**1. Outer container (line ~474):**
-- Change from `flex flex-col h-full overflow-hidden` to conditionally apply the split layout only on large screens
-- Mobile: `overflow-y-auto` on the entire container, no `h-full` constraint
-- Desktop (lg+): Keep existing `flex flex-col h-full overflow-hidden`
-
-**2. Header section (line ~475):**
-- Mobile: Remove `shrink-0`, let it flow naturally in the scroll
-- Desktop: Keep `shrink-0` so it stays pinned
-
-**3. Body section (line ~506):**
-- Mobile: Remove `flex-1 overflow-y-auto`, let content flow as part of the main scroll
-- Desktop: Keep `flex-1 overflow-y-auto`
-
-**4. Activity Log action buttons (lines ~561-570):**
-- Mobile: Stack the Payment/Charge/Opening Balance buttons vertically or wrap them so they don't overflow on small screens
-
-### Implementation Detail
-
-Use Tailwind responsive classes to conditionally apply the layout:
-
-```
-// Outer container
-className="lg:flex lg:flex-col lg:h-full lg:overflow-hidden overflow-y-auto"
-
-// Header
-className="px-6 pt-6 pb-4 border-b border-border lg:shrink-0"
-
-// Body
-className="lg:flex-1 lg:overflow-y-auto px-6 py-4 space-y-4"
+```sql
+ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'outstanding';
+ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'partially_delivered';
 ```
 
-This ensures:
-- **iPhone / iPad portrait**: One continuous scrollable page — avatar, stats, heatmap, breakdown, and full Activity Log all flow top-to-bottom with natural page scrolling
-- **iPad landscape / Desktop**: Existing pinned header + scrollable body layout is preserved
+Also run an update to migrate existing `pending` orders to `outstanding`:
+```sql
+UPDATE orders SET status = 'outstanding' WHERE status = 'pending';
+```
 
-### File Modified
-| File | Change |
+### 2. Orders Page — Inline Status Badge (src/pages/Orders.tsx)
+
+**Status color map:**
+- `outstanding` = amber/yellow (`bg-amber-500/15 text-amber-400 border-amber-500/30`)
+- `delivered` = green (`bg-green-500/15 text-green-400 border-green-500/30`)
+- `partially_delivered` = blue (`bg-blue-500/15 text-blue-400 border-blue-500/30`)
+- `cancelled` = red (`bg-red-500/15 text-red-400 border-red-500/30`)
+
+**Mobile cards:** Replace the current DELIVERED/OUTSTANDING badge with a tappable status pill. Tapping cycles through: outstanding -> partially_delivered -> delivered -> cancelled -> outstanding. The `updateField` function handles the DB update inline.
+
+**Desktop table:** Replace the current "Status" column (which shows a static DELIVERED/OUTSTANDING badge) with a clickable status badge that cycles through statuses on click. Remove the separate "Delivered" checkbox column since the status field now covers this.
+
+**Delivered count on header:** Update the delivered count logic to count orders with `status === 'delivered'` instead of checking `delivery_status`.
+
+### 3. Edit Order Dialog — Status Dropdown (src/components/EditOrderDialog.tsx)
+
+Add a prominent Status section at the very top of the form (before Source):
+- Label: "Status"
+- Four segmented buttons showing Outstanding, Delivered, Partially Delivered, Cancelled
+- Each button color-coded to match the status colors
+- Add `delivery_status` to the form state and submit payload
+
+### 4. Order Detail Sheet (src/components/OrderDetailSheet.tsx)
+
+Update the existing Order Status dropdown to use the new four values instead of the old five (pending/fulfilled/delivered/refunded/cancelled).
+
+### Files Modified
+| File | Changes |
 |---|---|
-| `src/pages/Balance.tsx` | ~3 lines changed: responsive classes on the detail view container, header, and body sections |
+| Database migration | Add `outstanding` and `partially_delivered` to `order_status` enum; migrate existing `pending` to `outstanding` |
+| `src/pages/Orders.tsx` | Inline tappable status badge on mobile cards and desktop table rows; remove delivered checkbox; update delivered count logic |
+| `src/components/EditOrderDialog.tsx` | Add status segmented buttons at top of form |
+| `src/components/OrderDetailSheet.tsx` | Update status dropdown values |
+
