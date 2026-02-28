@@ -367,7 +367,7 @@ export default function Orders() {
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Sticky club filter bar */}
-      <div className="sticky top-0 z-10 bg-background border-b border-border px-6 py-3 flex items-center gap-4 overflow-x-auto shrink-0">
+      <div className="sticky top-0 z-10 bg-background border-b border-border px-4 md:px-6 py-3 flex items-center gap-3 md:gap-4 overflow-x-auto scrollbar-hide shrink-0" style={{ WebkitOverflowScrolling: 'touch' }}>
         <button
           onClick={() => setClubFilter("all")}
           className={cn(
@@ -391,23 +391,23 @@ export default function Orders() {
         ))}
       </div>
 
-      <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6 flex-1 overflow-y-auto">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight">Orders</h1>
             <p className="text-muted-foreground text-sm">
               {filtered.length} order{filtered.length !== 1 ? "s" : ""} across {grouped.length} game{grouped.length !== 1 ? "s" : ""}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => exportToCSV(filtered)} disabled={filtered.length === 0}>
-              <Download className="h-4 w-4 mr-1" /> Export CSV
+            <Button size="sm" variant="outline" onClick={() => exportToCSV(filtered)} disabled={filtered.length === 0} className="flex-1 md:flex-none">
+              <Download className="h-4 w-4 mr-1" /> Export
             </Button>
             <AddOrderDialog onCreated={load} />
           </div>
         </div>
 
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-col md:flex-row flex-wrap items-stretch md:items-end gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Search</label>
           <div className="relative">
@@ -481,25 +481,19 @@ export default function Orders() {
           return (
             <div key={group.eventIds[0]} className="rounded-xl border bg-card overflow-hidden shadow-sm">
               {/* Game header */}
-              <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/40">
+              <div className="flex flex-col md:flex-row md:items-center justify-between px-4 md:px-5 py-3 border-b bg-muted/40 gap-2">
                 <div className="flex items-center gap-4">
                   <div>
-                    <p className="font-bold text-base">
+                    <p className="font-bold text-sm md:text-base">
                       {group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event"}
-                      {group.event?.venue && <span className="text-muted-foreground font-normal text-sm ml-2">— {group.event.venue}</span>}
+                      {group.event?.venue && <span className="text-muted-foreground font-normal text-xs md:text-sm ml-2 hidden md:inline">— {group.event.venue}</span>}
                     </p>
-                    <p className="text-sm font-bold text-foreground mt-0.5">
+                    <p className="text-xs md:text-sm font-bold text-foreground mt-0.5">
                       {group.event?.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-5">
-                  <div className="text-center">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Deadline</p>
-                    <p className={`text-sm font-mono ${deadlineStatus.color}`}>
-                      {deadline ? format(deadline, "dd MMM HH:mm") : "—"}
-                    </p>
-                  </div>
+                <div className="flex items-center gap-3 md:gap-5 flex-wrap">
                   <div className="text-center">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Orders</p>
                     <p className="text-sm font-mono font-bold">{group.orders.length}</p>
@@ -535,7 +529,44 @@ export default function Orders() {
               </div>
 
               {/* Orders table */}
-              <div className="overflow-x-auto">
+              {/* Mobile card view */}
+              <div className="md:hidden space-y-2 p-3">
+                {group.orders.map(o => {
+                  const flag = phoneToFlag(o.buyer_phone);
+                  const assigned = isFullyAssigned(o);
+                  const isDelivered = o.delivery_status === "delivered" || o.delivery_status === "completed";
+                  return (
+                    <div
+                      key={o.id}
+                      onClick={() => setSelectedOrderId(o.id)}
+                      className={cn(
+                        "rounded-lg border p-3 space-y-2 cursor-pointer transition-colors",
+                        isDelivered ? "bg-success/10 border-success/20" : assigned ? "bg-success/5 border-success/10" : "bg-card hover:bg-muted/40"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-bold text-sm">{o.order_ref || "—"}</span>
+                        {isDelivered ? (
+                          <Badge variant="outline" className="text-[10px] bg-success/10 text-success border-success/20">DELIVERED</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/20">OUTSTANDING</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">{o.buyer_name || "Unknown"} {flag}</span>
+                        <span className="text-muted-foreground">{o.platforms?.name || "Direct"}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{o.quantity}× {o.category} · £{Number(o.sale_price).toFixed(0)}</span>
+                        <span>{o.order_date ? format(new Date(o.order_date), "dd MMM") : ""}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop table view */}
+              <div className="overflow-x-auto hidden md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>

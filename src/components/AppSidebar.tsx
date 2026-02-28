@@ -1,32 +1,9 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
-  CalendarDays,
-  ShoppingCart,
-  Package,
-  Wallet,
-  Boxes,
-  Scale,
-  HeartPulse,
-  Globe,
-  Sun,
-  Moon,
-  LogOut,
-  Users,
-  Banknote,
-  BarChart3,
-  ClipboardList,
-  Wallet as WalletIcon,
-  ListTodo,
-  CalendarClock,
-  FileText,
-  Mail,
-  Siren,
-  Truck,
-  Contact,
-  MessageSquareText,
-  FileSpreadsheet,
-  Handshake,
+  LayoutDashboard, CalendarDays, ShoppingCart, Package, Wallet, Boxes, Scale,
+  HeartPulse, Globe, Sun, Moon, LogOut, Users, Banknote, BarChart3, ClipboardList,
+  Wallet as WalletIcon, ListTodo, CalendarClock, FileText, Mail, Siren, Truck,
+  Contact, MessageSquareText, FileSpreadsheet, Handshake, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -34,12 +11,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import ChangePasswordDialog from "./ChangePasswordDialog";
 import { ChangePinDialog } from "./FinancePinGate";
+import { useState } from "react";
 
 export default function AppSidebar() {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
   const { userRole } = useOrg();
   const isAdmin = userRole === "admin";
+  const [collapsed, setCollapsed] = useState(false);
 
   const handleLogout = async () => {
     sessionStorage.removeItem("vjx_finance_unlocked");
@@ -55,19 +34,20 @@ export default function AppSidebar() {
       <NavLink
         key={item.to}
         to={item.to}
+        title={item.label}
         className={cn(
           "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+          collapsed && "justify-center px-2",
           isActive
             ? "bg-sidebar-accent text-sidebar-primary-foreground"
             : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         )}
       >
-        <item.icon className="h-4 w-4" />
-        {item.label}
+        <item.icon className="h-4 w-4 shrink-0" />
+        {!collapsed && <span>{item.label}</span>}
       </NavLink>
     );
   };
-
 
   const viewerNavItems = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -111,37 +91,47 @@ export default function AppSidebar() {
   ];
 
   return (
-    <aside className="flex h-screen w-[240px] flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-      <div className="flex items-center px-5 py-5 border-b border-sidebar-border">
+    <aside className={cn(
+      "flex h-screen flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-200",
+      collapsed ? "w-16" : "w-[240px]",
+      "lg:w-[240px]"
+    )}>
+      <div className={cn("flex items-center border-b border-sidebar-border", collapsed ? "justify-center px-2 py-5" : "px-5 py-5")}>
         <span className="text-xl font-extrabold tracking-tight text-sidebar-primary-foreground">
-          VJX
+          {collapsed ? "V" : "VJX"}
         </span>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <nav className="flex-1 px-2 lg:px-3 py-4 space-y-1 overflow-y-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {(isAdmin ? adminNavItems : viewerNavItems).map(renderNavLink)}
-
         {!isAdmin && renderNavLink({ to: "/orders", icon: ShoppingCart, label: "Orders" })}
-
         {(isAdmin ? adminBottomItems : viewerBottomItems).map(renderNavLink)}
       </nav>
 
-      <div className="border-t border-sidebar-border px-3 py-3 space-y-1">
+      <div className="border-t border-sidebar-border px-2 lg:px-3 py-3 space-y-1">
+        {/* Collapse toggle - only on tablet */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors lg:hidden"
+        >
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {!collapsed && "Collapse"}
+        </button>
         <button
           onClick={toggleTheme}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+          className={cn("flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors", collapsed && "justify-center px-2")}
         >
           {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-          {theme === "light" ? "Dark Mode" : "Light Mode"}
+          {!collapsed && (theme === "light" ? "Dark Mode" : "Light Mode")}
         </button>
-        <ChangePasswordDialog />
-        {isAdmin && <ChangePinDialog />}
+        {!collapsed && <ChangePasswordDialog />}
+        {!collapsed && isAdmin && <ChangePinDialog />}
         <button
           onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+          className={cn("flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors", collapsed && "justify-center px-2")}
         >
           <LogOut className="h-4 w-4" />
-          Sign Out
+          {!collapsed && "Sign Out"}
         </button>
       </div>
     </aside>

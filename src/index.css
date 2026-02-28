@@ -105,6 +105,8 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
   }
 }
 
@@ -115,5 +117,28 @@
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* Mobile touch targets */
+@media (max-width: 767px) {
+  button, a, [role="button"], input[type="checkbox"], input[type="radio"],
+  select, [data-radix-collection-item] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Exception for inline/compact elements that shouldn't be enlarged */
+  .compact-touch button, .compact-touch a,
+  table button, table a, table [role="button"] {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  body {
+    font-size: 14px;
   }
 }

@@ -177,7 +177,7 @@ export default function Wallet() {
   };
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6 animate-fade-in">
       <div className="flex items-center gap-3">
         <WalletIcon className="h-6 w-6 text-primary" />
         <h1 className="text-2xl font-bold tracking-tight">Wallet</h1>
@@ -208,14 +208,14 @@ export default function Wallet() {
       </div>
 
       {/* Two-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Platform Income */}
         <div>
           <div className="flex items-center gap-2 mb-4">
             <CreditCard className="h-4 w-4 text-success" />
             <h3 className="text-sm font-semibold">Platform Income</h3>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             {platformBalances.map((p, i) => {
               const pastAfterPayments = Math.max(0, p.owedPast - p.totalPaid);
               const excessPayments = Math.max(0, p.totalPaid - p.owedPast);
@@ -266,7 +266,7 @@ export default function Wallet() {
             <Users className="h-4 w-4 text-destructive" />
             <h3 className="text-sm font-semibold">Suppliers</h3>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             {supplierBalances.map(s => {
               const hasBalance = s.balance > 0;
               return (
@@ -353,7 +353,7 @@ export default function Wallet() {
         </div>
 
         {virtualCards.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {virtualCards.map(card => {
               const idx = platformIndex[card.platform_id] ?? 0;
               const platformName = platformMap[card.platform_id]?.name || "Unknown";
