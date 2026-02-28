@@ -671,47 +671,73 @@ export default function Orders() {
               </button>
 
               {/* Expanded: full order details */}
-              {isExpanded && (
+              {isExpanded && (() => {
+                // Group orders by source
+                const sourceGroups = new Map<string, { sourceName: string; sourceIdx: number; orders: Order[] }>();
+                group.orders.forEach(o => {
+                  const src = getSourceDisplay(o, assignments);
+                  const key = src.primary.toLowerCase();
+                  if (!sourceGroups.has(key)) {
+                    const srcIdx = getSourceColorIndex(src.primary);
+                    sourceGroups.set(key, { sourceName: src.primary, sourceIdx: srcIdx, orders: [] });
+                  }
+                  sourceGroups.get(key)!.orders.push(o);
+                });
+                const sourceGroupList = [...sourceGroups.values()];
+
+                return (
                 <>
                   {/* Mobile card view */}
-                  <div className="md:hidden space-y-2 p-3">
-                    {group.orders.map(o => {
-                      const flag = phoneToFlag(o.buyer_phone);
-                      const assigned = isFullyAssigned(o);
-                      const statusConf = ORDER_STATUS_CONFIG[o.status] || ORDER_STATUS_CONFIG.outstanding;
-                      const src = getSourceDisplay(o, assignments);
-                      const orderTotal = Number(o.sale_price) * o.quantity;
-                      const srcIdx = getSourceColorIndex(src.primary);
+                  <div className="md:hidden space-y-1 p-3">
+                    {sourceGroupList.map(sg => {
+                      const sgTotal = sg.orders.reduce((s, o) => s + Number(o.sale_price) * o.quantity, 0);
+                      const sgQty = sg.orders.reduce((s, o) => s + o.quantity, 0);
                       return (
-                        <div
-                          key={o.id}
-                          onClick={() => setEditOrder(o)}
-                          className={cn(
-                            "rounded-lg border-l-4 border p-3 space-y-2 cursor-pointer transition-colors",
-                            SOURCE_COLORS[srcIdx],
-                            o.status === "delivered" && "ring-1 ring-success/30"
-                          )}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className={cn("font-bold text-base", SOURCE_TEXT_COLORS[srcIdx])}>{src.primary}</span>
-                            <Badge
-                              variant="outline"
-                              className={cn("text-[10px] cursor-pointer select-none", statusConf.className)}
-                              onClick={(e) => { e.stopPropagation(); updateField(o.id, 'status', nextOrderStatus(o.status)); }}
-                            >
-                              {statusConf.label.toUpperCase()}
-                            </Badge>
+                        <div key={sg.sourceName}>
+                          <div className={cn("flex items-center justify-between px-3 py-1.5 rounded-t-lg mt-2", `bg-${SOURCE_COLORS[sg.sourceIdx].split('bg-')[1]?.split(' ')[0] || 'muted/10'}`)}>
+                            <span className={cn("font-bold text-sm", SOURCE_TEXT_COLORS[sg.sourceIdx])}>{sg.sourceName}</span>
+                            <span className="text-xs text-white/60 font-mono">{sgQty} tickets · £{sgTotal.toLocaleString()}</span>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <div>
-                              {src.secondary && <span className="text-muted-foreground text-sm">{src.secondary}</span>}
-                              {o.order_ref && <span className="text-muted-foreground text-xs ml-2 font-mono">#{o.order_ref}</span>}
-                            </div>
-                            {flag && <span className="text-lg">{flag}</span>}
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-base text-foreground">{o.quantity}× £{Number(o.sale_price).toFixed(0)} = £{orderTotal.toLocaleString()}</span>
-                            <span className="text-sm text-muted-foreground font-medium">{o.category}</span>
+                          <div className="space-y-2 pb-1">
+                          {sg.orders.map(o => {
+                            const flag = phoneToFlag(o.buyer_phone);
+                            const statusConf = ORDER_STATUS_CONFIG[o.status] || ORDER_STATUS_CONFIG.outstanding;
+                            const src = getSourceDisplay(o, assignments);
+                            const orderTotal = Number(o.sale_price) * o.quantity;
+                            const srcIdx = sg.sourceIdx;
+                            return (
+                              <div
+                                key={o.id}
+                                onClick={() => setEditOrder(o)}
+                                className={cn(
+                                  "rounded-lg border-l-4 border p-3 space-y-2 cursor-pointer transition-colors",
+                                  SOURCE_COLORS[srcIdx],
+                                  o.status === "delivered" && "ring-1 ring-success/30"
+                                )}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    {src.secondary && <span className="text-muted-foreground text-sm">{src.secondary}</span>}
+                                    {o.order_ref && <span className="text-muted-foreground text-xs ml-2 font-mono">#{o.order_ref}</span>}
+                                  </div>
+                                  <Badge
+                                    variant="outline"
+                                    className={cn("text-[10px] cursor-pointer select-none", statusConf.className)}
+                                    onClick={(e) => { e.stopPropagation(); updateField(o.id, 'status', nextOrderStatus(o.status)); }}
+                                  >
+                                    {statusConf.label.toUpperCase()}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-base text-foreground">{o.quantity}× £{Number(o.sale_price).toFixed(0)} = £{orderTotal.toLocaleString()}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-muted-foreground font-medium">{o.category}</span>
+                                    {flag && <span className="text-lg">{flag}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                           </div>
                         </div>
                       );
@@ -739,14 +765,31 @@ export default function Orders() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {group.orders.map(o => {
+                        {sourceGroupList.flatMap(sg => {
+                          const sgTotal = sg.orders.reduce((s, o) => s + Number(o.sale_price) * o.quantity, 0);
+                          const sgQty = sg.orders.reduce((s, o) => s + o.quantity, 0);
+                          const rows: React.ReactNode[] = [];
+                          // Source sub-header row
+                          if (sourceGroupList.length > 1) {
+                            rows.push(
+                              <TableRow key={`src-${sg.sourceName}`} className="border-0 hover:bg-transparent">
+                                <TableCell colSpan={13} className="py-1.5 px-4">
+                                  <div className="flex items-center gap-2">
+                                    <span className={cn("font-bold text-sm", SOURCE_TEXT_COLORS[sg.sourceIdx])}>{sg.sourceName}</span>
+                                    <span className="text-[10px] text-white/40 font-mono">({sg.orders.length} orders · {sgQty} tickets · £{sgTotal.toLocaleString()})</span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }
+                          sg.orders.forEach(o => {
                           const flag = phoneToFlag(o.buyer_phone);
                           const assigned = isFullyAssigned(o);
                           const assignInfo = assignments[o.id];
                           const src = getSourceDisplay(o, assignments);
                           const orderTotal = Number(o.sale_price) * o.quantity;
                           const srcIdx = getSourceColorIndex(src.primary);
-                          return (
+                          rows.push(
                             <TableRow
                               key={o.id}
                               className={cn(
@@ -891,12 +934,15 @@ export default function Orders() {
                               </TableCell>
                             </TableRow>
                           );
+                          });
+                          return rows;
                         })}
                       </TableBody>
                     </Table>
                   </div>
                 </>
-              )}
+                );
+              })()}
             </div>
           );
         })}
