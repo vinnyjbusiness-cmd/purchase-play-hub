@@ -3,7 +3,7 @@ import {
   LayoutDashboard, CalendarDays, ShoppingCart, Package, Wallet, Boxes, Scale,
   HeartPulse, Globe, Sun, Moon, LogOut, Users, Banknote, BarChart3, ClipboardList,
   Wallet as WalletIcon, ListTodo, CalendarClock, FileText, Mail, Siren, Truck,
-  Contact, MessageSquareText, FileSpreadsheet, Handshake, ChevronLeft, ChevronRight,
+  Contact, MessageSquareText, FileSpreadsheet, Handshake, ChevronLeft, ChevronRight, KeyRound,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -82,6 +82,7 @@ export default function AppSidebar() {
     { to: "/templates", icon: MessageSquareText, label: "Templates" },
     { to: "/spreadsheet-templates", icon: FileSpreadsheet, label: "Spreadsheets" },
     { to: "/activity", icon: ClipboardList, label: "Activity Log" },
+    { to: "/vault-passwords", icon: KeyRound, label: "Password Vault" },
   ];
 
   const viewerBottomItems = [

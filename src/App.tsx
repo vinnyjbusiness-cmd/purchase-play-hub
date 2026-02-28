@@ -37,6 +37,7 @@ import MembersPage from "./pages/Members";
 import TemplatesPage from "./pages/Templates";
 import IJKAccountPage from "./pages/IJKAccount";
 import SpreadsheetTemplatesPage from "./pages/SpreadsheetTemplates";
+import PasswordVault from "./pages/PasswordVault";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -128,6 +129,7 @@ const App = () => (
               <Route path="/spreadsheet-templates" element={<AdminOnly><SpreadsheetTemplatesPage /></AdminOnly>} />
               <Route path="/warroom" element={<AdminOnly><WarRoom /></AdminOnly>} />
               <Route path="/world-cup" element={<AdminOnly><WorldCup /></AdminOnly>} />
+              <Route path="/vault-passwords" element={<AdminOnly><PasswordVault /></AdminOnly>} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -863,6 +863,50 @@ export type Database = {
         }
         Relationships: []
       }
+      password_vault: {
+        Row: {
+          created_at: string
+          icon_color: string
+          id: string
+          org_id: string
+          password: string
+          site_name: string
+          updated_at: string
+          url: string | null
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          icon_color?: string
+          id?: string
+          org_id: string
+          password: string
+          site_name: string
+          updated_at?: string
+          url?: string | null
+          username: string
+        }
+        Update: {
+          created_at?: string
+          icon_color?: string
+          id?: string
+          org_id?: string
+          password?: string
+          site_name?: string
+          updated_at?: string
+          url?: string | null
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "password_vault_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payouts: {
         Row: {
           amount: number
@@ -1413,6 +1457,38 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      vault_settings: {
+        Row: {
+          created_at: string
+          id: string
+          org_id: string
+          updated_at: string
+          vault_pin: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          org_id: string
+          updated_at?: string
+          vault_pin: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          org_id?: string
+          updated_at?: string
+          vault_pin?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vault_settings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
