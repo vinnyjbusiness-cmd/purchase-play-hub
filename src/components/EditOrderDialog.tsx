@@ -30,7 +30,15 @@ interface OrderData {
   delivery_type: string;
   device_type: string | null;
   notes: string | null;
+  status?: string;
 }
+
+const STATUS_OPTIONS = [
+  { value: "outstanding", label: "Outstanding", className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+  { value: "delivered", label: "Delivered", className: "bg-green-500/15 text-green-400 border-green-500/30" },
+  { value: "partially_delivered", label: "Partial", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+  { value: "cancelled", label: "Cancelled", className: "bg-red-500/15 text-red-400 border-red-500/30" },
+];
 
 interface Props {
   order: OrderData;
@@ -45,6 +53,7 @@ export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
   const [contactOpen, setContactOpen] = useState(false);
 
   const [form, setForm] = useState({
+    status: order.status || "outstanding",
     platform_id: order.contact_id ? "__contact__" : (order.platform_id || ""),
     contact_id: (order as any).contact_id || "",
     order_ref: order.order_ref || "",
@@ -76,6 +85,7 @@ export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
       const { error } = await supabase
         .from("orders")
         .update({
+          status: form.status,
           platform_id: isContactSource ? null : (form.platform_id || null),
           contact_id: isContactSource ? form.contact_id : null,
           order_ref: form.order_ref || null,
@@ -130,6 +140,28 @@ export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
           <DialogTitle>Edit Order</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Status segmented buttons */}
+          <div className="space-y-1.5">
+            <Label>Status</Label>
+            <div className="flex gap-1.5">
+              {STATUS_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setForm({ ...form, status: opt.value })}
+                  className={cn(
+                    "flex-1 text-xs font-semibold py-1.5 rounded-md border transition-all",
+                    form.status === opt.value
+                      ? opt.className + " ring-1 ring-current"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-1.5">
             <Label>Source</Label>
             <Select value={form.platform_id} onValueChange={(v) => {

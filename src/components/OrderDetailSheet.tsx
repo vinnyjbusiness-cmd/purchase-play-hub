@@ -204,10 +204,9 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="fulfilled">Fulfilled</SelectItem>
+                    <SelectItem value="outstanding">Outstanding</SelectItem>
                     <SelectItem value="delivered">Delivered</SelectItem>
-                    <SelectItem value="refunded">Refunded</SelectItem>
+                    <SelectItem value="partially_delivered">Partially Delivered</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>

@@ -160,6 +160,19 @@ const deliveryColor: Record<string, string> = {
   completed: "bg-success/10 text-success border-success/20",
 };
 
+// ─── Order status color map & cycling ───
+const ORDER_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  outstanding: { label: "Outstanding", className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+  delivered: { label: "Delivered", className: "bg-green-500/15 text-green-400 border-green-500/30" },
+  partially_delivered: { label: "Partial", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+  cancelled: { label: "Cancelled", className: "bg-red-500/15 text-red-400 border-red-500/30" },
+};
+const ORDER_STATUS_CYCLE = ["outstanding", "partially_delivered", "delivered", "cancelled"];
+function nextOrderStatus(current: string): string {
+  const idx = ORDER_STATUS_CYCLE.indexOf(current);
+  return ORDER_STATUS_CYCLE[(idx + 1) % ORDER_STATUS_CYCLE.length];
+}
+
 const phoneToFlag = (phone: string | null): string | null => {
   if (!phone) return null;
   const clean = phone.replace(/\s/g, "");
@@ -581,7 +594,7 @@ export default function Orders() {
           const isExpanded = expandedEvents.has(eventKey);
           const totalQty = group.orders.reduce((s, o) => s + o.quantity, 0);
           const totalValue = group.orders.reduce((s, o) => s + (Number(o.sale_price) * o.quantity), 0);
-          const deliveredCount = group.orders.filter(o => o.delivery_status === "delivered" || o.delivery_status === "completed").length;
+          const deliveredCount = group.orders.filter(o => o.status === "delivered").length;
           const totalCost = group.orders.reduce((s, o) => s + (orderCosts[o.id] || 0), 0);
           const eventPL = totalValue - totalCost;
           const totalInventory = group.eventIds.reduce((s, eid) => s + (eventInventoryCounts[eid] || 0), 0);
@@ -665,7 +678,7 @@ export default function Orders() {
                     {group.orders.map(o => {
                       const flag = phoneToFlag(o.buyer_phone);
                       const assigned = isFullyAssigned(o);
-                      const isDelivered = o.delivery_status === "delivered" || o.delivery_status === "completed";
+                      const statusConf = ORDER_STATUS_CONFIG[o.status] || ORDER_STATUS_CONFIG.outstanding;
                       const src = getSourceDisplay(o, assignments);
                       const orderTotal = Number(o.sale_price) * o.quantity;
                       const srcIdx = getSourceColorIndex(src.primary);
@@ -676,16 +689,18 @@ export default function Orders() {
                           className={cn(
                             "rounded-lg border-l-4 border p-3 space-y-2 cursor-pointer transition-colors",
                             SOURCE_COLORS[srcIdx],
-                            isDelivered && "ring-1 ring-success/30"
+                            o.status === "delivered" && "ring-1 ring-success/30"
                           )}
                         >
                           <div className="flex items-center justify-between">
                             <span className={cn("font-bold text-base", SOURCE_TEXT_COLORS[srcIdx])}>{src.primary}</span>
-                            {isDelivered ? (
-                              <Badge variant="outline" className="text-[10px] bg-success/10 text-success border-success/20">DELIVERED</Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/20">OUTSTANDING</Badge>
-                            )}
+                            <Badge
+                              variant="outline"
+                              className={cn("text-[10px] cursor-pointer select-none", statusConf.className)}
+                              onClick={(e) => { e.stopPropagation(); updateField(o.id, 'status', nextOrderStatus(o.status)); }}
+                            >
+                              {statusConf.label.toUpperCase()}
+                            </Badge>
                           </div>
                           <div className="flex items-center justify-between">
                             <div>
@@ -717,8 +732,7 @@ export default function Orders() {
                           <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">Qty</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider text-right w-[100px]">Price</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider text-center w-[90px]">Device</TableHead>
-                          <TableHead className="text-[10px] uppercase tracking-wider text-center w-[70px]">Delivered</TableHead>
-                          <TableHead className="text-[10px] uppercase tracking-wider w-[80px]">Status</TableHead>
+                          <TableHead className="text-[10px] uppercase tracking-wider w-[90px]">Status</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider w-[100px]">Assigned From</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider w-[60px]">Assign</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider w-[40px]"></TableHead>
@@ -738,7 +752,7 @@ export default function Orders() {
                               className={cn(
                                 "cursor-pointer text-xs h-10 transition-colors border-l-4",
                                 SOURCE_COLORS[srcIdx],
-                                (o.delivery_status === "delivered" || o.delivery_status === "completed") && "ring-1 ring-inset ring-success/20"
+                                o.status === "delivered" && "ring-1 ring-inset ring-success/20"
                               )}
                               onClick={() => setSelectedOrderId(o.id)}
                             >
@@ -798,27 +812,19 @@ export default function Orders() {
                                   </button>
                                 </div>
                               </TableCell>
-                              <TableCell className="text-center py-2">
-                                <Checkbox
-                                  checked={o.delivery_status === "delivered" || o.delivery_status === "completed"}
-                                  onCheckedChange={(checked) => {
-                                    const newStatus = checked ? "delivered" : "pending";
-                                    updateField(o.id, 'delivery_status', newStatus);
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="h-5 w-5 data-[state=checked]:bg-success data-[state=checked]:border-success"
-                                />
-                              </TableCell>
                               <TableCell className="py-2">
-                                {o.delivery_status === "delivered" || o.delivery_status === "completed" ? (
-                                  <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/20 font-bold">
-                                    DELIVERED
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="text-[10px] py-0 bg-warning/10 text-warning border-warning/20 font-bold">
-                                    OUTSTANDING
-                                  </Badge>
-                                )}
+                                {(() => {
+                                  const sc = ORDER_STATUS_CONFIG[o.status] || ORDER_STATUS_CONFIG.outstanding;
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className={cn("text-[10px] py-0 font-bold cursor-pointer select-none", sc.className)}
+                                      onClick={(e) => { e.stopPropagation(); updateField(o.id, 'status', nextOrderStatus(o.status)); }}
+                                    >
+                                      {sc.label.toUpperCase()}
+                                    </Badge>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell className="py-2">
                                 {assigned ? (
