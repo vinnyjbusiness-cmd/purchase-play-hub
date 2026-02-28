@@ -1,65 +1,57 @@
 
 
-## Plan: Edit Orders + Fix Link Tickets Dialog
+## Plan: World Cup 2026 Section
 
-### 1. Add Edit Button to Order Rows
+### Overview
+Create a dedicated World Cup 2026 page accessible from the sidebar, with three tabbed views (Orders, Finance, Inventory) — all pre-filtered to only show World Cup fixtures. The top filter bar will show country/team names dynamically extracted from the World Cup events data, instead of club names.
 
-Add a pencil/edit icon button next to the existing delete button on each order row in the Orders table.
+### 1. Add Sidebar Link
 
-**How it works:**
-- Clicking the edit button opens an "Edit Order" dialog pre-populated with all the order's current data
-- Create a new `EditOrderDialog.tsx` component that mirrors the Add Order form but pre-fills all fields and uses an UPDATE instead of INSERT
-- Editable fields: Platform, Event, Order Ref, Buyer Name, Buyer Phone, Category, Block, Split Type, Quantity, Sale Price, Delivery Type, Notes, Device Type
-- On save, updates the order in the database and refreshes the table
+**File: `src/components/AppSidebar.tsx`**
+- Add a new nav item in `adminNavItems` (and optionally `viewerNavItems`) with a trophy/globe icon and label "World Cup 2026"
+- Route: `/world-cup`
+- Use the `Globe` or a suitable icon from lucide-react
 
-**Files:**
-- Create `src/components/EditOrderDialog.tsx`
-- Edit `src/pages/Orders.tsx` -- add edit button + state for editing
+### 2. Create World Cup Page
 
-### 2. Fix "Unknown" Supplier and £0.00 in Link Tickets Dialog
+**New file: `src/pages/WorldCup.tsx`**
 
-The issue is that inventory items may have `purchase_id` set to NULL (e.g., manually added inventory without a purchase), causing the supplier lookup to fail and cost to show as 0.
+This page will have:
+- **Tabs** at the top: Orders | Finance | Inventory (using Radix Tabs or simple button tabs)
+- **Sticky country filter bar** below the tabs — dynamically generated from distinct `home_team` and `away_team` values in events where `competition` contains "World Cup". Shows "All" as default, with green highlighting on the active filter
+- **Three tab panels** that reuse the existing logic from Orders, Finance, and Inventory pages but scoped to World Cup events only
 
-**Fixes in `LinkInventoryDialog.tsx`:**
-- Also fetch `face_value` from the inventory table to display as fallback price when no purchase exists
-- Handle NULL `purchase_id` gracefully -- show "Direct / No Purchase" instead of "Unknown"
-- Display the inventory's own `face_value` when the purchase cost is 0 or missing
-- Filter out inventory with null `purchase_id` from the purchaseIds lookup to avoid errors
+**How filtering works:**
+- On mount, fetch all events where `competition ILIKE '%world cup%'`
+- Extract the World Cup event IDs to scope all queries
+- Extract unique team/country names from those events for the filter bar
+- Each tab (Orders, Finance, Inventory) queries its respective table filtered by `event_id IN (worldCupEventIds)`
+- When a country is selected, further filter to only events involving that country
 
-### 3. Group Adjacent Seats in Link Tickets Dialog
+**Tab content:**
+- **Orders tab**: Same table layout as the main Orders page (order ref, buyer, platform, price, delivery status, edit/delete buttons, link tickets) but only showing World Cup orders
+- **Finance tab**: Same summary cards and per-event breakdown as the main Finance page, scoped to World Cup
+- **Inventory tab**: Same grouped inventory view as the main Inventory page, scoped to World Cup events
 
-Detect adjacent seats (same section + row, consecutive seat numbers) and group them with a "Select Pair/Group" button.
+### 3. Add Route
 
-**How it works:**
-- After loading tickets, sort by section, row, seat number
-- Identify groups of consecutive seats in the same section+row (e.g., Row 22, Seats 23-24)
-- Display grouped tickets with a visual container and a "Select Pair" / "Select Group (N)" button that selects all tickets in the group at once
-- Individual ticket checkboxes still work for manual selection
-- Groups are labeled (e.g., "Pair - Row 22, Seats 23-24")
+**File: `src/App.tsx`**
+- Add route: `<Route path="/world-cup" element={<AdminOnly><WorldCup /></AdminOnly>} />`
+- Import the new WorldCup page
 
-**Files:**
-- Edit `src/components/LinkInventoryDialog.tsx` -- add face_value fetch, grouping logic, group select buttons
+### Technical Approach
 
-### Technical Details
+Rather than duplicating hundreds of lines of code from Orders/Finance/Inventory, the World Cup page will:
 
-**New file:** `src/components/EditOrderDialog.tsx`
-- Accepts an `order` prop with all current values
-- Loads platforms, events, contacts on mount (same as AddOrderDialog)
-- Pre-fills form state from the order
-- On submit: `supabase.from("orders").update({...}).eq("id", order.id)`
-- Calls `onUpdated()` callback to refresh the parent
+1. Fetch World Cup events and their IDs upfront
+2. Build a country filter bar from the team names in those events
+3. Implement three tab views that fetch and display data using the same patterns as the existing pages, but with the World Cup event ID filter baked in
+4. Reuse existing components (EditOrderDialog, AddOrderDialog, LinkInventoryDialog, OrderDetailSheet, etc.)
 
-**EditOrderDialog fields:** platform_id, event_id, order_ref, buyer_name, buyer_phone, buyer_email, category, block, split_type, quantity, sale_price, delivery_type, device_type, notes
+The page will be self-contained in a single file (~500-700 lines) with the three tab panels inline, keeping the same look and feel as the existing pages but with the World Cup scope applied everywhere.
 
-**LinkInventoryDialog changes:**
-- Fetch inventory with additional `face_value` column
-- Grouping: sort tickets by `section, row_name, seat`, then cluster consecutive seats into groups
-- Each group gets a "Select All (N)" button
-- Show `face_value` or `unit_cost` (whichever is available and non-zero)
-
-**Orders.tsx changes:**
-- Add `Pencil` icon import from lucide-react
-- Add `editOrder` state to track which order is being edited
-- Add edit button cell next to delete button
-- Render `EditOrderDialog` when `editOrder` is set
-
+### Country Filter Bar
+- Positioned sticky at top, below the tab selector
+- Shows "All" + dynamic country names (e.g., "England", "Brazil", "Argentina")
+- Plain text labels, green when active, muted grey when inactive
+- Generated from `SELECT DISTINCT home_team, away_team FROM events WHERE competition ILIKE '%world cup%'`
