@@ -59,6 +59,7 @@ export default function AppSidebar() {
     { to: "/world-cup", icon: Globe, label: "World Cup 2026" },
     { to: "/events", icon: CalendarDays, label: "Events" },
     { to: "/orders", icon: ShoppingCart, label: "Orders" },
+    { to: "/listings", icon: Globe, label: "Listings" },
     { to: "/finance", icon: Wallet, label: "Finance" },
   ];
 
