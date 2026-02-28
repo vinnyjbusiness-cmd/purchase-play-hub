@@ -1,76 +1,88 @@
 
 
-## Password Vault — PIN-Protected Credential Manager
+## Listings Manager Page
 
 ### Overview
-A new "Password Vault" page accessible from the sidebar, protected by its own separate PIN (stored in a new `vault_settings` table). Once unlocked, users can manage saved credentials displayed as styled cards with show/hide, copy, edit, and delete functionality. The vault auto-locks after 5 minutes of inactivity.
+A new "Listings Manager" page for managing ticket listings across platforms (Tixstock, FootballTicketNet, LiveFootball, Fanpass). Events are grouped as collapsible cards with per-listing controls for publishing, pricing, and deletion.
 
-### 1. Database Changes (2 migrations)
+### 1. Database: New `listings` table
 
-**Table: `password_vault`**
+Uses the existing `events` table (no new events table needed).
+
 | Column | Type | Notes |
 |---|---|---|
-| id | uuid | PK, default gen_random_uuid() |
+| id | uuid | PK, gen_random_uuid() |
 | org_id | uuid | NOT NULL |
-| site_name | text | NOT NULL |
-| url | text | nullable |
-| username | text | NOT NULL |
-| password | text | NOT NULL (stored as-is; encrypted at app level is optional) |
-| icon_color | text | default random color |
+| event_id | uuid | NOT NULL, FK to events |
+| platform | text | NOT NULL (tixstock, footballticketnet, livefootball, fanpass) |
+| section | text | nullable |
+| row | text | nullable |
+| seat_from | text | nullable |
+| seat_to | text | nullable |
+| quantity | integer | NOT NULL, default 1 |
+| price | numeric | NOT NULL |
+| face_value | numeric | nullable |
+| status | text | NOT NULL, default 'published' |
+| external_listing_id | text | nullable |
+| last_synced_at | timestamptz | nullable |
 | created_at | timestamptz | default now() |
 | updated_at | timestamptz | default now() |
 
-RLS: Admin-only full access, authenticated users SELECT.
+RLS: Admin-only full access, authenticated SELECT.
 
-**Table: `vault_settings`**
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| org_id | uuid | NOT NULL, unique |
-| vault_pin | text | NOT NULL |
-| created_at | timestamptz | default now() |
-| updated_at | timestamptz | default now() |
+### 2. New Page: `src/pages/ListingsManager.tsx`
 
-RLS: Admin-only full access.
+**Layout:**
+- Header: "Listings Manager" title with page-level search input
+- Horizontal filter tabs: All | Tixstock | FootballTicketNet | LiveFootball | Fanpass (matching existing FilterSelect/tab style)
+- Each platform tab shows a "Sync" button and "Last synced" timestamp
+- Below tabs: event cards in a vertical stack
 
-### 2. New Page: `src/pages/PasswordVault.tsx`
+**Event Cards (collapsed):**
+- Dark gradient background (reusing EVENT_PALETTE from Orders)
+- Club badge via CLUBS lookup on the left
+- Match name, date, venue
+- Total listings count badge
+- Status pill: Active (all published), Partial (mixed), Unlisted (none published)
+- Chevron toggle to expand
 
-**PIN Gate (separate from Finance PIN):**
-- On load, fetch `vault_pin` from `vault_settings` for the org.
-- If no PIN set, prompt admin to create one (reuses the same pattern as `FinancePinGate`).
-- PIN stored in sessionStorage under `vjx_vault_unlocked` with a timestamp.
-- Auto-lock: on every interaction, check if 5 minutes have elapsed since last activity. If so, clear session and show PIN screen.
+**Event Cards (expanded):**
+- "Publish All" / "Unpublish All" buttons at top-right
+- "Add Listing" button opening a modal
+- Sub-listing rows as compact cards showing:
+  - Platform badge (Tixstock=purple, FootballTicketNet=amber, LiveFootball=green, Fanpass=blue)
+  - Section / Row / Seat info
+  - Quantity, Price per ticket
+  - Publish/Unpublish toggle
+  - Inline price edit input
+  - Delete button
 
-**Unlocked View:**
-- Header with title "Password Vault", a settings icon (to change PIN), and "Add New" button.
-- Cards displayed in a responsive grid (1 col mobile, 2 cols tablet, 3 cols desktop).
-- Each card styled like the balance/wallet cards: dark gradient background, coloured circle with site initials on the left, site name as title, username beneath, password hidden with eye toggle, copy button, edit/delete dropdown.
-- Card colours cycle through a palette similar to `cardGradients` from Wallet.tsx.
+**Add/Edit Listing Modal:**
+- Fields: Platform (dropdown), Section, Row, Seat From, Seat To, Quantity, Price, Face Value
 
-**Add/Edit Modal:**
-- Fields: Site Name, URL (optional), Username, Password.
-- Icon colour auto-assigned (can be changed).
+**Sync Button:**
+- Placeholder function per platform that shows a toast ("Sync not yet connected - API key required")
+- Updates `last_synced_at` concept (stored in component state for now)
 
 ### 3. Routing and Sidebar
 
 **`src/App.tsx`:**
-- Add route `/vault-passwords` wrapped in `<AdminOnly>` (no finance PIN — vault has its own PIN).
-- Import new `PasswordVault` page.
+- Add route `/listings` wrapped in `<AdminOnly>`
+- Import ListingsManager page
 
 **`src/components/AppSidebar.tsx`:**
-- Add nav item `{ to: "/vault-passwords", icon: KeyRound, label: "Password Vault" }` in the admin bottom items section.
+- Add nav item `{ to: "/listings", icon: Globe, label: "Listings" }` in admin nav items, near the Orders/Events section
 
-### 4. Auto-Lock Logic
-
-- Track `lastActivity` timestamp in a ref, updated on click/keydown/mousemove events.
-- A `setInterval` every 30 seconds checks if `Date.now() - lastActivity > 300000` (5 min). If so, clear sessionStorage key and set `unlocked = false`.
-- Cleanup interval and event listeners on unmount.
+### 4. Mobile Responsiveness
+- Event cards stack vertically (already natural)
+- Sub-listing rows become compact stacked cards on mobile (grid cols adjust)
+- Add Listing modal goes near-fullscreen on mobile via Dialog responsive classes
 
 ### Files Summary
 | File | Action |
 |---|---|
-| Database migration | Create `password_vault` and `vault_settings` tables with RLS |
-| `src/pages/PasswordVault.tsx` | New page with PIN gate, card grid, add/edit/delete modals, auto-lock |
+| Database migration | Create `listings` table with RLS |
+| `src/pages/ListingsManager.tsx` | New page with tabs, event cards, listing CRUD |
 | `src/App.tsx` | Add route |
 | `src/components/AppSidebar.tsx` | Add sidebar link |
 
