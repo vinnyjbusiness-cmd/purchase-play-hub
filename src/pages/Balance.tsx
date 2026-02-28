@@ -21,7 +21,7 @@ interface Purchase {
 interface Order {
   id: string; sale_price: number; fees: number; net_received: number | null;
   quantity: number; order_date: string; payment_received: boolean; status: string;
-  event_id: string; platform_id: string | null; category: string;
+  event_id: string; platform_id: string | null; contact_id?: string | null; category: string;
 }
 interface EventInfo { id: string; home_team: string; away_team: string; event_date: string; }
 interface SupplierInfo { id: string; name: string; logo_url: string | null; }
@@ -82,7 +82,7 @@ export default function Balance() {
   const loadData = () => {
     Promise.all([
       supabase.from("purchases").select("id,quantity,unit_cost,total_cost,total_cost_gbp,currency,purchase_date,supplier_paid,notes,category,event_id,supplier_id"),
-      supabase.from("orders").select("id,sale_price,fees,net_received,quantity,order_date,payment_received,status,event_id,platform_id,category"),
+      supabase.from("orders").select("id,sale_price,fees,net_received,quantity,order_date,payment_received,status,event_id,platform_id,contact_id,category"),
       supabase.from("events").select("id,home_team,away_team,event_date"),
       supabase.from("suppliers").select("id,name,logo_url"),
       supabase.from("platforms").select("id,name,logo_url"),
@@ -252,6 +252,11 @@ export default function Balance() {
   const mainOwedTotal = platformOwedTotal + contactOwedTotal;
 
   // Detail data
+  // Orders linked to contacts via contact_id
+  const contactOrders = useMemo(() => {
+    return orders.filter(o => o.contact_id && o.status !== "cancelled" && o.status !== "refunded");
+  }, [orders]);
+
   const selectedData = useMemo(() => {
     if (!selectedParty) return null;
     if (selectedParty.type === "supplier") {
@@ -264,16 +269,18 @@ export default function Balance() {
       const partyPayments = isTradeKey
         ? payments.filter(p => p.party_type === "supplier" && p.contact_name?.toLowerCase() === tradeName)
         : payments.filter(p => p.party_type === "supplier" && p.party_id === selectedParty.id);
-      return { ...bal, byEvent, payments: partyPayments, type: "supplier" as const };
+      // Orders where this contact is the buyer (contact_id)
+      const salesOrders = contactOrders.filter(o => o.contact_id === selectedParty.id);
+      return { ...bal, byEvent, payments: partyPayments, salesOrders, type: "supplier" as const };
     } else {
       const bal = platformBalances.find(b => b.platformId === selectedParty.id);
       if (!bal) return null;
       const byEvent: Record<string, Order[]> = {};
       bal.orders.forEach(o => { if (!byEvent[o.event_id]) byEvent[o.event_id] = []; byEvent[o.event_id].push(o); });
       const partyPayments = payments.filter(p => p.party_type === "platform" && p.party_id === selectedParty.id);
-      return { ...bal, byEvent, payments: partyPayments, type: "platform" as const };
+      return { ...bal, byEvent, payments: partyPayments, salesOrders: [] as Order[], type: "platform" as const };
     }
-  }, [selectedParty, supplierBalances, platformBalances, payments]);
+  }, [selectedParty, supplierBalances, platformBalances, payments, contactOrders]);
 
   // Add entry
   const handleAddEntry = async () => {
@@ -547,7 +554,7 @@ export default function Balance() {
             </div>
           )}
 
-          {/* Activity Log */}
+          {/* Activity Log — comprehensive timeline */}
           <div className="rounded-lg border bg-card overflow-hidden">
             <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center justify-between">
               <h3 className="text-sm font-semibold flex items-center gap-2"><History className="h-4 w-4" /> Activity Log</h3>
@@ -563,52 +570,176 @@ export default function Balance() {
                 </Button>
               </div>
             </div>
-            {selectedData.payments.length === 0 ? (
-              <div className="p-4 text-sm text-muted-foreground text-center">No entries yet</div>
-            ) : (
-              <div className="divide-y divide-border">
-                {selectedData.payments.map((pay) => {
-                  const age = getPaymentAge(pay.payment_date);
-                  return (
-                    <div key={pay.id} className="px-4 py-3">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className={cn("text-sm font-semibold", typeColor(pay.type))}>
-                              {typeIcon(pay.type)} {fmt(pay.amount)}
-                            </span>
-                            <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium",
-                              pay.type === "payment" ? "bg-success/10 text-success" :
-                              pay.type === "opening_balance" ? "bg-primary/10 text-primary" :
-                              "bg-warning/10 text-warning"
-                            )}>
-                              {typeLabel(pay.type)}
-                            </span>
-                            {age.isOverdue && pay.type !== "payment" && (
-                              <span className="flex items-center gap-0.5 text-[10px] text-warning">
-                                <AlertTriangle className="h-3 w-3" /> {age.days}d ago
+            {(() => {
+              // Build unified activity entries
+              type ActivityEntry = {
+                id: string;
+                date: string;
+                type: "purchase" | "sale" | "payment" | "charge" | "opening_balance" | "refund";
+                label: string;
+                eventName: string | null;
+                quantity: number | null;
+                unitPrice: number | null;
+                totalAmount: number;
+                source: string | null;
+                increasesBalance: boolean; // green = they owe more / I owe more
+                paymentId?: string; // for edit/delete
+                notes?: string | null;
+              };
+
+              const entries: ActivityEntry[] = [];
+
+              // 1. Purchases (for suppliers — I owe them)
+              if (selectedData.type === "supplier") {
+                ((selectedData as any).purchases || []).forEach((p: Purchase) => {
+                  const ev = eventMap[p.event_id];
+                  const cost = p.total_cost_gbp || (p.quantity * p.unit_cost);
+                  entries.push({
+                    id: `purchase_${p.id}`,
+                    date: p.purchase_date,
+                    type: "purchase",
+                    label: "Purchase",
+                    eventName: ev ? `${ev.home_team} vs ${ev.away_team}` : null,
+                    quantity: p.quantity,
+                    unitPrice: p.unit_cost,
+                    totalAmount: cost,
+                    source: supplierMap[p.supplier_id]?.name || null,
+                    increasesBalance: true, // purchase increases what I owe
+                    notes: p.notes,
+                  });
+                });
+              }
+
+              // 2. Sales/Orders (for suppliers with contact_id — they owe me)
+              if (selectedData.type === "supplier") {
+                (selectedData.salesOrders || []).forEach((o: Order) => {
+                  const ev = eventMap[o.event_id];
+                  const platformName = o.platform_id ? platformMap[o.platform_id]?.name : "Contact";
+                  entries.push({
+                    id: `sale_${o.id}`,
+                    date: o.order_date,
+                    type: "sale",
+                    label: "Sale",
+                    eventName: ev ? `${ev.home_team} vs ${ev.away_team}` : null,
+                    quantity: o.quantity,
+                    unitPrice: o.sale_price / Math.max(o.quantity, 1),
+                    totalAmount: o.sale_price,
+                    source: platformName || null,
+                    increasesBalance: true, // sale to contact = they owe more
+                    notes: null,
+                  });
+                });
+              }
+
+              // 3. Orders (for platforms — they owe me)
+              if (selectedData.type === "platform") {
+                ((selectedData as any).orders || []).forEach((o: Order) => {
+                  const ev = eventMap[o.event_id];
+                  entries.push({
+                    id: `order_${o.id}`,
+                    date: o.order_date,
+                    type: "sale",
+                    label: "Sale",
+                    eventName: ev ? `${ev.home_team} vs ${ev.away_team}` : null,
+                    quantity: o.quantity,
+                    unitPrice: o.sale_price / Math.max(o.quantity, 1),
+                    totalAmount: o.net_received || (o.sale_price - o.fees),
+                    source: platformMap[o.platform_id || ""]?.name || null,
+                    increasesBalance: true,
+                    notes: null,
+                  });
+                });
+              }
+
+              // 4. Balance payments (payments, adjustments, opening balances)
+              selectedData.payments.forEach((pay) => {
+                const isPayment = pay.type === "payment";
+                entries.push({
+                  id: `bp_${pay.id}`,
+                  date: pay.payment_date,
+                  type: isPayment ? "payment" : pay.type === "opening_balance" ? "opening_balance" : "charge",
+                  label: isPayment ? "Payment" : pay.type === "opening_balance" ? "Opening Balance" : "Charge / Adjustment",
+                  eventName: null,
+                  quantity: null,
+                  unitPrice: null,
+                  totalAmount: pay.amount,
+                  source: null,
+                  increasesBalance: !isPayment, // payment reduces balance, charge increases
+                  paymentId: pay.id,
+                  notes: pay.notes,
+                });
+              });
+
+              // Sort newest first
+              entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+              if (entries.length === 0) {
+                return <div className="p-4 text-sm text-muted-foreground text-center">No activity yet</div>;
+              }
+
+              return (
+                <div className="divide-y divide-border">
+                  {entries.map((entry) => {
+                    const isGreen = entry.increasesBalance;
+                    return (
+                      <div key={entry.id} className="px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1 flex-1 min-w-0">
+                            {/* Row 1: Type badge + amount */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={cn(
+                                "text-xs px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider",
+                                entry.type === "purchase" ? "bg-primary/10 text-primary" :
+                                entry.type === "sale" ? "bg-success/10 text-success" :
+                                entry.type === "payment" ? "bg-success/10 text-success" :
+                                entry.type === "opening_balance" ? "bg-primary/10 text-primary" :
+                                "bg-warning/10 text-warning"
+                              )}>
+                                {entry.label}
                               </span>
+                              <span className={cn("text-sm font-bold", isGreen ? "text-success" : "text-destructive")}>
+                                {isGreen ? "+" : "−"}{fmt(entry.totalAmount)}
+                              </span>
+                            </div>
+                            {/* Row 2: Event name */}
+                            {entry.eventName && (
+                              <p className="text-sm font-medium text-foreground">{entry.eventName}</p>
+                            )}
+                            {/* Row 3: Details line */}
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                              {entry.quantity && entry.unitPrice && (
+                                <span>{entry.quantity} ticket{entry.quantity !== 1 ? "s" : ""} × {fmt(entry.unitPrice)}</span>
+                              )}
+                              {entry.source && (
+                                <span className="text-foreground/70">{entry.source}</span>
+                              )}
+                              <span>📅 {format(new Date(entry.date), "dd MMM yyyy 'at' HH:mm")}</span>
+                            </div>
+                            {entry.notes && (
+                              <p className="text-xs text-muted-foreground/80">📝 {entry.notes}</p>
                             )}
                           </div>
-                          <div className="text-xs text-muted-foreground space-y-0.5">
-                            <p>📅 {format(new Date(pay.payment_date), "dd MMM yyyy 'at' HH:mm")}</p>
-                            {pay.notes && <p>📝 {pay.notes}</p>}
-                          </div>
-                        </div>
-                        <div className="flex gap-1 shrink-0">
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => { setEditingPayment(pay); setEditAmount(String(pay.amount)); setEditNotes(pay.notes || ""); }}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="text-xs text-destructive hover:text-destructive shrink-0" onClick={() => deletePayment(pay.id)}>
-                            Remove
-                          </Button>
+                          {/* Edit/Remove for balance_payment entries */}
+                          {entry.paymentId && (
+                            <div className="flex gap-1 shrink-0">
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => {
+                                const pay = selectedData.payments.find(p => p.id === entry.paymentId);
+                                if (pay) { setEditingPayment(pay); setEditAmount(String(pay.amount)); setEditNotes(pay.notes || ""); }
+                              }}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-xs text-destructive hover:text-destructive shrink-0" onClick={() => deletePayment(entry.paymentId!)}>
+                                Remove
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
