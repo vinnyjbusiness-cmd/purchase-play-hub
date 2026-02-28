@@ -471,8 +471,8 @@ export default function Balance() {
     const balanceColor = isSettled ? "text-muted-foreground" : theyOweMe ? "text-success" : "text-destructive";
 
     return (
-      <div className="flex flex-col h-full overflow-hidden">
-        <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+      <div className="overflow-y-auto lg:flex lg:flex-col lg:h-full lg:overflow-hidden">
+        <div className="px-6 pt-6 pb-4 border-b border-border lg:shrink-0">
           <button onClick={() => setSelectedParty(null)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-3">
             <ArrowLeft className="h-4 w-4" /> Back to Balances
           </button>
@@ -503,7 +503,7 @@ export default function Balance() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="px-6 py-4 space-y-4 lg:flex-1 lg:overflow-y-auto">
           {/* Activity Heatmap */}
           <div className="rounded-lg border bg-card overflow-hidden">
             <div className="px-4 py-3 border-b border-border bg-muted/30">
