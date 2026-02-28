@@ -34,6 +34,50 @@ const EVENT_PALETTE = [
   "bg-teal-800",
 ];
 
+// ─── Consistent colour per source/contact name ───
+const SOURCE_COLORS = [
+  "border-l-emerald-400 bg-emerald-500/10",
+  "border-l-violet-400 bg-violet-500/10",
+  "border-l-blue-400 bg-blue-500/10",
+  "border-l-amber-400 bg-amber-500/10",
+  "border-l-rose-400 bg-rose-500/10",
+  "border-l-cyan-400 bg-cyan-500/10",
+  "border-l-indigo-400 bg-indigo-500/10",
+  "border-l-orange-400 bg-orange-500/10",
+  "border-l-fuchsia-400 bg-fuchsia-500/10",
+  "border-l-teal-400 bg-teal-500/10",
+  "border-l-pink-400 bg-pink-500/10",
+  "border-l-lime-400 bg-lime-500/10",
+];
+const SOURCE_TEXT_COLORS = [
+  "text-emerald-300", "text-violet-300", "text-blue-300", "text-amber-300",
+  "text-rose-300", "text-cyan-300", "text-indigo-300", "text-orange-300",
+  "text-fuchsia-300", "text-teal-300", "text-pink-300", "text-lime-300",
+];
+const sourceColorCache = new Map<string, number>();
+let sourceColorNext = 0;
+function getSourceColorIndex(name: string): number {
+  if (!name) return 0;
+  const key = name.toLowerCase();
+  if (sourceColorCache.has(key)) return sourceColorCache.get(key)!;
+  const idx = sourceColorNext % SOURCE_COLORS.length;
+  sourceColorCache.set(key, idx);
+  sourceColorNext++;
+  return idx;
+}
+
+// ─── Competition badge config ───
+const COMP_BADGES: Record<string, { label: string; color: string }> = {
+  "Premier League": { label: "PL", color: "bg-purple-600 text-white" },
+  "Champions League": { label: "UCL", color: "bg-blue-600 text-white" },
+  "FA Cup": { label: "FAC", color: "bg-red-600 text-white" },
+  "EFL Cup": { label: "EFL", color: "bg-emerald-600 text-white" },
+  "Europa League": { label: "UEL", color: "bg-orange-600 text-white" },
+  "World Cup 2026": { label: "WC", color: "bg-amber-500 text-black" },
+  "Conference League": { label: "UECL", color: "bg-lime-600 text-white" },
+  "Community Shield": { label: "CS", color: "bg-sky-600 text-white" },
+};
+
 // ─── Team logo fallback badge ───
 function TeamLogo({ name, size = 28 }: { name: string; size?: number }) {
   const initials = name.split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
@@ -98,7 +142,7 @@ interface Order {
   event_id: string;
   platform_id: string | null;
   contact_id?: string | null;
-  events: { match_code: string; home_team: string; away_team: string; event_date: string; venue: string | null } | null;
+  events: { match_code: string; home_team: string; away_team: string; event_date: string; venue: string | null; competition?: string } | null;
   platforms: { name: string } | null;
   contacts?: { name: string } | null;
 }
@@ -227,7 +271,7 @@ export default function Orders() {
   const load = useCallback(async () => {
     const { data: ordersData } = await supabase
       .from("orders")
-      .select("*, events(match_code, home_team, away_team, event_date, venue), platforms(name), contacts:suppliers!orders_contact_id_fkey(name)")
+      .select("*, events(match_code, home_team, away_team, event_date, venue, competition), platforms(name), contacts:suppliers!orders_contact_id_fkey(name)")
       .order("order_date", { ascending: false });
     const loadedOrders = (ordersData as any) || [];
     setOrders(loadedOrders);
@@ -556,13 +600,23 @@ export default function Orders() {
                     <>
                       <TeamLogo name={group.event.home_team} size={isMobile ? 36 : 44} />
                       <div className="flex-1 min-w-0">
-                        <h2 className="font-extrabold text-lg md:text-2xl text-white truncate leading-tight">
-                          {group.event.home_team} vs {group.event.away_team}
-                        </h2>
-                        <p className="text-white/60 text-xs md:text-sm mt-0.5">
-                          {group.event.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}
-                          {group.event.venue && ` — ${group.event.venue}`}
-                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="font-extrabold text-lg md:text-2xl text-white leading-tight">
+                            {group.event.home_team} vs {group.event.away_team}
+                          </h2>
+                          {(() => {
+                            const comp = group.event?.competition || "";
+                            const badge = COMP_BADGES[comp];
+                            if (!badge) return null;
+                            return <span className={cn("text-[10px] md:text-xs font-bold px-1.5 py-0.5 rounded", badge.color)}>{badge.label}</span>;
+                          })()}
+                          <span className="text-white/50 text-xs md:text-sm">
+                            — {group.event.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}
+                          </span>
+                        </div>
+                        {group.event.venue && (
+                          <p className="text-white/40 text-[10px] md:text-xs mt-0.5">{group.event.venue}</p>
+                        )}
                       </div>
                       <TeamLogo name={group.event.away_team} size={isMobile ? 36 : 44} />
                       <ChevronDown className={cn("h-5 w-5 text-white/50 transition-transform shrink-0 ml-1", isExpanded && "rotate-180")} />
@@ -580,7 +634,7 @@ export default function Orders() {
                 <div className="grid grid-cols-4 md:grid-cols-5 gap-2 md:gap-4">
                   <div>
                     <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Sold</p>
-                    <p className="text-white font-extrabold text-base md:text-2xl font-mono">{totalQty}/{totalInventory || "?"}</p>
+                    <p className="text-white font-extrabold text-base md:text-2xl font-mono">{totalQty}</p>
                   </div>
                   <div>
                     <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Total</p>
@@ -614,33 +668,35 @@ export default function Orders() {
                       const isDelivered = o.delivery_status === "delivered" || o.delivery_status === "completed";
                       const src = getSourceDisplay(o, assignments);
                       const orderTotal = Number(o.sale_price) * o.quantity;
+                      const srcIdx = getSourceColorIndex(src.primary);
                       return (
                         <div
                           key={o.id}
                           onClick={() => setEditOrder(o)}
                           className={cn(
-                            "rounded-lg border p-3 space-y-2 cursor-pointer transition-colors",
-                            isDelivered ? "bg-success/10 border-success/20" : assigned ? "bg-success/5 border-success/10" : "bg-card hover:bg-muted/40"
+                            "rounded-lg border-l-4 border p-3 space-y-2 cursor-pointer transition-colors",
+                            SOURCE_COLORS[srcIdx],
+                            isDelivered && "ring-1 ring-success/30"
                           )}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-mono font-bold text-sm">{o.order_ref || "—"}</span>
+                            <span className={cn("font-bold text-base", SOURCE_TEXT_COLORS[srcIdx])}>{src.primary}</span>
                             {isDelivered ? (
                               <Badge variant="outline" className="text-[10px] bg-success/10 text-success border-success/20">DELIVERED</Badge>
                             ) : (
                               <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/20">OUTSTANDING</Badge>
                             )}
                           </div>
-                          <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center justify-between">
                             <div>
-                              <span className="font-medium">{src.primary}</span>
-                              {src.secondary && <span className="text-muted-foreground text-xs ml-1">{src.secondary}</span>}
+                              {src.secondary && <span className="text-muted-foreground text-sm">{src.secondary}</span>}
+                              {o.order_ref && <span className="text-muted-foreground text-xs ml-2 font-mono">#{o.order_ref}</span>}
                             </div>
-                            {flag && <span>{flag}</span>}
+                            {flag && <span className="text-lg">{flag}</span>}
                           </div>
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{o.quantity}× £{Number(o.sale_price).toFixed(0)} = £{orderTotal.toLocaleString()}</span>
-                            <span>{o.category}</span>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-base text-foreground">{o.quantity}× £{Number(o.sale_price).toFixed(0)} = £{orderTotal.toLocaleString()}</span>
+                            <span className="text-sm text-muted-foreground font-medium">{o.category}</span>
                           </div>
                         </div>
                       );
@@ -675,16 +731,15 @@ export default function Orders() {
                           const assignInfo = assignments[o.id];
                           const src = getSourceDisplay(o, assignments);
                           const orderTotal = Number(o.sale_price) * o.quantity;
+                          const srcIdx = getSourceColorIndex(src.primary);
                           return (
                             <TableRow
                               key={o.id}
-                              className={`cursor-pointer text-xs h-10 transition-colors ${
-                                o.delivery_status === "delivered" || o.delivery_status === "completed"
-                                  ? "bg-success/10 hover:bg-success/20 border-l-2 border-l-success"
-                                  : assigned
-                                    ? "bg-success/5 hover:bg-success/10 border-l-2 border-l-success/50"
-                                    : "hover:bg-muted/40"
-                              }`}
+                              className={cn(
+                                "cursor-pointer text-xs h-10 transition-colors border-l-4",
+                                SOURCE_COLORS[srcIdx],
+                                (o.delivery_status === "delivered" || o.delivery_status === "completed") && "ring-1 ring-inset ring-success/20"
+                              )}
                               onClick={() => setSelectedOrderId(o.id)}
                             >
                               <TableCell className="font-mono font-bold text-xs py-2">
@@ -692,7 +747,7 @@ export default function Orders() {
                               </TableCell>
                               <TableCell className="py-2">
                                 <div>
-                                  <span className="font-medium text-foreground text-xs">{src.primary}</span>
+                                  <span className={cn("font-bold text-sm", SOURCE_TEXT_COLORS[srcIdx])}>{src.primary}</span>
                                   {src.secondary && <span className="block text-[10px] text-muted-foreground">{src.secondary}</span>}
                                 </div>
                               </TableCell>
@@ -706,10 +761,10 @@ export default function Orders() {
                                 ) : <span className="text-muted-foreground/40 text-xs">NA</span>}
                               </TableCell>
                               <TableCell className="py-2 text-muted-foreground">{o.category || "NA"}</TableCell>
-                              <TableCell className="text-center font-mono font-bold py-2">{o.quantity}</TableCell>
+                              <TableCell className="text-center font-mono font-extrabold text-sm py-2">{o.quantity}</TableCell>
                               <TableCell className="text-right font-mono py-2">
                                 <div>
-                                  <span className="font-medium">£{orderTotal.toLocaleString()}</span>
+                                  <span className="font-extrabold text-sm">£{orderTotal.toLocaleString()}</span>
                                   {o.quantity > 1 && (
                                     <span className="block text-[10px] text-muted-foreground">{o.quantity}×£{Number(o.sale_price).toFixed(0)}</span>
                                   )}
