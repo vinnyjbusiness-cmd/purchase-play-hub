@@ -208,7 +208,7 @@ export default function Finance() {
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Sticky club filter bar */}
-      <div className="sticky top-0 z-10 bg-background border-b border-border px-6 py-3 flex items-center gap-4 overflow-x-auto shrink-0">
+      <div className="sticky top-0 z-10 bg-background border-b border-border px-4 md:px-6 py-3 flex items-center gap-3 md:gap-4 overflow-x-auto scrollbar-hide shrink-0" style={{ WebkitOverflowScrolling: 'touch' }}>
         <button
           onClick={() => setSelectedClub("all")}
           className={cn(
@@ -242,7 +242,7 @@ export default function Finance() {
           </div>
 
           {/* Global summary */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-xl border bg-card p-5 text-center">
               <TrendingUp className="h-5 w-5 mx-auto mb-2 text-success" />
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Revenue</p>
@@ -274,7 +274,7 @@ export default function Finance() {
               eventBreakdown.map(({ ev, evPurchases, evOrders, cost, revenue, profit, ticketsBought, ticketsSold }) => (
                 <div key={ev.id} className="rounded-xl border bg-card overflow-hidden">
                   {/* Event header */}
-                  <div className="flex items-center justify-between px-5 py-3 bg-muted/40 border-b border-border">
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between px-4 md:px-5 py-3 bg-muted/40 border-b border-border gap-2">
                     <div>
                       <p className="font-bold">{ev.home_team} vs {ev.away_team}</p>
                       <p className="text-xs text-muted-foreground">
@@ -282,7 +282,7 @@ export default function Finance() {
                         {ev.venue && ` · ${ev.venue}`}
                       </p>
                     </div>
-                    <div className="flex items-center gap-4 text-right">
+                    <div className="flex items-center gap-3 md:gap-4 text-right flex-wrap">
                       <div>
                         <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Revenue</p>
                         <p className="text-sm font-bold text-success">{fmt(revenue)}</p>

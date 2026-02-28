@@ -208,14 +208,14 @@ export default function Dashboard() {
     .sort((a, b) => a.daysUntil - b.daysUntil);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
       {/* Welcome header with typewriter + next game inline */}
-      <div className="rounded-xl border bg-gradient-to-r from-primary/5 via-primary/3 to-transparent p-6 animate-fade-in">
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight min-h-[2.25rem]">
+      <div className="rounded-xl border bg-gradient-to-r from-primary/5 via-primary/3 to-transparent p-4 md:p-6 animate-fade-in">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-3 mb-1">
+          <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+            <h1 className="text-xl md:text-3xl font-bold tracking-tight min-h-[1.75rem] md:min-h-[2.25rem]">
               {typedGreeting}
-              <span className="inline-block w-0.5 h-7 bg-primary ml-1 animate-pulse align-middle" />
+              <span className="inline-block w-0.5 h-5 md:h-7 bg-primary ml-1 animate-pulse align-middle" />
             </h1>
             <span className="flex items-center gap-1.5">
               <span className="relative flex h-2.5 w-2.5">
@@ -225,10 +225,11 @@ export default function Dashboard() {
               <span className="text-xs text-success font-semibold tracking-wide">LIVE</span>
             </span>
             {nextEvent && (
-              <span className="text-lg font-bold text-foreground ml-2">
-                | <span className="text-sm font-semibold">Upcoming:</span>{" "}
-                <span className="text-sm">{nextEvent.home_team} vs {nextEvent.away_team}</span>{" "}
-                <span className="font-mono text-sm text-primary font-black">{countdown}</span>
+              <span className="text-sm md:text-lg font-bold text-foreground">
+                <span className="hidden md:inline">| </span>
+                <span className="text-xs md:text-sm font-semibold">Upcoming:</span>{" "}
+                <span className="text-xs md:text-sm">{nextEvent.home_team} vs {nextEvent.away_team}</span>{" "}
+                <span className="font-mono text-xs md:text-sm text-primary font-black">{countdown}</span>
               </span>
             )}
           </div>
@@ -254,7 +255,7 @@ export default function Dashboard() {
       </div>
 
       {/* Smart Summary — Next Game + KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 animate-fade-in" style={{ animationDelay: "0.1s" }}>
 
         {/* Open Orders */}
         <div className={`rounded-xl border p-4 ${openOrders > 0 ? "bg-warning/5 border-warning/20" : "bg-success/5 border-success/20"}`}>
@@ -308,7 +309,7 @@ export default function Dashboard() {
       </div>
 
       {/* Live Activity Feed + Delivery Queue side by side */}
-      <div className="grid gap-4 lg:grid-cols-2 animate-fade-in" style={{ animationDelay: "0.2s" }}>
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 animate-fade-in" style={{ animationDelay: "0.2s" }}>
         {/* Live Activity Feed */}
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
