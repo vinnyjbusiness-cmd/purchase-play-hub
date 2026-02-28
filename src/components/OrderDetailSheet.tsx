@@ -140,7 +140,8 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
   if (!order) return null;
 
   const totalCost = linkedTickets.reduce((s, t) => s + t.unit_cost, 0);
-  const profit = Number(order.net_received || 0) - totalCost;
+  const saleTotal = Number(order.sale_price) * order.quantity;
+  const profit = (Number(order.net_received) || saleTotal) - totalCost;
   const sym = (c: string) => (c === "GBP" ? "£" : c === "USD" ? "$" : "€");
 
   return (
@@ -244,8 +245,8 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
               </h3>
               <div className="rounded-lg border p-4 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Sale Price</span>
-                  <span className="font-medium">£{Number(order.sale_price).toFixed(2)}</span>
+                  <span className="text-muted-foreground">Sale ({order.quantity}× £{Number(order.sale_price).toFixed(2)})</span>
+                  <span className="font-medium">£{(Number(order.sale_price) * order.quantity).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Platform Fees</span>

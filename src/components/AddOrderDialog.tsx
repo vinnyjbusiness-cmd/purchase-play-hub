@@ -118,7 +118,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
         await supabase.from("balance_payments").insert({
           party_type: "supplier",
           party_id: form.contact_id,
-          amount: parseFloat(form.sale_price),
+          amount: parseFloat(form.sale_price) * parseInt(form.quantity),
           type: "adjustment",
           notes: `Auto: Order ${insertedOrder.id}`,
           contact_name: contactName,
@@ -323,7 +323,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
 
           {/* Sale Price */}
           <div className="space-y-1.5">
-            <Label>Sale Price (£) *</Label>
+            <Label>Price per Ticket (£) *</Label>
             <Input type="number" step="0.01" min="0" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} placeholder="0.00" />
           </div>
 

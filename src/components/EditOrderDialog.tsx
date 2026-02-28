@@ -103,7 +103,7 @@ export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
         await supabase.from("balance_payments").insert({
           party_type: "supplier",
           party_id: form.contact_id,
-          amount: parseFloat(form.sale_price),
+          amount: parseFloat(form.sale_price) * parseInt(form.quantity),
           type: "adjustment",
           notes: autoNotes,
           contact_name: contactName,
@@ -225,7 +225,7 @@ export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
               <Input type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label>Sale Price (£)</Label>
+              <Label>Price per Ticket (£)</Label>
               <Input type="number" step="0.01" min="0" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} />
             </div>
             <div className="space-y-1.5">
@@ -260,9 +260,11 @@ export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
             <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} />
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading || !form.sale_price}>
-            {loading ? "Saving..." : "Save Changes"}
-          </Button>
+          <div className="sticky bottom-0 bg-background pt-3 pb-1 -mx-6 px-6 border-t border-border mt-2">
+            <Button type="submit" className="w-full" disabled={loading || !form.sale_price}>
+              {loading ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
