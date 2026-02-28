@@ -173,6 +173,8 @@ export default function Inventory() {
   }, [items]);
 
   const filtered = items.filter((i) => {
+    // Hide £0.00 entries
+    if ((i.face_value === 0 || i.face_value === null) && !i.purchase_id) return false;
     if (filterEvent !== "all" && i.events?.match_code !== filterEvent) return false;
     if (filterStatus !== "all" && i.status !== filterStatus) return false;
     if (search) {
@@ -468,9 +470,9 @@ export default function Inventory() {
                             <Badge className="bg-destructive text-destructive-foreground text-[10px] font-bold uppercase tracking-wider">
                               {sectionItems.length} Ticket{sectionItems.length !== 1 ? "s" : ""}
                             </Badge>
-                            {(() => {
+                          {(() => {
                               const src = sectionItems[0]?.source;
-                              return src && src !== "IJK" ? (
+                              return src && src !== "IJK" && src !== "Manual Entry" ? (
                                 <span className="text-[10px] text-muted-foreground font-medium">via {src}</span>
                               ) : null;
                             })()}
@@ -538,7 +540,7 @@ export default function Inventory() {
                                         <Badge variant="outline" className={cn("text-[9px]", statusColor[item.status] || "")}>
                                           {item.status}
                                         </Badge>
-                                        {item.source && item.source !== "Own" && (
+                                        {item.source && item.source !== "Own" && item.source !== "Manual Entry" && (
                                           <Badge variant="outline" className="text-[9px] bg-accent text-accent-foreground">
                                             {item.source}
                                           </Badge>
