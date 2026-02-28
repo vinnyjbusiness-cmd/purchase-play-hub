@@ -907,6 +907,57 @@ export type Database = {
           },
         ]
       }
+      platform_virtual_cards: {
+        Row: {
+          card_name: string
+          card_number: string
+          created_at: string
+          expiry: string | null
+          id: string
+          notes: string | null
+          org_id: string | null
+          platform_id: string
+          updated_at: string
+        }
+        Insert: {
+          card_name?: string
+          card_number?: string
+          created_at?: string
+          expiry?: string | null
+          id?: string
+          notes?: string | null
+          org_id?: string | null
+          platform_id: string
+          updated_at?: string
+        }
+        Update: {
+          card_name?: string
+          card_number?: string
+          created_at?: string
+          expiry?: string | null
+          id?: string
+          notes?: string | null
+          org_id?: string | null
+          platform_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_virtual_cards_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_virtual_cards_platform_id_fkey"
+            columns: ["platform_id"]
+            isOneToOne: false
+            referencedRelation: "platforms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platforms: {
         Row: {
           created_at: string
