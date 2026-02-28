@@ -92,8 +92,10 @@ export default function AddOrderDialog({ onCreated }: Props) {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.from("orders").insert({
-        platform_id: form.platform_id || null,
+      const isContactSource = form.platform_id === "__contact__" && form.contact_id;
+      const { data: insertedOrder, error } = await supabase.from("orders").insert({
+        platform_id: isContactSource ? null : (form.platform_id || null),
+        contact_id: isContactSource ? form.contact_id : null,
         event_id: form.event_id,
         order_ref: form.order_ref || null,
         buyer_name: form.buyer_name || null,
@@ -107,8 +109,22 @@ export default function AddOrderDialog({ onCreated }: Props) {
         currency: "GBP",
         delivery_type: form.delivery_type,
         notes: form.notes || null,
-      } as any);
+      } as any).select().single();
       if (error) throw error;
+
+      // Auto-create balance entry for contact-sourced orders
+      if (isContactSource && insertedOrder) {
+        const contactName = contacts.find(c => c.id === form.contact_id)?.name || "Unknown";
+        await supabase.from("balance_payments").insert({
+          party_type: "supplier",
+          party_id: form.contact_id,
+          amount: parseFloat(form.sale_price),
+          type: "adjustment",
+          notes: `Auto: Order ${insertedOrder.id}`,
+          contact_name: contactName,
+        } as any);
+      }
+
       toast.success("Order added");
       setOpen(false);
       setForm({
@@ -136,12 +152,19 @@ export default function AddOrderDialog({ onCreated }: Props) {
           <DialogTitle>Add Order / Sale</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
-          {/* Platform */}
+          {/* Platform / Source */}
           <div className="space-y-1.5">
-            <Label>Platform</Label>
-            <Select value={form.platform_id} onValueChange={(v) => setForm({ ...form, platform_id: v })}>
-              <SelectTrigger><SelectValue placeholder="Select platform" /></SelectTrigger>
+            <Label>Source</Label>
+            <Select value={form.platform_id} onValueChange={(v) => {
+              if (v === "__contact__") {
+                setForm({ ...form, platform_id: "__contact__" });
+              } else {
+                setForm({ ...form, platform_id: v, contact_id: "", buyer_name: "", buyer_phone: "" });
+              }
+            }}>
+              <SelectTrigger><SelectValue placeholder="Select source" /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="__contact__">Contact</SelectItem>
                 {platforms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -179,9 +202,9 @@ export default function AddOrderDialog({ onCreated }: Props) {
             <Input value={form.order_ref} onChange={(e) => setForm({ ...form, order_ref: e.target.value })} placeholder="e.g. ORD-123" />
           </div>
 
-          {/* Contact dropdown */}
+          {/* Contact dropdown - shown when source is Contact, or as customer picker otherwise */}
           <div className="space-y-1.5">
-            <Label>Customer (Contact)</Label>
+            <Label>{form.platform_id === "__contact__" ? "Contact (Source) *" : "Customer (Contact)"}</Label>
             <Popover open={contactOpen} onOpenChange={setContactOpen}>
               <PopoverTrigger asChild>
                 <Button variant="outline" role="combobox" className="w-full justify-between font-normal">

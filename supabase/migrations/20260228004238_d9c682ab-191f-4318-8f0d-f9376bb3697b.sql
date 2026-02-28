@@ -1,0 +1,1 @@
+ALTER TABLE public.orders ADD COLUMN contact_id uuid REFERENCES public.suppliers(id);

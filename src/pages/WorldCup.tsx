@@ -503,11 +503,14 @@ export default function WorldCup() {
                                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                                       onClick={async e => {
                                         e.stopPropagation();
-                                        if (!confirm("Delete this order?")) return;
+                                      if (!confirm("Delete this order?")) return;
                                         const { data: lines } = await supabase.from("order_lines").select("inventory_id").eq("order_id", o.id);
                                         if (lines?.length) await supabase.from("inventory").update({ status: "available" as any }).in("id", lines.map(l => l.inventory_id));
                                         await supabase.from("order_lines").delete().eq("order_id", o.id);
                                         await supabase.from("refunds").delete().eq("order_id", o.id);
+                                        if ((o as any).contact_id) {
+                                          await supabase.from("balance_payments").delete().ilike("notes", `Auto: Order ${o.id}`);
+                                        }
                                         await supabase.from("orders").delete().eq("id", o.id);
                                         toast.success("Order deleted"); load();
                                       }}><Trash2 className="h-3.5 w-3.5" /></Button>
