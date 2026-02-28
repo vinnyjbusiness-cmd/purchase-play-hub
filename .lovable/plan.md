@@ -1,54 +1,76 @@
 
 
-## Add Order Status Field with Inline Editing
+## Password Vault — PIN-Protected Credential Manager
 
 ### Overview
-Add a clear, color-coded status system to each order with four states: Outstanding (amber), Delivered (green), Partially Delivered (blue), and Cancelled (red). The status will be tappable inline on the orders page and prominently displayed at the top of the edit dialog.
+A new "Password Vault" page accessible from the sidebar, protected by its own separate PIN (stored in a new `vault_settings` table). Once unlocked, users can manage saved credentials displayed as styled cards with show/hide, copy, edit, and delete functionality. The vault auto-locks after 5 minutes of inactivity.
 
-### 1. Database Migration
-Add two new values to the existing `order_status` enum: `outstanding` and `partially_delivered`.
+### 1. Database Changes (2 migrations)
 
-```sql
-ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'outstanding';
-ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'partially_delivered';
-```
+**Table: `password_vault`**
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default gen_random_uuid() |
+| org_id | uuid | NOT NULL |
+| site_name | text | NOT NULL |
+| url | text | nullable |
+| username | text | NOT NULL |
+| password | text | NOT NULL (stored as-is; encrypted at app level is optional) |
+| icon_color | text | default random color |
+| created_at | timestamptz | default now() |
+| updated_at | timestamptz | default now() |
 
-Also run an update to migrate existing `pending` orders to `outstanding`:
-```sql
-UPDATE orders SET status = 'outstanding' WHERE status = 'pending';
-```
+RLS: Admin-only full access, authenticated users SELECT.
 
-### 2. Orders Page — Inline Status Badge (src/pages/Orders.tsx)
+**Table: `vault_settings`**
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| org_id | uuid | NOT NULL, unique |
+| vault_pin | text | NOT NULL |
+| created_at | timestamptz | default now() |
+| updated_at | timestamptz | default now() |
 
-**Status color map:**
-- `outstanding` = amber/yellow (`bg-amber-500/15 text-amber-400 border-amber-500/30`)
-- `delivered` = green (`bg-green-500/15 text-green-400 border-green-500/30`)
-- `partially_delivered` = blue (`bg-blue-500/15 text-blue-400 border-blue-500/30`)
-- `cancelled` = red (`bg-red-500/15 text-red-400 border-red-500/30`)
+RLS: Admin-only full access.
 
-**Mobile cards:** Replace the current DELIVERED/OUTSTANDING badge with a tappable status pill. Tapping cycles through: outstanding -> partially_delivered -> delivered -> cancelled -> outstanding. The `updateField` function handles the DB update inline.
+### 2. New Page: `src/pages/PasswordVault.tsx`
 
-**Desktop table:** Replace the current "Status" column (which shows a static DELIVERED/OUTSTANDING badge) with a clickable status badge that cycles through statuses on click. Remove the separate "Delivered" checkbox column since the status field now covers this.
+**PIN Gate (separate from Finance PIN):**
+- On load, fetch `vault_pin` from `vault_settings` for the org.
+- If no PIN set, prompt admin to create one (reuses the same pattern as `FinancePinGate`).
+- PIN stored in sessionStorage under `vjx_vault_unlocked` with a timestamp.
+- Auto-lock: on every interaction, check if 5 minutes have elapsed since last activity. If so, clear session and show PIN screen.
 
-**Delivered count on header:** Update the delivered count logic to count orders with `status === 'delivered'` instead of checking `delivery_status`.
+**Unlocked View:**
+- Header with title "Password Vault", a settings icon (to change PIN), and "Add New" button.
+- Cards displayed in a responsive grid (1 col mobile, 2 cols tablet, 3 cols desktop).
+- Each card styled like the balance/wallet cards: dark gradient background, coloured circle with site initials on the left, site name as title, username beneath, password hidden with eye toggle, copy button, edit/delete dropdown.
+- Card colours cycle through a palette similar to `cardGradients` from Wallet.tsx.
 
-### 3. Edit Order Dialog — Status Dropdown (src/components/EditOrderDialog.tsx)
+**Add/Edit Modal:**
+- Fields: Site Name, URL (optional), Username, Password.
+- Icon colour auto-assigned (can be changed).
 
-Add a prominent Status section at the very top of the form (before Source):
-- Label: "Status"
-- Four segmented buttons showing Outstanding, Delivered, Partially Delivered, Cancelled
-- Each button color-coded to match the status colors
-- Add `delivery_status` to the form state and submit payload
+### 3. Routing and Sidebar
 
-### 4. Order Detail Sheet (src/components/OrderDetailSheet.tsx)
+**`src/App.tsx`:**
+- Add route `/vault-passwords` wrapped in `<AdminOnly>` (no finance PIN — vault has its own PIN).
+- Import new `PasswordVault` page.
 
-Update the existing Order Status dropdown to use the new four values instead of the old five (pending/fulfilled/delivered/refunded/cancelled).
+**`src/components/AppSidebar.tsx`:**
+- Add nav item `{ to: "/vault-passwords", icon: KeyRound, label: "Password Vault" }` in the admin bottom items section.
 
-### Files Modified
-| File | Changes |
+### 4. Auto-Lock Logic
+
+- Track `lastActivity` timestamp in a ref, updated on click/keydown/mousemove events.
+- A `setInterval` every 30 seconds checks if `Date.now() - lastActivity > 300000` (5 min). If so, clear sessionStorage key and set `unlocked = false`.
+- Cleanup interval and event listeners on unmount.
+
+### Files Summary
+| File | Action |
 |---|---|
-| Database migration | Add `outstanding` and `partially_delivered` to `order_status` enum; migrate existing `pending` to `outstanding` |
-| `src/pages/Orders.tsx` | Inline tappable status badge on mobile cards and desktop table rows; remove delivered checkbox; update delivered count logic |
-| `src/components/EditOrderDialog.tsx` | Add status segmented buttons at top of form |
-| `src/components/OrderDetailSheet.tsx` | Update status dropdown values |
+| Database migration | Create `password_vault` and `vault_settings` tables with RLS |
+| `src/pages/PasswordVault.tsx` | New page with PIN gate, card grid, add/edit/delete modals, auto-lock |
+| `src/App.tsx` | Add route |
+| `src/components/AppSidebar.tsx` | Add sidebar link |
 
