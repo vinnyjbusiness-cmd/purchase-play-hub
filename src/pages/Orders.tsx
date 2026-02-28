@@ -20,31 +20,18 @@ import AssignPurchaseDialog from "@/components/AssignPurchaseDialog";
 import EditOrderDialog from "@/components/EditOrderDialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-// ─── Colour palette for event accent stripes ───
-const EVENT_COLORS = [
-  "border-l-emerald-500",
-  "border-l-violet-500",
-  "border-l-blue-500",
-  "border-l-amber-500",
-  "border-l-rose-500",
-  "border-l-cyan-500",
-  "border-l-indigo-500",
-  "border-l-orange-500",
-  "border-l-fuchsia-500",
-  "border-l-teal-500",
-];
-
-const EVENT_BG_COLORS = [
-  "bg-emerald-500",
-  "bg-violet-500",
-  "bg-blue-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-cyan-500",
-  "bg-indigo-500",
-  "bg-orange-500",
-  "bg-fuchsia-500",
-  "bg-teal-500",
+// ─── Bold colour palette for full event card backgrounds ───
+const EVENT_PALETTE = [
+  "bg-emerald-800",
+  "bg-violet-800",
+  "bg-blue-800",
+  "bg-amber-900",
+  "bg-rose-800",
+  "bg-cyan-800",
+  "bg-indigo-800",
+  "bg-orange-900",
+  "bg-fuchsia-800",
+  "bg-teal-800",
 ];
 
 // ─── Team logo fallback badge ───
@@ -226,6 +213,8 @@ export default function Orders() {
   const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [assignments, setAssignments] = useState<Record<string, AssignmentInfo>>({});
   const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
+  const [orderCosts, setOrderCosts] = useState<Record<string, number>>({});
+  const [eventInventoryCounts, setEventInventoryCounts] = useState<Record<string, number>>({});
 
   const toggleEvent = (key: string) => {
     setExpandedEvents(prev => {
@@ -258,11 +247,11 @@ export default function Orders() {
           .select("id, purchase_id")
           .in("id", invIds);
 
-        const purchaseIds = [...new Set((invData || []).map(i => i.purchase_id))];
+        const purchaseIds = [...new Set((invData || []).map(i => i.purchase_id).filter(Boolean))];
         const { data: purchaseData } = purchaseIds.length > 0
           ? await supabase
               .from("purchases")
-              .select("id, suppliers(name, contact_name)")
+              .select("id, unit_cost, suppliers(name, contact_name)")
               .in("id", purchaseIds)
           : { data: [] };
 
@@ -270,15 +259,18 @@ export default function Orders() {
         const invMap = new Map((invData || []).map(i => [i.id, i]));
 
         const assignMap: Record<string, AssignmentInfo> = {};
+        const costMap: Record<string, number> = {};
         for (const ol of orderLines) {
           if (!assignMap[ol.order_id]) {
             assignMap[ol.order_id] = { linked_count: 0, supplier_contact_name: null };
           }
           assignMap[ol.order_id].linked_count++;
-          if (!assignMap[ol.order_id].supplier_contact_name) {
-            const inv = invMap.get(ol.inventory_id);
-            if (inv) {
-              const purchase = purchaseMap.get(inv.purchase_id) as any;
+          if (!costMap[ol.order_id]) costMap[ol.order_id] = 0;
+          const inv = invMap.get(ol.inventory_id);
+          if (inv) {
+            const purchase = purchaseMap.get(inv.purchase_id) as any;
+            costMap[ol.order_id] += Number(purchase?.unit_cost || 0);
+            if (!assignMap[ol.order_id].supplier_contact_name) {
               if (purchase?.suppliers?.contact_name) {
                 assignMap[ol.order_id].supplier_contact_name = purchase.suppliers.contact_name;
               } else if (purchase?.suppliers?.name) {
@@ -288,9 +280,25 @@ export default function Orders() {
           }
         }
         setAssignments(assignMap);
+        setOrderCosts(costMap);
       } else {
         setAssignments({});
+        setOrderCosts({});
       }
+    }
+
+    // Load inventory counts per event for sold/total display
+    const eventIds = [...new Set(loadedOrders.map((o: Order) => o.event_id))] as string[];
+    if (eventIds.length > 0) {
+      const { data: invCounts } = await supabase
+        .from("inventory")
+        .select("event_id")
+        .in("event_id", eventIds);
+      const counts: Record<string, number> = {};
+      (invCounts || []).forEach((i: any) => {
+        counts[i.event_id] = (counts[i.event_id] || 0) + 1;
+      });
+      setEventInventoryCounts(counts);
     }
   }, []);
 
@@ -529,81 +537,71 @@ export default function Orders() {
           const isExpanded = expandedEvents.has(eventKey);
           const totalQty = group.orders.reduce((s, o) => s + o.quantity, 0);
           const totalValue = group.orders.reduce((s, o) => s + (Number(o.sale_price) * o.quantity), 0);
-          const assignedCount = group.orders.filter(o => isFullyAssigned(o)).length;
           const deliveredCount = group.orders.filter(o => o.delivery_status === "delivered" || o.delivery_status === "completed").length;
-          const colorClass = EVENT_COLORS[groupIndex % EVENT_COLORS.length];
-          const bgColorClass = EVENT_BG_COLORS[groupIndex % EVENT_BG_COLORS.length];
-
-          // Preview: first 3 orders as one-liners
-          const previewOrders = group.orders.slice(0, 3);
+          const totalCost = group.orders.reduce((s, o) => s + (orderCosts[o.id] || 0), 0);
+          const eventPL = totalValue - totalCost;
+          const totalInventory = group.eventIds.reduce((s, eid) => s + (eventInventoryCounts[eid] || 0), 0);
+          const bgClass = EVENT_PALETTE[groupIndex % EVENT_PALETTE.length];
 
           return (
-            <div key={eventKey} className={cn("rounded-xl border bg-card overflow-hidden shadow-sm border-l-4", colorClass)}>
+            <div key={eventKey} className={cn("rounded-xl overflow-hidden shadow-lg", bgClass)}>
               {/* Collapsible event header */}
               <button
                 onClick={() => toggleEvent(eventKey)}
-                className="w-full text-left flex flex-col md:flex-row md:items-center justify-between px-4 md:px-5 py-3 bg-muted/40 gap-2 hover:bg-muted/60 transition-colors"
+                className="w-full text-left px-4 md:px-6 py-4 md:py-5 hover:brightness-110 transition-all"
               >
-                <div className="flex items-center gap-3">
+                {/* Event title row */}
+                <div className="flex items-center gap-3 mb-3 md:mb-4">
                   {group.event && (
                     <>
-                      <TeamLogo name={group.event.home_team} size={isMobile ? 24 : 28} />
-                      <div className="min-w-0">
-                        <p className="font-bold text-sm md:text-base truncate">
+                      <TeamLogo name={group.event.home_team} size={isMobile ? 36 : 44} />
+                      <div className="flex-1 min-w-0">
+                        <h2 className="font-extrabold text-lg md:text-2xl text-white truncate leading-tight">
                           {group.event.home_team} vs {group.event.away_team}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
+                        </h2>
+                        <p className="text-white/60 text-xs md:text-sm mt-0.5">
                           {group.event.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}
-                          {group.event.venue && <span className="hidden md:inline"> — {group.event.venue}</span>}
+                          {group.event.venue && ` — ${group.event.venue}`}
                         </p>
                       </div>
-                      <TeamLogo name={group.event.away_team} size={isMobile ? 24 : 28} />
+                      <TeamLogo name={group.event.away_team} size={isMobile ? 36 : 44} />
+                      <ChevronDown className={cn("h-5 w-5 text-white/50 transition-transform shrink-0 ml-1", isExpanded && "rotate-180")} />
                     </>
                   )}
-                  {!group.event && <p className="font-bold text-sm">Unknown Event</p>}
+                  {!group.event && (
+                    <>
+                      <h2 className="font-extrabold text-lg text-white flex-1">Unknown Event</h2>
+                      <ChevronDown className={cn("h-5 w-5 text-white/50 transition-transform shrink-0", isExpanded && "rotate-180")} />
+                    </>
+                  )}
                 </div>
-                <div className="flex items-center gap-3 md:gap-4 flex-wrap">
-                  <div className="text-center">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tickets</p>
-                    <p className="text-sm font-mono font-bold">{totalQty}</p>
+
+                {/* Stats row — large and bold */}
+                <div className="grid grid-cols-4 md:grid-cols-5 gap-2 md:gap-4">
+                  <div>
+                    <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Sold</p>
+                    <p className="text-white font-extrabold text-base md:text-2xl font-mono">{totalQty}/{totalInventory || "?"}</p>
                   </div>
-                  <div className="text-center">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</p>
-                    <p className="text-sm font-mono font-bold">£{totalValue.toLocaleString()}</p>
+                  <div>
+                    <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Total</p>
+                    <p className="text-white font-extrabold text-base md:text-2xl font-mono">£{totalValue.toLocaleString()}</p>
                   </div>
-                  {assignedCount > 0 && (
-                    <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">
-                      {assignedCount} assigned
-                    </Badge>
-                  )}
-                  {deliveredCount > 0 && (
-                    <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">
-                      {deliveredCount}/{group.orders.length} delivered
-                    </Badge>
-                  )}
-                  <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform shrink-0", isExpanded && "rotate-180")} />
+                  <div>
+                    <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Delivered</p>
+                    <p className="text-white font-extrabold text-base md:text-2xl font-mono">{deliveredCount}/{group.orders.length}</p>
+                  </div>
+                  <div className="hidden md:block">
+                    <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Orders</p>
+                    <p className="text-white font-extrabold text-base md:text-2xl font-mono">{group.orders.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">P/L</p>
+                    <p className={cn("font-extrabold text-base md:text-2xl font-mono", eventPL >= 0 ? "text-green-300" : "text-red-300")}>
+                      {eventPL >= 0 ? "+" : "-"}£{Math.abs(eventPL).toLocaleString()}
+                    </p>
+                  </div>
                 </div>
               </button>
-
-              {/* Collapsed preview: mini order summaries */}
-              {!isExpanded && previewOrders.length > 0 && (
-                <div className="px-4 md:px-5 py-2 border-t border-border/50 space-y-0.5">
-                  {previewOrders.map(o => {
-                    const src = getSourceDisplay(o, assignments);
-                    return (
-                      <p key={o.id} className="text-xs text-muted-foreground truncate">
-                        <span className="font-medium text-foreground">{src.primary}</span>
-                        {src.secondary && <span className="text-muted-foreground"> {src.secondary}</span>}
-                        {" · "}{o.quantity} ticket{o.quantity !== 1 ? "s" : ""}
-                        {" · "}£{(Number(o.sale_price) * o.quantity).toLocaleString()}
-                      </p>
-                    );
-                  })}
-                  {group.orders.length > 3 && (
-                    <p className="text-[10px] text-muted-foreground/60">+{group.orders.length - 3} more</p>
-                  )}
-                </div>
-              )}
 
               {/* Expanded: full order details */}
               {isExpanded && (
