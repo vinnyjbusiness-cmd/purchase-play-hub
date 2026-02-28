@@ -1,82 +1,129 @@
 
 
-## Plan: Link Orders to Contacts with Auto Balance Updates
+## Plan: Full Responsive Redesign + PWA Conversion
 
-### Overview
-When creating an order, users will be able to select "Contact" as the source (alongside platforms like WhatsApp, Tixstock). Selecting "Contact" reveals a searchable contact picker. Saving the order automatically creates a balance entry on the Balances page showing what that contact owes. Editing or deleting the order updates/removes the balance entry.
+This is a large-scale change touching the layout system, every page, and adding PWA capabilities. To keep it manageable and avoid breaking things, we'll implement it in phases.
 
-### 1. Database Migration
+---
 
-Add a `contact_id` column to the `orders` table to permanently store which contact is linked to the order:
+### Phase 1: Core Layout — Mobile Bottom Nav + Responsive Sidebar
 
-```sql
-ALTER TABLE public.orders ADD COLUMN contact_id uuid REFERENCES public.suppliers(id);
+**AppLayout.tsx + AppSidebar.tsx**
+
+- Create a new `MobileBottomNav` component with 5 tabs: Dashboard, Orders, Finance, Wallet, Balances (icons + labels, 44px min tap targets)
+- On mobile (`< 768px`): Hide the sidebar entirely, show bottom nav fixed at the bottom, move the search bar into the main content area (full width)
+- On iPad portrait (`768px-1024px`): Collapse sidebar to a narrow 64px icon-only rail; tapping an icon opens a temporary overlay with full labels
+- On iPad landscape / desktop (`> 1024px`): Keep current full sidebar — no changes
+- Adjust the main content area to account for bottom nav padding on mobile
+
+**Files**: `src/components/MobileBottomNav.tsx` (new), `src/components/AppLayout.tsx`, `src/components/AppSidebar.tsx`
+
+---
+
+### Phase 2: Responsive Table Component
+
+Create a shared `ResponsiveTable` wrapper or use Tailwind breakpoints to convert all data tables into stacked card layouts on mobile.
+
+- On mobile: Each table row becomes a card showing key fields (event name, quantity, price, status) in a stacked layout
+- On tablet/desktop: Standard table view unchanged
+- Apply to: Orders, Finance, Purchases, Inventory, Members, Platforms, Analytics, Cashflow, Activity Log, Team, To-Do List, Invoices
+
+**Approach**: Rather than a generic wrapper (which would be complex given each table's unique columns), we'll add responsive classes directly to each page's table section using `hidden md:table` for the table and a `md:hidden` card list alternative.
+
+**Files**: All page files listed above (each gets a mobile card view alongside the existing table)
+
+---
+
+### Phase 3: Page-Specific Responsive Fixes
+
+**Dashboard** (`src/pages/Dashboard.tsx`):
+- Stat cards: `grid-cols-2` on mobile (2x2 grid), `grid-cols-3` on tablet/desktop
+- Welcome banner: Stack the greeting and countdown vertically on mobile
+- Activity feed + Delivery queue: Stack vertically on mobile instead of side-by-side
+
+**Orders + Finance** (`src/pages/Orders.tsx`, `src/pages/Finance.tsx`):
+- Club filter bar: Already has `overflow-x-auto`, add `-webkit-overflow-scrolling: touch` and hide scrollbar on mobile
+- Search + filter row: Stack vertically on mobile
+- Action buttons: Full width on mobile
+
+**Wallet** (`src/pages/Wallet.tsx`):
+- Platform income cards: Single column on mobile, 2 columns on tablet, 3 on desktop
+- Virtual cards: Single column stack on mobile
+
+**Balance** (`src/pages/Balance.tsx`):
+- Contact/platform cards: Single column on mobile, 2 on tablet
+- Detail view: Full width on mobile
+
+**All other pages**: Apply consistent `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` patterns for card grids and ensure no horizontal overflow.
+
+---
+
+### Phase 4: Modal/Dialog Responsiveness
+
+- Update the shared `Dialog` component (`src/components/ui/dialog.tsx`) to render as a full-screen bottom sheet on mobile using Tailwind responsive classes
+- On mobile: `DialogContent` gets `fixed inset-0 rounded-none` or uses Vaul drawer
+- On iPad: Centered, ~80% width
+- On desktop: Unchanged
+
+**Files**: `src/components/ui/dialog.tsx`, `src/components/ui/sheet.tsx`
+
+---
+
+### Phase 5: Touch Target + Typography Fixes
+
+- Add global CSS for minimum 44px touch targets on all interactive elements on mobile
+- Ensure font sizes are readable without zooming (minimum 14px body text on mobile)
+- Add `touch-action: manipulation` to prevent double-tap zoom
+
+**Files**: `src/index.css`
+
+---
+
+### Phase 6: PWA Setup
+
+- Install `vite-plugin-pwa` dependency
+- Configure in `vite.config.ts` with manifest, service worker, and offline caching
+- Add PWA meta tags to `index.html` (apple-touch-icon, theme-color, apple-mobile-web-app-capable)
+- Create PWA icons (192x192, 512x512) using VJX branding text
+- Add splash screen configuration for iOS
+- Configure `navigateFallbackDenylist` to exclude `/~oauth`
+- Enable offline-friendly caching with a network-first strategy for API calls and cache-first for static assets
+
+**Files**: `vite.config.ts`, `index.html`, `public/manifest.json` (auto-generated by plugin), `public/pwa-192x192.svg`, `public/pwa-512x512.svg`
+
+---
+
+### Technical Details
+
+**Breakpoints used (Tailwind defaults)**:
+- Mobile: `< 768px` (default / no prefix)
+- Tablet: `md:` (768px+)
+- Desktop: `lg:` (1024px+)
+
+**Key Tailwind classes pattern**:
+```
+grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3  (cards)
+hidden md:table  (tables on desktop only)
+md:hidden  (mobile card views)
+fixed bottom-0 md:hidden  (bottom nav)
+hidden md:flex md:w-16 lg:w-[240px]  (sidebar)
 ```
 
-No new tables needed -- balance tracking will use the existing `balance_payments` table with `party_type = 'supplier'` and `type = 'adjustment'`, linking via the order's reference_id pattern.
-
-### 2. Update AddOrderDialog
-
-**File: `src/components/AddOrderDialog.tsx`**
-
-- Change the Platform dropdown to include a special "Contact" option at the top of the list
-- When "Contact" is selected, hide the platform dropdown value and show the existing contact searchable picker (already in the dialog for "Customer")
-- Store the selected contact ID in `form.contact_id`
-- On submit:
-  - Set `platform_id = null` and `contact_id = selected contact ID`
-  - After inserting the order, insert a `balance_payments` record:
-    - `party_type: "supplier"`, `party_id: contact_id`
-    - `amount: sale_price` (positive, meaning they owe this amount)
-    - `type: "adjustment"`
-    - `notes: "Order [order_ref] - auto balance"`
-    - `contact_name: contact name`
-
-### 3. Update EditOrderDialog
-
-**File: `src/components/EditOrderDialog.tsx`**
-
-- When saving edits to an order that has a `contact_id`:
-  - Look up the existing balance_payment for this order (matched by notes pattern or a reference approach)
-  - Update the amount if `sale_price` changed
-  - If the contact is removed (switched to a platform), delete the balance entry
-- To reliably link balance entries to orders, store a reference in the notes field like `"Auto: Order [order_id]"` so we can find and update it
-
-### 4. Update Order Delete Logic
-
-**Files: `src/pages/Orders.tsx`, `src/pages/WorldCup.tsx`**
-
-- Before deleting an order, check if it has a `contact_id`
-- If yes, delete any `balance_payments` where notes match `"Auto: Order [order_id]"`
-
-### 5. Display on Orders Page
-
-The existing Platform column already shows contact names when linked through purchases. For contact-sourced orders, display the contact name as the primary label with "Contact" as the secondary label underneath (same pattern as "John Smith (WhatsApp)").
-
-### 6. Balance Page
-
-No changes needed to the Balance page itself -- it already reads from `balance_payments` and groups by `party_type = "supplier"`. The auto-inserted balance entries will appear automatically in the "I'm Owed" section under the contact's name.
-
-### Technical Flow
-
+**Bottom Nav structure**:
 ```text
-User creates order with Contact selected
-        |
-        v
-INSERT into orders (contact_id = supplier.id, platform_id = null)
-        |
-        v
-INSERT into balance_payments (party_type='supplier', party_id=contact_id,
-  amount=sale_price, type='adjustment', notes='Auto: Order <order_id>')
-        |
-        v
-Balance page auto-shows contact in "I'm Owed" column
+[Dashboard] [Orders] [Finance] [Wallet] [Balances]
+   icon       icon     icon      icon      icon
+   label      label    label     label     label
 ```
+Tapping "More" or using a hamburger could show remaining nav items in a slide-up sheet.
 
-### Files to Change
-- **Migration**: Add `contact_id` column to `orders`
-- `src/components/AddOrderDialog.tsx`: Add "Contact" option, auto-create balance entry
-- `src/components/EditOrderDialog.tsx`: Handle balance updates on edit
-- `src/pages/Orders.tsx`: Delete balance entry on order delete, show contact in Platform column
-- `src/pages/WorldCup.tsx`: Same delete logic update
-- `src/integrations/supabase/types.ts`: Auto-updated after migration
+**PWA manifest**:
+- `name`: "VJX"
+- `short_name`: "VJX"
+- `theme_color`: matches the primary colour
+- `background_color`: matches the sidebar dark background
+- `display`: "standalone"
+- `start_url`: "/"
+
+**Estimated files to modify**: ~25 files total across all phases.
 
