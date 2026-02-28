@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Plus, ChevronRight, CheckCircle2, AlertCircle, History, BookOpen, Inbox, Link, TrendingUp, TrendingDown, BarChart3, Pencil, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus, ChevronRight, CheckCircle2, AlertCircle, History, BookOpen, Inbox, Link, TrendingUp, TrendingDown, BarChart3, Pencil, AlertTriangle, CalendarIcon } from "lucide-react";
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, isSameMonth, differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -157,52 +157,62 @@ export default function Balance() {
     return Object.values(map).sort((a, b) => (b.totalOwed - b.totalPaid) - (a.totalOwed - a.totalPaid));
   }, [purchases, payments, supplierMap, suppliers]);
 
-  // Compute platform balances
+  // Compute platform balances — with owed vs upcoming split
   const platformBalances = useMemo(() => {
-    const map: Record<string, { platformId: string; displayName: string; totalOwed: number; totalPaid: number; openingBalance: number; adjustments: number; orders: Order[]; lastActivity: string | null }> = {};
+    const now = new Date();
+    const map: Record<string, { platformId: string; displayName: string; totalOwed: number; totalPaid: number; owedPast: number; owedUpcoming: number; openingBalance: number; adjustments: number; orders: Order[]; lastActivity: string | null; upcomingEvents: { eventId: string; amount: number }[] }> = {};
     orders.filter(o => o.status !== "cancelled" && o.status !== "refunded").forEach(o => {
       const key = o.platform_id || "direct";
       const net = o.net_received || (o.sale_price - o.fees);
       if (!map[key]) {
         const name = key === "direct" ? "Direct Sale" : (platformMap[key]?.name || "Unknown");
-        map[key] = { platformId: key, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, orders: [], lastActivity: null };
+        map[key] = { platformId: key, displayName: name, totalOwed: 0, totalPaid: 0, owedPast: 0, owedUpcoming: 0, openingBalance: 0, adjustments: 0, orders: [], lastActivity: null, upcomingEvents: [] };
       }
       map[key].totalOwed += net;
+      const ev = eventMap[o.event_id];
+      const eventDate = ev ? new Date(ev.event_date) : null;
+      if (eventDate && eventDate > now) {
+        map[key].owedUpcoming += net;
+        // Track upcoming events for display
+        const existing = map[key].upcomingEvents.find(ue => ue.eventId === o.event_id);
+        if (existing) existing.amount += net;
+        else map[key].upcomingEvents.push({ eventId: o.event_id, amount: net });
+      } else {
+        map[key].owedPast += net;
+      }
       map[key].orders.push(o);
       if (!map[key].lastActivity || o.order_date > map[key].lastActivity!) map[key].lastActivity = o.order_date;
     });
     payments.filter(p => p.party_type === "platform" && p.party_id).forEach(pay => {
       if (!map[pay.party_id!]) {
         const name = platformMap[pay.party_id!]?.name || "Unknown";
-        map[pay.party_id!] = { platformId: pay.party_id!, displayName: name, totalOwed: 0, totalPaid: 0, openingBalance: 0, adjustments: 0, orders: [], lastActivity: null };
+        map[pay.party_id!] = { platformId: pay.party_id!, displayName: name, totalOwed: 0, totalPaid: 0, owedPast: 0, owedUpcoming: 0, openingBalance: 0, adjustments: 0, orders: [], lastActivity: null, upcomingEvents: [] };
       }
       if (pay.type === "payment") map[pay.party_id!].totalPaid += pay.amount;
-      else if (pay.type === "opening_balance") { map[pay.party_id!].openingBalance += pay.amount; map[pay.party_id!].totalOwed += pay.amount; }
-      else if (pay.type === "adjustment") { map[pay.party_id!].adjustments += pay.amount; map[pay.party_id!].totalOwed += pay.amount; }
+      else if (pay.type === "opening_balance") { map[pay.party_id!].openingBalance += pay.amount; map[pay.party_id!].totalOwed += pay.amount; map[pay.party_id!].owedPast += pay.amount; }
+      else if (pay.type === "adjustment") { map[pay.party_id!].adjustments += pay.amount; map[pay.party_id!].totalOwed += pay.amount; map[pay.party_id!].owedPast += pay.amount; }
       if (!map[pay.party_id!].lastActivity || pay.payment_date > map[pay.party_id!].lastActivity!) map[pay.party_id!].lastActivity = pay.payment_date;
     });
     return Object.values(map).sort((a, b) => (b.totalOwed - b.totalPaid) - (a.totalOwed - a.totalPaid));
-  }, [orders, payments, platformMap]);
+  }, [orders, payments, platformMap, eventMap]);
 
   const unassignedBalances = useMemo(() => payments.filter(p => !p.party_id), [payments]);
 
   // Unified balances: combine suppliers + platforms, split by direction
   // netPosition: positive = they owe me, negative = I owe them
   const allBalances = useMemo(() => {
-    const items: { id: string; name: string; logoUrl: string | null; entityType: "supplier" | "platform"; rawBalance: number; netPosition: number; totalOwed: number; totalPaid: number; itemCount: number; lastActivity: string | null }[] = [];
+    const items: { id: string; name: string; logoUrl: string | null; entityType: "supplier" | "platform"; rawBalance: number; netPosition: number; totalOwed: number; totalPaid: number; itemCount: number; lastActivity: string | null; owedPast: number; owedUpcoming: number; upcomingEvents: { eventId: string; amount: number }[] }[] = [];
     supplierBalances.forEach(b => {
       const supplier = suppliers.find(s => s.id === b.supplierId);
       const rawBal = b.totalOwed - b.totalPaid;
-      // For suppliers: totalOwed = what I owe them. If I paid more than owed, they owe me the diff.
-      const net = b.totalPaid - b.totalOwed; // positive = they owe me (overpaid)
-      items.push({ id: b.supplierId, name: b.displayName, logoUrl: supplier?.logo_url || null, entityType: "supplier", rawBalance: rawBal, netPosition: net, totalOwed: b.totalOwed, totalPaid: b.totalPaid, itemCount: b.purchases.length, lastActivity: b.lastActivity });
+      const net = b.totalPaid - b.totalOwed;
+      items.push({ id: b.supplierId, name: b.displayName, logoUrl: supplier?.logo_url || null, entityType: "supplier", rawBalance: rawBal, netPosition: net, totalOwed: b.totalOwed, totalPaid: b.totalPaid, itemCount: b.purchases.length, lastActivity: b.lastActivity, owedPast: 0, owedUpcoming: 0, upcomingEvents: [] });
     });
     platformBalances.forEach(b => {
       const platform = platforms.find(p => p.id === b.platformId);
       const rawBal = b.totalOwed - b.totalPaid;
-      // For platforms: totalOwed = what they owe me. Positive rawBal = they still owe me.
-      const net = rawBal; // positive = they owe me
-      items.push({ id: b.platformId, name: b.displayName, logoUrl: platform?.logo_url || null, entityType: "platform", rawBalance: rawBal, netPosition: net, totalOwed: b.totalOwed, totalPaid: b.totalPaid, itemCount: b.orders.length, lastActivity: b.lastActivity });
+      const net = rawBal;
+      items.push({ id: b.platformId, name: b.displayName, logoUrl: platform?.logo_url || null, entityType: "platform", rawBalance: rawBal, netPosition: net, totalOwed: b.totalOwed, totalPaid: b.totalPaid, itemCount: b.orders.length, lastActivity: b.lastActivity, owedPast: b.owedPast, owedUpcoming: b.owedUpcoming, upcomingEvents: b.upcomingEvents });
     });
     return items;
   }, [supplierBalances, platformBalances, suppliers, platforms]);
@@ -215,6 +225,31 @@ export default function Balance() {
 
   const totalIOwe = iOweList.reduce((s, b) => s + Math.abs(b.netPosition), 0);
   const totalTheyOwe = theyOweList.reduce((s, b) => s + b.netPosition, 0);
+
+  // Split platform "they owe" into owed (past) vs upcoming (future)
+  const theyOwePlatforms = useMemo(() => theyOweList.filter(b => b.entityType === "platform"), [theyOweList]);
+  const theyOweContacts = useMemo(() => theyOweList.filter(b => b.entityType === "supplier"), [theyOweList]);
+
+  // For platforms: compute owed from past events only (subtract payments proportionally from past first)
+  const platformOwedTotal = useMemo(() => {
+    return theyOwePlatforms.reduce((s, b) => {
+      // Past owed minus payments (payments reduce the past-owed first)
+      const pastAfterPayments = Math.max(0, b.owedPast - b.totalPaid);
+      return s + pastAfterPayments;
+    }, 0);
+  }, [theyOwePlatforms]);
+
+  const platformUpcomingTotal = useMemo(() => {
+    return theyOwePlatforms.reduce((s, b) => {
+      const pastAfterPayments = Math.max(0, b.owedPast - b.totalPaid);
+      const excessPayments = Math.max(0, b.totalPaid - b.owedPast);
+      const upcomingAfterPayments = Math.max(0, b.owedUpcoming - excessPayments);
+      return s + upcomingAfterPayments;
+    }, 0);
+  }, [theyOwePlatforms]);
+
+  const contactOwedTotal = theyOweContacts.reduce((s, b) => s + b.netPosition, 0);
+  const mainOwedTotal = platformOwedTotal + contactOwedTotal;
 
   // Detail data
   const selectedData = useMemo(() => {
@@ -664,7 +699,10 @@ export default function Balance() {
           </div>
           <div className="rounded-lg border-2 border-success/20 bg-success/5 p-4">
             <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5"><TrendingUp className="h-3.5 w-3.5 text-success" /> Total I'm Owed</p>
-            <p className="text-2xl font-bold text-success mt-1">{fmt(totalTheyOwe)}</p>
+            <p className="text-2xl font-bold text-success mt-1">{fmt(mainOwedTotal)}</p>
+            {platformUpcomingTotal > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">+ {fmt(platformUpcomingTotal)} upcoming (not yet due)</p>
+            )}
           </div>
         </div>
 
@@ -750,13 +788,15 @@ export default function Balance() {
 
           {/* RIGHT: I'm Owed */}
           <div>
+            {/* OWED — past events */}
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp className="h-4 w-4 text-success" />
-              <h3 className="text-sm font-semibold text-success">I'm Owed</h3>
-              <span className="text-xs text-muted-foreground ml-auto">{theyOweList.length} active</span>
+              <h3 className="text-sm font-semibold text-success">Owed</h3>
+              <span className="text-xs text-muted-foreground ml-auto">Past events — money due now</span>
             </div>
             <div className="space-y-2">
-              {theyOweList.map(b => {
+              {/* Contact balances (unchanged) */}
+              {theyOweContacts.map(b => {
                 const age = getPaymentAge(b.lastActivity);
                 return (
                   <button
@@ -783,12 +823,87 @@ export default function Balance() {
                   </button>
                 );
               })}
-              {theyOweList.length === 0 && (
+              {/* Platform balances — owed (past) portion */}
+              {theyOwePlatforms.map(b => {
+                const pastAfterPayments = Math.max(0, b.owedPast - b.totalPaid);
+                if (pastAfterPayments <= 0) return null;
+                const age = getPaymentAge(b.lastActivity);
+                return (
+                  <button
+                    key={`${b.id}-owed`}
+                    onClick={() => setSelectedParty({ type: b.entityType, id: b.id })}
+                    className={cn(
+                      "w-full rounded-xl border bg-card p-4 flex items-center gap-3 hover:bg-muted/40 hover:border-success/30 transition-all text-left",
+                      age.isOverdue && "border-warning/40"
+                    )}
+                  >
+                    <LogoAvatar name={b.name} logoUrl={b.logoUrl} entityType={b.entityType} entityId={b.id} size="md" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{b.name}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{b.entityType} · past events</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-base font-bold text-success">{fmt(pastAfterPayments)}</p>
+                    </div>
+                  </button>
+                );
+              })}
+              {theyOweContacts.length === 0 && theyOwePlatforms.every(b => Math.max(0, b.owedPast - b.totalPaid) <= 0) && (
                 <div className="rounded-xl border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">
                   Nobody owes you right now
                 </div>
               )}
             </div>
+
+            {/* UPCOMING — future events */}
+            {theyOwePlatforms.some(b => {
+              const excessPayments = Math.max(0, b.totalPaid - b.owedPast);
+              return Math.max(0, b.owedUpcoming - excessPayments) > 0;
+            }) && (
+              <>
+                <div className="flex items-center gap-2 mb-3 mt-6">
+                  <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-sm font-semibold text-muted-foreground">Upcoming / Expected</h3>
+                  <span className="text-xs text-muted-foreground ml-auto">Not yet due</span>
+                </div>
+                <div className="space-y-2">
+                  {theyOwePlatforms.map(b => {
+                    const excessPayments = Math.max(0, b.totalPaid - b.owedPast);
+                    const upcomingAfterPayments = Math.max(0, b.owedUpcoming - excessPayments);
+                    if (upcomingAfterPayments <= 0) return null;
+                    return (
+                      <button
+                        key={`${b.id}-upcoming`}
+                        onClick={() => setSelectedParty({ type: b.entityType, id: b.id })}
+                        className="w-full rounded-xl border border-dashed bg-card/50 p-4 flex items-center gap-3 hover:bg-muted/40 transition-all text-left opacity-80 hover:opacity-100"
+                      >
+                        <LogoAvatar name={b.name} logoUrl={b.logoUrl} entityType={b.entityType} entityId={b.id} size="md" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate">{b.name}</p>
+                          <div className="text-[11px] text-muted-foreground mt-0.5 space-y-0.5">
+                            {b.upcomingEvents.slice(0, 3).map(ue => {
+                              const ev = eventMap[ue.eventId];
+                              return ev ? (
+                                <p key={ue.eventId}>
+                                  {ev.home_team} vs {ev.away_team} · {format(new Date(ev.event_date), "dd MMM yy")} · {fmt(ue.amount)}
+                                </p>
+                              ) : null;
+                            })}
+                            {b.upcomingEvents.length > 3 && (
+                              <p>+{b.upcomingEvents.length - 3} more events</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-base font-bold text-muted-foreground">{fmt(upcomingAfterPayments)}</p>
+                          <span className="text-[10px] text-muted-foreground">expected</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
