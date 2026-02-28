@@ -507,6 +507,78 @@ export type Database = {
           },
         ]
       }
+      listings: {
+        Row: {
+          created_at: string
+          event_id: string
+          external_listing_id: string | null
+          face_value: number | null
+          id: string
+          last_synced_at: string | null
+          org_id: string
+          platform: string
+          price: number
+          quantity: number
+          row: string | null
+          seat_from: string | null
+          seat_to: string | null
+          section: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          external_listing_id?: string | null
+          face_value?: number | null
+          id?: string
+          last_synced_at?: string | null
+          org_id: string
+          platform: string
+          price: number
+          quantity?: number
+          row?: string | null
+          seat_from?: string | null
+          seat_to?: string | null
+          section?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          external_listing_id?: string | null
+          face_value?: number | null
+          id?: string
+          last_synced_at?: string | null
+          org_id?: string
+          platform?: string
+          price?: number
+          quantity?: number
+          row?: string | null
+          seat_from?: string | null
+          seat_to?: string | null
+          section?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listings_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       members: {
         Row: {
           address: string | null
