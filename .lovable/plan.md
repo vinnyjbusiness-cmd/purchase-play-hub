@@ -1,57 +1,72 @@
 
 
-## Plan: World Cup 2026 Section
+## Plan: Auto-Create Inventory from Purchases
 
-### Overview
-Create a dedicated World Cup 2026 page accessible from the sidebar, with three tabbed views (Orders, Finance, Inventory) — all pre-filtered to only show World Cup fixtures. The top filter bar will show country/team names dynamically extracted from the World Cup events data, instead of club names.
+### Problem
+Currently, adding a purchase does NOT create inventory records. Users must manually add inventory separately, which is redundant since a purchase already contains all the info needed (event, quantity, category, section, cost).
 
-### 1. Add Sidebar Link
+### Solution
 
-**File: `src/components/AppSidebar.tsx`**
-- Add a new nav item in `adminNavItems` (and optionally `viewerNavItems`) with a trophy/globe icon and label "World Cup 2026"
-- Route: `/world-cup`
-- Use the `Globe` or a suitable icon from lucide-react
+#### 1. Auto-create inventory when a purchase is added
 
-### 2. Create World Cup Page
+**File: `src/components/AddPurchaseDialog.tsx`**
 
-**New file: `src/pages/WorldCup.tsx`**
+After the purchase is successfully inserted, immediately create `quantity` inventory records linked to that purchase:
 
-This page will have:
-- **Tabs** at the top: Orders | Finance | Inventory (using Radix Tabs or simple button tabs)
-- **Sticky country filter bar** below the tabs — dynamically generated from distinct `home_team` and `away_team` values in events where `competition` contains "World Cup". Shows "All" as default, with green highlighting on the active filter
-- **Three tab panels** that reuse the existing logic from Orders, Finance, and Inventory pages but scoped to World Cup events only
+- Query the newly inserted purchase to get its `id`
+- Insert N inventory rows (one per ticket in the quantity) with:
+  - `event_id` from the purchase
+  - `purchase_id` set to the new purchase ID
+  - `category` from the purchase
+  - `section` from the purchase (block field)
+  - `face_value` set to the purchase `unit_cost`
+  - `source` set to the supplier name
+  - `status` = "available"
+  - `split_type` from the purchase
 
-**How filtering works:**
-- On mount, fetch all events where `competition ILIKE '%world cup%'`
-- Extract the World Cup event IDs to scope all queries
-- Extract unique team/country names from those events for the filter bar
-- Each tab (Orders, Finance, Inventory) queries its respective table filtered by `event_id IN (worldCupEventIds)`
-- When a country is selected, further filter to only events involving that country
+The insert call will change from a simple `.insert()` to `.insert().select()` to get the new purchase ID back, then batch-insert the inventory rows.
 
-**Tab content:**
-- **Orders tab**: Same table layout as the main Orders page (order ref, buyer, platform, price, delivery status, edit/delete buttons, link tickets) but only showing World Cup orders
-- **Finance tab**: Same summary cards and per-event breakdown as the main Finance page, scoped to World Cup
-- **Inventory tab**: Same grouped inventory view as the main Inventory page, scoped to World Cup events
+#### 2. Show supplier name as "Source" on Inventory page
 
-### 3. Add Route
+**File: `src/pages/Inventory.tsx`**
 
-**File: `src/App.tsx`**
-- Add route: `<Route path="/world-cup" element={<AdminOnly><WorldCup /></AdminOnly>} />`
-- Import the new WorldCup page
+- Update the inventory query to also join through `purchases` to get the supplier name: fetch `purchase_id` then use a separate query to get supplier names for purchases
+- Alternatively, since the `source` field on inventory already exists (defaults to "IJK"), we'll set it to the supplier name when auto-creating from a purchase -- so no extra join needed. The existing `source` column display can be added to the ticket chips or section headers.
+- Add a small "Source" label on each ticket group showing the supplier name (from the `source` field)
 
-### Technical Approach
+#### 3. Handle the World Cup page's purchase additions too
 
-Rather than duplicating hundreds of lines of code from Orders/Finance/Inventory, the World Cup page will:
+**File: `src/pages/WorldCup.tsx`**
 
-1. Fetch World Cup events and their IDs upfront
-2. Build a country filter bar from the team names in those events
-3. Implement three tab views that fetch and display data using the same patterns as the existing pages, but with the World Cup event ID filter baked in
-4. Reuse existing components (EditOrderDialog, AddOrderDialog, LinkInventoryDialog, OrderDetailSheet, etc.)
+The World Cup page has its own inline purchase-adding logic. Apply the same auto-inventory-creation pattern there -- after inserting a purchase, auto-create the corresponding inventory records.
 
-The page will be self-contained in a single file (~500-700 lines) with the three tab panels inline, keeping the same look and feel as the existing pages but with the World Cup scope applied everywhere.
+### Technical Details
 
-### Country Filter Bar
-- Positioned sticky at top, below the tab selector
-- Shows "All" + dynamic country names (e.g., "England", "Brazil", "Argentina")
-- Plain text labels, green when active, muted grey when inactive
-- Generated from `SELECT DISTINCT home_team, away_team FROM events WHERE competition ILIKE '%world cup%'`
+**AddPurchaseDialog changes (lines ~128-147):**
+```typescript
+// Change: insert().select() to get the purchase ID back
+const { data: inserted, error } = await supabase
+  .from("purchases")
+  .insert({ ... })
+  .select("id")
+  .single();
+
+if (error) throw error;
+
+// Auto-create inventory records
+const inventoryRows = Array.from({ length: parseInt(form.quantity) }, () => ({
+  event_id: form.event_id,
+  purchase_id: inserted.id,
+  category,
+  section: section,
+  face_value: parseFloat(form.unit_cost),
+  source: selectedSupplier?.name || "IJK",
+  split_type: form.split_type || null,
+  status: "available" as const,
+}));
+
+await supabase.from("inventory").insert(inventoryRows as any);
+```
+
+**Inventory page:** Add the `source` field display in the ticket chip UI, showing it as a small label (e.g., "via ContactName") on each group header where source is not "IJK".
+
