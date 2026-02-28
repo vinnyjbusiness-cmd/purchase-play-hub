@@ -86,7 +86,7 @@ export default function AssignPurchaseDialog({ orderId, eventId, orderCategory, 
           total_inventory: inv.length,
           match_score: score,
         };
-      }).filter((p: AvailablePurchase) => p.available_count > 0)
+      }).filter((p: AvailablePurchase) => p.available_count > 0 && p.unit_cost > 0)
         .sort((a: AvailablePurchase, b: AvailablePurchase) => b.match_score - a.match_score);
 
       setPurchases(result);

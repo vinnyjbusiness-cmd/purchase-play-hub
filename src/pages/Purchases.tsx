@@ -116,6 +116,8 @@ export default function Purchases() {
   }, [purchases]);
 
   const filtered = purchases.filter((p) => {
+    // Hide £0.00 entries
+    if (Number(p.total_cost || 0) <= 0 && Number(p.unit_cost || 0) <= 0) return false;
     if (filterSupplier !== "all" && p.suppliers?.name !== filterSupplier) return false;
     if (filterEvent !== "all" && p.events) {
       const key = getEventKey(p.events.home_team, p.events.away_team, p.events.event_date);
