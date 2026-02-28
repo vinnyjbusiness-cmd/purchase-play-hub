@@ -601,7 +601,9 @@ export default function Orders() {
           const bgClass = EVENT_PALETTE[groupIndex % EVENT_PALETTE.length];
 
           return (
-            <div key={eventKey} className={cn("rounded-xl overflow-hidden shadow-lg", bgClass)}>
+            <div key={eventKey} className="rounded-xl overflow-hidden shadow-lg">
+              {/* Collapsible event header */}
+              <div className={cn(bgClass, "rounded-t-xl")}>
               {/* Collapsible event header */}
               <button
                 onClick={() => toggleEvent(eventKey)}
@@ -669,8 +671,9 @@ export default function Orders() {
                   </div>
                 </div>
               </button>
+              </div>
 
-              {/* Expanded: full order details */}
+              {/* Expanded: full order details — dark background */}
               {isExpanded && (() => {
                 // Group orders by source
                 const sourceGroups = new Map<string, { sourceName: string; sourceIdx: number; orders: Order[] }>();
