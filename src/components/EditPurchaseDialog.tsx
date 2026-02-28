@@ -76,7 +76,6 @@ export default function EditPurchaseDialog({ purchase, open, onClose, onUpdated 
         section: form.section || null,
         quantity: qty,
         unit_cost: unitCost,
-        total_cost: totalCost,
         supplier_order_id: form.supplier_order_id || null,
         split_type: form.split_type || null,
         notes: form.notes || null,
