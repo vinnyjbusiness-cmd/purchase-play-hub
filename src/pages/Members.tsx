@@ -22,8 +22,9 @@ import {
 } from "@/components/ui/tooltip";
 import {
   Plus, Upload, Download, Search, Pencil, Trash2, Users, Apple, Smartphone,
-  Ticket, Copy, ExternalLink, X, FileDown,
+  Ticket, Copy, ExternalLink, X, FileDown, TableProperties,
 } from "lucide-react";
+import ImportMembersDialog from "@/components/ImportMembersDialog";
 
 interface Member {
   id: string;
@@ -147,7 +148,7 @@ export default function MembersPage() {
   const [pkPassFile, setPkPassFile] = useState<File | null>(null);
   const [pkPassFileName, setPkPassFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
+  const [importOpen, setImportOpen] = useState(false);
   const fetchMembers = async () => {
     if (!orgId) return;
     setLoading(true);
@@ -379,6 +380,9 @@ export default function MembersPage() {
               <Upload className="h-4 w-4 mr-1" /> Import CSV
               <input type="file" accept=".csv" className="hidden" onChange={handleImport} />
             </label>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+            <TableProperties className="h-4 w-4 mr-1" /> Import from Google Sheets
           </Button>
           <Button variant="outline" size="sm" onClick={exportCSV} disabled={!members.length}>
             <Download className="h-4 w-4 mr-1" /> Export
@@ -712,6 +716,12 @@ export default function MembersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ImportMembersDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        orgId={orgId}
+        onComplete={fetchMembers}
+      />
     </div>
   );
 }
