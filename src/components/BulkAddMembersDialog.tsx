@@ -9,6 +9,22 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Minus, Trash2 } from "lucide-react";
 
+/** Normalize date strings to YYYY-MM-DD for Postgres */
+function normalizeDate(raw: string): string | null {
+  if (!raw || !raw.trim()) return null;
+  const s = raw.trim();
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) return s;
+  // DD/MM/YYYY or DD.MM.YYYY or DD-MM-YYYY
+  const m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+  if (m) {
+    let year = m[3];
+    if (year.length === 2) year = (parseInt(year) > 50 ? "19" : "20") + year;
+    return `${year}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  }
+  return s; // return as-is if unrecognized
+}
+
 interface BulkAddMembersDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -171,7 +187,7 @@ export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComp
         member_password: r.member_password.trim() || null,
         email_password: r.email_password.trim() || null,
         phone_number: r.phone_number.trim() || null,
-        date_of_birth: r.date_of_birth.trim() || null,
+        date_of_birth: normalizeDate(r.date_of_birth),
         postcode: r.postcode.trim() || null,
         address: r.address.trim() || null,
         iphone_pass_link: r.iphone_pass_link.trim() || null,
