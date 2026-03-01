@@ -70,6 +70,7 @@ export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComp
   const [rows, setRows] = useState<BulkRow[]>([]);
   const [started, setStarted] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0, skipped: 0, failed: 0 });
 
   const handleGenerate = () => {
     setRows(createRows(rowCount));
@@ -141,11 +142,12 @@ export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComp
     }
 
     const toInsert = validRows.filter(r => {
-      if (!r.email?.trim()) return true; // no email = not a duplicate
+      if (!r.email?.trim()) return true;
       return !existingEmails.has(r.email.trim().toLowerCase());
     });
 
-    const skipped = validRows.length - toInsert.length;
+    const skippedCount = validRows.length - toInsert.length;
+    setProgress({ done: 0, total: toInsert.length, skipped: skippedCount, failed: 0 });
 
     if (!toInsert.length) {
       toast({ title: "All rows are duplicates", description: "No new members to import", variant: "destructive" });
@@ -153,36 +155,50 @@ export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComp
       return;
     }
 
-    const inserts = toInsert.map(r => ({
-      org_id: orgId,
-      first_name: r.first_name.trim(),
-      last_name: r.last_name.trim(),
-      supporter_id: r.supporter_id.trim() || null,
-      email: r.email.trim() || null,
-      member_password: r.member_password.trim() || null,
-      email_password: r.email_password.trim() || null,
-      phone_number: r.phone_number.trim() || null,
-      date_of_birth: r.date_of_birth.trim() || null,
-      postcode: r.postcode.trim() || null,
-      address: r.address.trim() || null,
-      iphone_pass_link: r.iphone_pass_link.trim() || null,
-      android_pass_link: r.android_pass_link.trim() || null,
-    }));
+    let done = 0;
+    let failed = 0;
 
-    const { error } = await supabase.from("members").insert(inserts as any);
+    // Insert in small batches of 5 for visible progress
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+      const batch = toInsert.slice(i, i + BATCH_SIZE);
+      const inserts = batch.map(r => ({
+        org_id: orgId,
+        first_name: r.first_name.trim(),
+        last_name: r.last_name.trim(),
+        supporter_id: r.supporter_id.trim() || null,
+        email: r.email.trim() || null,
+        member_password: r.member_password.trim() || null,
+        email_password: r.email_password.trim() || null,
+        phone_number: r.phone_number.trim() || null,
+        date_of_birth: r.date_of_birth.trim() || null,
+        postcode: r.postcode.trim() || null,
+        address: r.address.trim() || null,
+        iphone_pass_link: r.iphone_pass_link.trim() || null,
+        android_pass_link: r.android_pass_link.trim() || null,
+      }));
 
-    if (error) {
-      toast({ title: "Import failed", description: error.message, variant: "destructive" });
-    } else {
-      const parts: string[] = [`✅ ${inserts.length} members added`];
-      if (skipped) parts.push(`⚠️ ${skipped} skipped (duplicate email)`);
-      toast({ title: "Bulk Add Complete", description: parts.join("\n") });
-      setStarted(false);
-      setRows([]);
+      const { error } = await supabase.from("members").insert(inserts as any);
+      if (error) {
+        failed += batch.length;
+      } else {
+        done += batch.length;
+      }
+      setProgress({ done, total: toInsert.length, skipped: skippedCount, failed });
+      // Refresh members list live so rows appear on the page behind the dialog
       onComplete();
-      onOpenChange(false);
     }
+
+    const parts: string[] = [`✅ ${done} members added`];
+    if (skippedCount) parts.push(`⚠️ ${skippedCount} skipped (duplicate email)`);
+    if (failed) parts.push(`❌ ${failed} failed`);
+    toast({ title: "Bulk Add Complete", description: parts.join("\n") });
+    
+    setStarted(false);
+    setRows([]);
     setImporting(false);
+    setProgress({ done: 0, total: 0, skipped: 0, failed: 0 });
+    onOpenChange(false);
   };
 
   const handleReset = () => {
@@ -293,17 +309,45 @@ export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComp
 
         <DialogFooter className="px-4 sm:px-6 py-3 border-t shrink-0 sticky bottom-0 bg-background">
           <div className="flex items-center justify-between w-full gap-2">
-            <Badge variant="outline" className="text-xs">
-              {validRows.length} member{validRows.length !== 1 ? "s" : ""} ready
-            </Badge>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-              {started && (
-                <Button onClick={handleImport} disabled={importing || !validRows.length}>
-                  {importing ? "Adding…" : `Add ${validRows.length} Member${validRows.length !== 1 ? "s" : ""}`}
-                </Button>
-              )}
-            </div>
+            {importing ? (
+              <div className="flex items-center gap-3 w-full">
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium">
+                      Adding members… {progress.done}/{progress.total}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {progress.total - progress.done} remaining
+                    </span>
+                  </div>
+                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <div className="flex gap-3 mt-1">
+                    {progress.done > 0 && <span className="text-[10px] text-green-500">✅ {progress.done} added</span>}
+                    {progress.skipped > 0 && <span className="text-[10px] text-yellow-500">⚠️ {progress.skipped} skipped</span>}
+                    {progress.failed > 0 && <span className="text-[10px] text-destructive">❌ {progress.failed} failed</span>}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Badge variant="outline" className="text-xs">
+                  {validRows.length} member{validRows.length !== 1 ? "s" : ""} ready
+                </Badge>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                  {started && (
+                    <Button onClick={handleImport} disabled={!validRows.length}>
+                      Add {validRows.length} Member{validRows.length !== 1 ? "s" : ""}
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>
