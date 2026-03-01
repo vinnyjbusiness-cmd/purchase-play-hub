@@ -488,83 +488,100 @@ export default function Inventory() {
                       const unassignedGroups = allGroups.filter(qg => !isGroupAssigned(qg.key, qg.items));
                       const assignedGroups = allGroups.filter(qg => isGroupAssigned(qg.key, qg.items));
 
-                      const renderGroup = (qg: ReturnType<typeof groupByQuantity>[number]) => {
+                      const GRADIENT_PALETTE = [
+                        "from-violet-600/90 to-indigo-700/90",
+                        "from-emerald-600/90 to-teal-700/90",
+                        "from-rose-600/90 to-pink-700/90",
+                        "from-amber-600/90 to-orange-700/90",
+                        "from-sky-600/90 to-cyan-700/90",
+                        "from-fuchsia-600/90 to-purple-700/90",
+                      ];
+
+                      const renderGroup = (qg: ReturnType<typeof groupByQuantity>[number], groupIdx: number) => {
                         const email = qg.items[0]?.email;
                         const area = qg.items[0]?.block;
                         const row = qg.items[0]?.row_name;
                         const seats = qg.items.map(i => i.seat).filter(Boolean).join(", ");
                         const isCollapsed = collapsedGroups.has(qg.key);
                         const isAssigned = isGroupAssigned(qg.key, qg.items);
+                        const gradient = GRADIENT_PALETTE[groupIdx % GRADIENT_PALETTE.length];
+                        const leadName = [qg.items[0]?.first_name, qg.items[0]?.last_name].filter(Boolean).join(" ");
 
                         return (
-                          <div key={qg.key} className={cn("rounded-xl border bg-card overflow-hidden", isAssigned && "opacity-60")}>
-                            {/* Group header */}
-                            <div className="px-4 sm:px-5 py-3 flex items-start justify-between gap-3 sm:gap-4">
-                              <button
-                                className="flex-1 min-w-0 text-left"
-                                onClick={() => toggleGroupCollapsed(qg.key)}
-                              >
-                                <div className="space-y-0.5">
-                                  {(() => {
-                                    const leadName = [qg.items[0]?.first_name, qg.items[0]?.last_name].filter(Boolean).join(" ");
-                                    return (
-                                      <>
-                                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Lead Booker</p>
-                                        <p className="text-sm font-bold text-foreground truncate">{leadName || "Unassigned"}</p>
-                                        {email && (
-                                          <p className="text-xs text-muted-foreground truncate">{email}</p>
-                                        )}
-                                      </>
-                                    );
-                                  })()}
-                                  <p className="text-xs text-muted-foreground font-mono mt-1">
-                                    {area && <>Area <span className="text-foreground font-semibold">{area}</span></>}
-                                    {row && <>{area ? " · " : ""}Row <span className="text-foreground font-semibold">{row}</span></>}
-                                    {seats && <>{(area || row) ? " · " : ""}Seats <span className="text-foreground font-semibold">{seats}</span></>}
-                                  </p>
+                          <div key={qg.key} className={cn(
+                            "rounded-xl overflow-hidden shadow-lg transition-all",
+                            isAssigned ? "opacity-50 saturate-50" : ""
+                          )}>
+                            {/* Card-style gradient header */}
+                            <div className={cn(
+                              "bg-gradient-to-br text-white px-5 py-4",
+                              isAssigned ? "from-muted-foreground/40 to-muted-foreground/60" : gradient
+                            )}>
+                              <div className="flex items-start justify-between gap-3">
+                                <button
+                                  className="flex-1 min-w-0 text-left"
+                                  onClick={() => toggleGroupCollapsed(qg.key)}
+                                >
+                                  <p className="text-[10px] uppercase tracking-widest font-medium text-white/60">Lead Booker</p>
+                                  <p className="text-base font-bold truncate mt-0.5">{leadName || "Unassigned"}</p>
+                                  {email && (
+                                    <p className="text-xs text-white/70 truncate mt-0.5 font-mono">{email}</p>
+                                  )}
+                                </button>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={cn("h-7 w-7 hover:bg-white/20", isAssigned ? "text-white" : "text-white/70")}
+                                    onClick={(e) => { e.stopPropagation(); toggleManualAssigned(qg.key); }}
+                                    title={isAssigned ? "Mark as unassigned" : "Mark as assigned"}
+                                  >
+                                    {isAssigned ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-white/70 hover:bg-white/20 hover:text-white"
+                                    onClick={(e) => { e.stopPropagation(); setSelectedId(qg.items[0]?.id || null); }}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-white/70 hover:bg-white/20 hover:text-white"
+                                    onClick={(e) => handleDeleteGroup(e, qg.items)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
                                 </div>
-                              </button>
-                              <div className="flex items-center gap-2 shrink-0">
-                                {/* Assigned checkbox */}
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className={cn("h-7 w-7", isAssigned ? "text-success hover:text-success/80" : "text-muted-foreground hover:text-foreground")}
-                                  onClick={(e) => { e.stopPropagation(); toggleManualAssigned(qg.key); }}
-                                  title={isAssigned ? "Mark as unassigned" : "Mark as assigned"}
-                                >
-                                  {isAssigned ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-                                </Button>
-                                {/* Edit button */}
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                                  onClick={(e) => { e.stopPropagation(); setSelectedId(qg.items[0]?.id || null); }}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                                {/* Delete button */}
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                  onClick={(e) => handleDeleteGroup(e, qg.items)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                                <div className="text-right ml-1">
-                                  <p className="text-xl font-bold text-destructive">{qg.qty}</p>
-                                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ticket{qg.qty !== 1 ? "s" : ""}</p>
+                              </div>
+
+                              {/* Seating info + ticket count row */}
+                              <div className="flex items-end justify-between mt-3">
+                                <p className="text-xs font-mono text-white/80">
+                                  {area && <>Area <span className="text-white font-semibold">{area}</span></>}
+                                  {row && <>{area ? " · " : ""}Row <span className="text-white font-semibold">{row}</span></>}
+                                  {seats && <>{(area || row) ? " · " : ""}Seats <span className="text-white font-semibold">{seats}</span></>}
+                                </p>
+                                <div className="text-right">
+                                  <p className="text-2xl font-black font-mono leading-none">{qg.qty}</p>
+                                  <p className="text-[9px] uppercase tracking-widest text-white/60 mt-0.5">Ticket{qg.qty !== 1 ? "s" : ""}</p>
                                 </div>
-                                {isCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                              </div>
+
+                              {/* Chevron */}
+                              <div className="flex justify-center mt-2">
+                                <button onClick={() => toggleGroupCollapsed(qg.key)} className="text-white/40 hover:text-white/80 transition-colors">
+                                  {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                </button>
                               </div>
                             </div>
 
                             {/* Collapsible ticket chips + details */}
                             {!isCollapsed && (
-                              <>
-                                <div className="px-4 sm:px-5 pb-4 flex flex-wrap gap-2">
+                              <div className="bg-card border border-t-0 rounded-b-xl">
+                                <div className="px-4 sm:px-5 py-4 flex flex-wrap gap-2">
                                   {qg.items.map((item, idx) => (
                                     <button
                                       key={item.id}
@@ -574,7 +591,7 @@ export default function Inventory() {
                                         expandedItems.has(item.id) ? "bg-muted/60 border-primary/30" : "bg-muted/30"
                                       )}
                                     >
-                                      <span className="flex items-center justify-center h-7 w-7 rounded bg-destructive/10 text-destructive text-xs font-bold font-mono">
+                                      <span className="flex items-center justify-center h-7 w-7 rounded bg-primary/10 text-primary text-xs font-bold font-mono">
                                         {item.seat || (idx + 1)}
                                       </span>
                                       <div className="text-xs">
@@ -679,7 +696,7 @@ export default function Inventory() {
                                     </div>
                                   );
                                 })}
-                              </>
+                              </div>
                             )}
                           </div>
                         );
@@ -703,8 +720,8 @@ export default function Inventory() {
 
                           {/* Unassigned groups (top) */}
                           {unassignedGroups.length > 0 && (
-                            <div className="space-y-3">
-                              {unassignedGroups.map(renderGroup)}
+                            <div className="space-y-4">
+                              {unassignedGroups.map((qg, i) => renderGroup(qg, i))}
                             </div>
                           )}
 
@@ -716,7 +733,7 @@ export default function Inventory() {
                                 <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold px-2">Assigned</span>
                                 <div className="h-px flex-1 bg-border" />
                               </div>
-                              {assignedGroups.map(renderGroup)}
+                              {assignedGroups.map((qg, i) => renderGroup(qg, i + unassignedGroups.length))}
                             </div>
                           )}
                         </div>
