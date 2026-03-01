@@ -38,6 +38,9 @@ interface MemberRow {
   email_password: string | null;
   pass_link: string | null;
   supporter_id: string | null;
+  iphone_pass_link: string | null;
+  android_pass_link: string | null;
+  pk_pass_url: string | null;
 }
 
 export interface TicketEntry {
@@ -51,6 +54,9 @@ export interface TicketEntry {
   password: string;
   memberId: string;
   passLink: string;
+  iphonePassLink: string;
+  androidPassLink: string;
+  pkPassUrl: string;
 }
 
 const createTicket = (): TicketEntry => ({
@@ -64,6 +70,9 @@ const createTicket = (): TicketEntry => ({
   password: "",
   memberId: "",
   passLink: "",
+  iphonePassLink: "",
+  androidPassLink: "",
+  pkPassUrl: "",
 });
 
 const SPLIT_QTY_MAP: Record<string, number> = {
@@ -106,7 +115,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   useEffect(() => {
     supabase
       .from("members")
-      .select("id, first_name, last_name, email, member_password, email_password, pass_link, supporter_id")
+      .select("id, first_name, last_name, email, member_password, email_password, pass_link, supporter_id, iphone_pass_link, android_pass_link, pk_pass_url")
       .order("first_name")
       .then(({ data }) => setMembers((data as any) || []));
   }, []);
@@ -201,6 +210,9 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
         email: member.email || "",
         password: member.email_password || member.member_password || "",
         passLink: member.pass_link || "",
+        iphonePassLink: member.iphone_pass_link || "",
+        androidPassLink: member.android_pass_link || "",
+        pkPassUrl: member.pk_pass_url || "",
       };
       return next;
     });
@@ -259,6 +271,9 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
         password: cols[colMap.password] || "",
         memberId: "",
         passLink: "",
+        iphonePassLink: "",
+        androidPassLink: "",
+        pkPassUrl: "",
       });
       if (i === 1) {
         if (colMap.section !== undefined && cols[colMap.section]) setSection(cols[colMap.section]);
@@ -309,9 +324,9 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
       supporter_id: null,
       email: t.email || null,
       password: t.password || null,
-      iphone_pass_link: t.passLink || null,
-      android_pass_link: null,
-      pk_pass_url: null,
+      iphone_pass_link: t.iphonePassLink || t.passLink || null,
+      android_pass_link: t.androidPassLink || null,
+      pk_pass_url: t.pkPassUrl || null,
       org_id: orgId,
       status: "available" as const,
       source: resolvedSource,

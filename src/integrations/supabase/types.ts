@@ -582,17 +582,20 @@ export type Database = {
       members: {
         Row: {
           address: string | null
+          android_pass_link: string | null
           created_at: string
           date_of_birth: string | null
           email: string | null
           email_password: string | null
           first_name: string
           id: string
+          iphone_pass_link: string | null
           last_name: string
           member_password: string | null
           org_id: string | null
           pass_link: string | null
           phone_number: string | null
+          pk_pass_url: string | null
           platform_login_url: string | null
           postcode: string | null
           supporter_id: string | null
@@ -600,17 +603,20 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          android_pass_link?: string | null
           created_at?: string
           date_of_birth?: string | null
           email?: string | null
           email_password?: string | null
           first_name: string
           id?: string
+          iphone_pass_link?: string | null
           last_name: string
           member_password?: string | null
           org_id?: string | null
           pass_link?: string | null
           phone_number?: string | null
+          pk_pass_url?: string | null
           platform_login_url?: string | null
           postcode?: string | null
           supporter_id?: string | null
@@ -618,17 +624,20 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          android_pass_link?: string | null
           created_at?: string
           date_of_birth?: string | null
           email?: string | null
           email_password?: string | null
           first_name?: string
           id?: string
+          iphone_pass_link?: string | null
           last_name?: string
           member_password?: string | null
           org_id?: string | null
           pass_link?: string | null
           phone_number?: string | null
+          pk_pass_url?: string | null
           platform_login_url?: string | null
           postcode?: string | null
           supporter_id?: string | null
