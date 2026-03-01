@@ -27,6 +27,8 @@ interface BulkRow {
   date_of_birth: string;
   postcode: string;
   address: string;
+  iphone_pass_link: string;
+  android_pass_link: string;
 }
 
 const EMPTY_ROW: BulkRow = {
@@ -40,6 +42,8 @@ const EMPTY_ROW: BulkRow = {
   date_of_birth: "",
   postcode: "",
   address: "",
+  iphone_pass_link: "",
+  android_pass_link: "",
 };
 
 const COLUMNS: { key: keyof BulkRow; label: string; width: string }[] = [
@@ -53,6 +57,8 @@ const COLUMNS: { key: keyof BulkRow; label: string; width: string }[] = [
   { key: "date_of_birth", label: "DOB", width: "min-w-[110px]" },
   { key: "postcode", label: "Postcode", width: "min-w-[100px]" },
   { key: "address", label: "Address", width: "min-w-[160px]" },
+  { key: "iphone_pass_link", label: "iPhone Link", width: "min-w-[140px]" },
+  { key: "android_pass_link", label: "Android Link", width: "min-w-[140px]" },
 ];
 
 function createRows(count: number): BulkRow[] {
@@ -159,6 +165,8 @@ export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComp
       date_of_birth: r.date_of_birth.trim() || null,
       postcode: r.postcode.trim() || null,
       address: r.address.trim() || null,
+      iphone_pass_link: r.iphone_pass_link.trim() || null,
+      android_pass_link: r.android_pass_link.trim() || null,
     }));
 
     const { error } = await supabase.from("members").insert(inserts as any);
