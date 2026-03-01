@@ -25,6 +25,7 @@ import {
   Ticket, Copy, ExternalLink, X, FileDown, TableProperties,
 } from "lucide-react";
 import ImportMembersDialog from "@/components/ImportMembersDialog";
+import BulkAddMembersDialog from "@/components/BulkAddMembersDialog";
 
 interface Member {
   id: string;
@@ -149,6 +150,7 @@ export default function MembersPage() {
   const [pkPassFileName, setPkPassFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const fetchMembers = async () => {
     if (!orgId) return;
@@ -393,6 +395,9 @@ export default function MembersPage() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <TableProperties className="h-4 w-4 mr-1" /> Import from Google Sheets
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setBulkAddOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Bulk Add
           </Button>
           <Button variant="outline" size="sm" onClick={exportCSV} disabled={!members.length}>
             <Download className="h-4 w-4 mr-1" /> Export
@@ -752,6 +757,12 @@ export default function MembersPage() {
       <ImportMembersDialog
         open={importOpen}
         onOpenChange={setImportOpen}
+        orgId={orgId}
+        onComplete={fetchMembers}
+      />
+      <BulkAddMembersDialog
+        open={bulkAddOpen}
+        onOpenChange={setBulkAddOpen}
         orgId={orgId}
         onComplete={fetchMembers}
       />
