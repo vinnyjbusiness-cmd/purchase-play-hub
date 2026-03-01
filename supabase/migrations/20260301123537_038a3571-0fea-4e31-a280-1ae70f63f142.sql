@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS uq_order_status_history_order_stage ON public.order_status_history (order_id, stage);

@@ -52,6 +52,7 @@ interface OrderInfo {
   order_date: string;
   notes: string | null;
   event_id: string;
+  org_id: string | null;
   events: { match_code: string; home_team: string; away_team: string } | null;
   platforms: { name: string } | null;
 }
@@ -69,6 +70,14 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
       .select("*, events(match_code, home_team, away_team), platforms(name)")
       .eq("id", orderId)
       .single();
+
+    // Auto-seed "Order Created" timeline stage if not present
+    if (orderData) {
+      await supabase.from("order_status_history").upsert(
+        { order_id: orderId, stage: "Order Created", org_id: orderData.org_id },
+        { onConflict: "order_id,stage", ignoreDuplicates: true }
+      );
+    }
 
     setOrder(orderData as any);
 
@@ -141,7 +150,8 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
 
   const totalCost = linkedTickets.reduce((s, t) => s + t.unit_cost, 0);
   const saleTotal = Number(order.sale_price) * order.quantity;
-  const profit = (Number(order.net_received) || saleTotal) - totalCost;
+  const fees = Number(order.fees) || 0;
+  const profit = saleTotal - fees - totalCost;
   const sym = (c: string) => (c === "GBP" ? "£" : c === "USD" ? "$" : "€");
 
   return (
@@ -195,6 +205,21 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
                   onValueChange={async (val) => {
                     const { error } = await supabase.from("orders").update({ status: val as any }).eq("id", order.id);
                     if (error) { toast.error(error.message); return; }
+                    // Auto-mark timeline stages based on status
+                    const stageMap: Record<string, string[]> = {
+                      outstanding: ["Order Created", "Waiting on Delivery"],
+                      partially_delivered: ["Order Created", "Waiting on Delivery"],
+                      delivered: ["Order Created", "Waiting on Delivery", "Delivered"],
+                    };
+                    const stages = stageMap[val];
+                    if (stages) {
+                      for (const stage of stages) {
+                        await supabase.from("order_status_history").upsert(
+                          { order_id: order.id, stage, org_id: order.org_id },
+                          { onConflict: "order_id,stage", ignoreDuplicates: true }
+                        );
+                      }
+                    }
                     toast.success("Status updated");
                     loadOrder();
                     onUpdated();
@@ -218,6 +243,21 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
                   onValueChange={async (val) => {
                     const { error } = await supabase.from("orders").update({ delivery_status: val }).eq("id", order.id);
                     if (error) { toast.error(error.message); return; }
+                    // Auto-mark timeline stages based on delivery status
+                    const stageMap: Record<string, string[]> = {
+                      awaiting_delivery: ["Order Created", "Waiting on Delivery"],
+                      delivered: ["Order Created", "Waiting on Delivery", "Delivered"],
+                      completed: ["Order Created", "Waiting on Delivery", "Delivered", "Completed"],
+                    };
+                    const stages = stageMap[val];
+                    if (stages) {
+                      for (const stage of stages) {
+                        await supabase.from("order_status_history").upsert(
+                          { order_id: order.id, stage, org_id: order.org_id },
+                          { onConflict: "order_id,stage", ignoreDuplicates: true }
+                        );
+                      }
+                    }
                     toast.success("Delivery status updated");
                     loadOrder();
                     onUpdated();
@@ -247,14 +287,12 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
                   <span className="text-muted-foreground">Sale ({order.quantity}× £{Number(order.sale_price).toFixed(2)})</span>
                   <span className="font-medium">£{(Number(order.sale_price) * order.quantity).toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Platform Fees</span>
-                  <span className="font-medium text-destructive">-£{Number(order.fees).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Net Received</span>
-                  <span className="font-medium">£{Number(order.net_received).toFixed(2)}</span>
-                </div>
+                {fees > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Platform Fees</span>
+                    <span className="font-medium text-destructive">-£{fees.toFixed(2)}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Supply Cost ({linkedTickets.length} ticket{linkedTickets.length !== 1 ? "s" : ""})</span>
