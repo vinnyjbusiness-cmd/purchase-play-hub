@@ -44,7 +44,8 @@ interface ParsedRow {
   isValid: boolean;
 }
 
-const HEADER_MAP: Record<string, keyof Omit<ParsedRow, "id" | "pk_pass_file" | "pk_pass_filename" | "checked" | "isDuplicate" | "isValid">> = {
+const HEADER_MAP: Record<string, keyof Omit<ParsedRow, "id" | "pk_pass_file" | "pk_pass_filename" | "checked" | "isDuplicate" | "isValid"> | "ignore"> = {
+  "wan": "ignore",
   "first name": "first_name",
   "last name": "last_name",
   "supporter id": "supporter_id",
@@ -60,12 +61,18 @@ const HEADER_MAP: Record<string, keyof Omit<ParsedRow, "id" | "pk_pass_file" | "
   "android links": "android_pass_link",
 };
 
+function cleanPhone(val: string): string {
+  let s = val.trim();
+  if (s.endsWith(".0")) s = s.slice(0, -2);
+  return s;
+}
+
 function parseTSV(text: string): Omit<ParsedRow, "id" | "checked" | "isDuplicate" | "isValid" | "pk_pass_file" | "pk_pass_filename">[] {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) return [];
 
   const headers = lines[0].split("\t").map(h => h.trim().toLowerCase());
-  const fieldMap: (keyof Omit<ParsedRow, "id" | "pk_pass_file" | "pk_pass_filename" | "checked" | "isDuplicate" | "isValid"> | null)[] =
+  const fieldMap: (keyof Omit<ParsedRow, "id" | "pk_pass_file" | "pk_pass_filename" | "checked" | "isDuplicate" | "isValid"> | "ignore" | null)[] =
     headers.map(h => HEADER_MAP[h] || null);
 
   return lines.slice(1).map(line => {
@@ -77,7 +84,12 @@ function parseTSV(text: string): Omit<ParsedRow, "id" | "checked" | "isDuplicate
       iphone_pass_link: "", android_pass_link: "",
     };
     fieldMap.forEach((field, i) => {
-      if (field && vals[i]) row[field] = vals[i];
+      if (!field || field === "ignore" || !vals[i]) return;
+      if (field === "phone_number") {
+        row[field] = cleanPhone(vals[i]);
+      } else {
+        row[field] = vals[i];
+      }
     });
     return row;
   });
