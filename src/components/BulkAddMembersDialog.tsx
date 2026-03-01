@@ -256,12 +256,12 @@ export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComp
                               value={row[col.key]}
                               onChange={e => handleCellChange(ri, col.key, e.target.value)}
                               onPaste={e => handlePaste(e, ri, ci)}
-                              className={`w-full bg-transparent border border-transparent focus:border-primary/40 focus:bg-background rounded px-1.5 py-1 text-xs outline-none transition-colors ${
+                              className={`w-full bg-muted/30 border border-border/50 focus:border-primary focus:bg-background rounded px-1.5 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground/40 ${
                                 (col.key === "first_name" || col.key === "last_name") && !row[col.key].trim() && rows.some(r => r.first_name || r.last_name || r.email)
                                   ? "border-destructive/30"
                                   : ""
                               }`}
-                              placeholder={col.label}
+                              placeholder="—"
                             />
                           </td>
                         ))}
