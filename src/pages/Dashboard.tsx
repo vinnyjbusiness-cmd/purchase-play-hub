@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, differenceInSeconds } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
 import confetti from "canvas-confetti";
 import {
   CalendarDays,
@@ -17,6 +18,12 @@ import {
   Bell,
   Clock,
   Activity,
+  CheckCircle2,
+  XCircle,
+  Link2Off,
+  DollarSign,
+  Truck,
+  ClipboardList,
 } from "lucide-react";
 import { deduplicateEvents } from "@/lib/eventDedup";
 import { Button } from "@/components/ui/button";
@@ -25,6 +32,10 @@ interface EventInfo { id: string; match_code: string; home_team: string; away_te
 interface OrderInfo { id: string; order_ref: string | null; status: string; delivery_status: string | null; event_id: string; quantity: number; sale_price: number; order_date: string; platform_id: string | null; }
 interface PlatformInfo { id: string; name: string; }
 interface AuditEntry { id: string; table_name: string; action: string; created_at: string; new_values: any; old_values: any; user_id: string | null; }
+interface OrderLineInfo { order_id: string; inventory_id: string; }
+interface PurchaseInfo { id: string; event_id: string; supplier_id: string; supplier_paid: boolean; unit_cost: number; quantity: number; status: string; }
+interface InventoryInfo { id: string; event_id: string; status: string; face_value: number | null; purchase_id: string | null; }
+interface SupplierInfo { id: string; name: string; }
 
 const TABLE_LABELS: Record<string, string> = {
   orders: "Order", purchases: "Purchase", events: "Event", inventory: "Inventory",
@@ -69,16 +80,24 @@ export default function Dashboard() {
   const [openOrders, setOpenOrders] = useState(0);
   const [loading, setLoading] = useState(true);
   const [countdown, setCountdown] = useState("");
+  const [orderLines, setOrderLines] = useState<OrderLineInfo[]>([]);
+  const [purchases, setPurchases] = useState<PurchaseInfo[]>([]);
+  const [inventory, setInventory] = useState<InventoryInfo[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierInfo[]>([]);
 
   useEffect(() => {
     async function load() {
-      const [profileRes, eventsRes, ordersRes, platformsRes, auditRes, profilesRes] = await Promise.all([
+      const [profileRes, eventsRes, ordersRes, platformsRes, auditRes, profilesRes, olRes, purchRes, invRes, supRes] = await Promise.all([
         supabase.from("profiles").select("display_name").limit(1).single(),
         supabase.from("events").select("id,match_code,home_team,away_team,event_date").order("event_date"),
         supabase.from("orders").select("id,order_ref,status,delivery_status,event_id,quantity,sale_price,order_date,platform_id"),
         supabase.from("platforms").select("id,name"),
         supabase.from("audit_log").select("id,table_name,action,created_at,new_values,old_values,user_id").order("created_at", { ascending: false }).limit(5),
         supabase.from("profiles").select("user_id,display_name"),
+        supabase.from("order_lines").select("order_id,inventory_id"),
+        supabase.from("purchases").select("id,event_id,supplier_id,supplier_paid,unit_cost,quantity,status"),
+        supabase.from("inventory").select("id,event_id,status,face_value,purchase_id"),
+        supabase.from("suppliers").select("id,name"),
       ]);
 
       if (profileRes.data?.display_name) setDisplayName(profileRes.data.display_name);
@@ -91,6 +110,10 @@ export default function Dashboard() {
       setOrders(allOrders);
       setPlatforms(allPlatforms);
       setAuditLogs(auditRes.data || []);
+      setOrderLines((olRes.data as any) || []);
+      setPurchases((purchRes.data as any) || []);
+      setInventory((invRes.data as any) || []);
+      setSuppliers((supRes.data as any) || []);
 
       const pMap: Record<string, string> = {};
       (profilesRes.data || []).forEach((p: any) => { pMap[p.user_id] = p.display_name || "Unknown"; });
@@ -186,6 +209,111 @@ export default function Dashboard() {
     if (openCount > 0) actions.push({ label: "Orders need action", count: openCount, color: "text-destructive", path: "/orders" });
     return actions;
   }, [awaitingDelivery, orders]);
+
+  // Ops Checklist — per-event issues
+  const opsChecklist = useMemo(() => {
+    const now = new Date();
+    const { unique: dedupedEvts, groupedIds } = deduplicateEvents(events);
+    // Only future events (or events in past 7 days for cleanup)
+    const relevantEvents = dedupedEvts.filter(e => {
+      const d = new Date(e.event_date);
+      return d.getTime() > now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    });
+
+    const orderLinesByOrder = new Map<string, string[]>();
+    orderLines.forEach(ol => {
+      if (!orderLinesByOrder.has(ol.order_id)) orderLinesByOrder.set(ol.order_id, []);
+      orderLinesByOrder.get(ol.order_id)!.push(ol.inventory_id);
+    });
+
+    const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]));
+
+    interface EventIssue {
+      event: EventInfo;
+      issues: { icon: string; label: string; severity: "red" | "amber" | "blue"; path: string }[];
+    }
+
+    const results: EventIssue[] = [];
+
+    for (const ev of relevantEvents) {
+      const allIds = groupedIds[ev.id] || [ev.id];
+      const evOrders = orders.filter(o => allIds.includes(o.event_id) && o.status !== "cancelled" && o.status !== "refunded");
+      const evPurchases = purchases.filter(p => allIds.includes(p.event_id) && p.status !== "cancelled");
+      const evInventory = inventory.filter(i => allIds.includes(i.event_id) && i.status !== "cancelled");
+      const issues: EventIssue["issues"] = [];
+
+      // 1. Orders without linked inventory
+      const unlinkedOrders = evOrders.filter(o => {
+        const linked = orderLinesByOrder.get(o.id) || [];
+        return linked.length < o.quantity;
+      });
+      if (unlinkedOrders.length > 0) {
+        issues.push({
+          icon: "link",
+          label: `${unlinkedOrders.length} order${unlinkedOrders.length !== 1 ? "s" : ""} not fully linked to inventory`,
+          severity: "red",
+          path: "/orders",
+        });
+      }
+
+      // 2. Orders not delivered (outstanding/partially)
+      const undelivered = evOrders.filter(o => o.status === "outstanding" || o.status === "partially_delivered" || o.status === "pending");
+      if (undelivered.length > 0) {
+        const isPast = new Date(ev.event_date) < now;
+        issues.push({
+          icon: "truck",
+          label: `${undelivered.length} order${undelivered.length !== 1 ? "s" : ""} not delivered`,
+          severity: isPast ? "red" : "amber",
+          path: "/orders",
+        });
+      }
+
+      // 3. Suppliers not paid
+      const unpaidPurchases = evPurchases.filter(p => !p.supplier_paid);
+      if (unpaidPurchases.length > 0) {
+        const supplierNames = [...new Set(unpaidPurchases.map(p => supplierMap[p.supplier_id] || "Unknown"))];
+        issues.push({
+          icon: "dollar",
+          label: `${supplierNames.length} supplier${supplierNames.length !== 1 ? "s" : ""} unpaid (${supplierNames.slice(0, 2).join(", ")}${supplierNames.length > 2 ? "…" : ""})`,
+          severity: "amber",
+          path: "/purchases",
+        });
+      }
+
+      // 4. Orders with £0 sale price
+      const zeroPriceOrders = evOrders.filter(o => !o.sale_price || o.sale_price === 0);
+      if (zeroPriceOrders.length > 0) {
+        issues.push({
+          icon: "dollar",
+          label: `${zeroPriceOrders.length} order${zeroPriceOrders.length !== 1 ? "s" : ""} missing sale price`,
+          severity: "red",
+          path: "/orders",
+        });
+      }
+
+      // 5. Available inventory not assigned to any order
+      const assignedInvIds = new Set(orderLines.map(ol => ol.inventory_id));
+      const unassignedInv = evInventory.filter(i => i.status === "available" && !assignedInvIds.has(i.id));
+      if (unassignedInv.length > 0 && evOrders.length > 0) {
+        issues.push({
+          icon: "clipboard",
+          label: `${unassignedInv.length} ticket${unassignedInv.length !== 1 ? "s" : ""} available but unassigned`,
+          severity: "blue",
+          path: "/inventory",
+        });
+      }
+
+      if (issues.length > 0) {
+        results.push({ event: ev, issues });
+      }
+    }
+
+    // Sort: most issues first, then by date
+    return results.sort((a, b) => {
+      const severityWeight = (issues: EventIssue["issues"]) => issues.filter(i => i.severity === "red").length * 10 + issues.filter(i => i.severity === "amber").length * 5 + issues.length;
+      return severityWeight(b.issues) - severityWeight(a.issues);
+    });
+  }, [events, orders, orderLines, purchases, inventory, suppliers]);
 
   if (loading) {
     return (
@@ -307,6 +435,86 @@ export default function Dashboard() {
           {urgentActions.length === 0 && <p className="text-[10px] text-muted-foreground mt-1">All clear</p>}
         </div>
       </div>
+
+      {/* Ops Checklist — What Needs Doing */}
+      {opsChecklist.length > 0 && (
+        <Card className="overflow-hidden animate-fade-in" style={{ animationDelay: "0.15s" }}>
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-destructive/10">
+                <ClipboardList className="h-4 w-4 text-destructive" />
+              </div>
+              <span className="font-semibold text-sm">Ops Checklist</span>
+              <Badge variant="outline" className="text-[9px] font-bold bg-destructive/10 text-destructive border-destructive/20">
+                {opsChecklist.reduce((s, e) => s + e.issues.length, 0)} issues
+              </Badge>
+            </div>
+          </div>
+          <CardContent className="pt-2 space-y-2">
+            {opsChecklist.map(({ event: ev, issues }) => {
+              const eventDate = new Date(ev.event_date);
+              const isPast = eventDate < new Date();
+              const redCount = issues.filter(i => i.severity === "red").length;
+              const amberCount = issues.filter(i => i.severity === "amber").length;
+
+              return (
+                <div key={ev.id} className="rounded-xl border overflow-hidden">
+                  {/* Event gradient header */}
+                  <div className={cn(
+                    "px-4 py-3 bg-gradient-to-r",
+                    redCount > 0
+                      ? "from-destructive/20 to-destructive/5 border-l-4 border-l-destructive"
+                      : amberCount > 0
+                        ? "from-warning/20 to-warning/5 border-l-4 border-l-warning"
+                        : "from-primary/20 to-primary/5 border-l-4 border-l-primary"
+                  )}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold">{ev.home_team} vs {ev.away_team}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono">
+                          {format(eventDate, "EEE dd MMM, HH:mm")}
+                          {isPast && <span className="text-destructive ml-1 font-bold">• PAST</span>}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {redCount > 0 && (
+                          <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-destructive/20 text-destructive text-[10px] font-bold">{redCount}</span>
+                        )}
+                        {amberCount > 0 && (
+                          <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-warning/20 text-warning text-[10px] font-bold">{amberCount}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Issues list */}
+                  <div className="px-4 py-2 space-y-1.5">
+                    {issues.map((issue, i) => (
+                      <button
+                        key={i}
+                        onClick={() => navigate(issue.path)}
+                        className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-muted/50 transition-colors group"
+                      >
+                        <span className={cn(
+                          "flex items-center justify-center h-5 w-5 rounded shrink-0",
+                          issue.severity === "red" ? "bg-destructive/10" :
+                          issue.severity === "amber" ? "bg-warning/10" : "bg-primary/10"
+                        )}>
+                          {issue.icon === "link" && <Link2Off className={cn("h-3 w-3", issue.severity === "red" ? "text-destructive" : issue.severity === "amber" ? "text-warning" : "text-primary")} />}
+                          {issue.icon === "truck" && <Truck className={cn("h-3 w-3", issue.severity === "red" ? "text-destructive" : issue.severity === "amber" ? "text-warning" : "text-primary")} />}
+                          {issue.icon === "dollar" && <DollarSign className={cn("h-3 w-3", issue.severity === "red" ? "text-destructive" : issue.severity === "amber" ? "text-warning" : "text-primary")} />}
+                          {issue.icon === "clipboard" && <ClipboardList className={cn("h-3 w-3", issue.severity === "red" ? "text-destructive" : issue.severity === "amber" ? "text-warning" : "text-primary")} />}
+                        </span>
+                        <span className="text-xs font-medium flex-1">{issue.label}</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Live Activity Feed + Delivery Queue side by side */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 animate-fade-in" style={{ animationDelay: "0.2s" }}>
