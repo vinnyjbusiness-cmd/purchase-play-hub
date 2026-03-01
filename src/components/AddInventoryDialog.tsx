@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "sonner";
 import { useOrg } from "@/hooks/useOrg";
 import { VENUES, getVenue } from "@/lib/seatingSections";
-import { ChevronDown, ChevronRight, LayoutGrid, Table2, Upload, X, Plus, FileSpreadsheet } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutGrid, Table2, Upload, X, Plus, FileSpreadsheet, UserSearch, ExternalLink } from "lucide-react";
 
 interface Props {
   onClose: () => void;
@@ -28,6 +29,17 @@ interface EventRow {
   competition: string;
 }
 
+interface MemberRow {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  member_password: string | null;
+  email_password: string | null;
+  pass_link: string | null;
+  supporter_id: string | null;
+}
+
 export interface TicketEntry {
   id: string;
   row: string;
@@ -37,6 +49,8 @@ export interface TicketEntry {
   lastName: string;
   email: string;
   password: string;
+  memberId: string;
+  passLink: string;
 }
 
 const createTicket = (): TicketEntry => ({
@@ -48,11 +62,21 @@ const createTicket = (): TicketEntry => ({
   lastName: "",
   email: "",
   password: "",
+  memberId: "",
+  passLink: "",
 });
+
+const SPLIT_QTY_MAP: Record<string, number> = {
+  singles: 1,
+  pairs: 2,
+  trios: 3,
+  quads: 4,
+};
 
 export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const { orgId } = useOrg();
   const [events, setEvents] = useState<EventRow[]>([]);
+  const [members, setMembers] = useState<MemberRow[]>([]);
   const [venue, setVenue] = useState("");
   const [eventId, setEventId] = useState("");
   const [category, setCategory] = useState<"GA" | "HOSPO">("GA");
@@ -69,6 +93,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const [showImport, setShowImport] = useState(false);
   const [csvText, setCsvText] = useState("");
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  const [memberPopoverOpen, setMemberPopoverOpen] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -76,6 +101,14 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
       .select("id, match_code, home_team, away_team, event_date, venue, competition")
       .order("event_date", { ascending: false })
       .then(({ data }) => setEvents(data || []));
+  }, []);
+
+  useEffect(() => {
+    supabase
+      .from("members")
+      .select("id, first_name, last_name, email, member_password, email_password, pass_link, supporter_id")
+      .order("first_name")
+      .then(({ data }) => setMembers((data as any) || []));
   }, []);
 
   const filteredEvents = useMemo(() => {
@@ -98,7 +131,6 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const selectedGaSection = gaSections.find(s => s.label === section);
   const blocks = selectedGaSection?.blocks || [];
 
-  // Sync quantity with tickets array
   const handleQuantityChange = useCallback((newQty: number) => {
     const clamped = Math.max(1, Math.min(newQty, 200));
     setQuantity(clamped);
@@ -121,13 +153,19 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
     });
   }, []);
 
-  // Auto-increment seats when first seat is set
+  const handleSplitTypeChange = useCallback((val: string) => {
+    setSplitType(val);
+    const autoQty = SPLIT_QTY_MAP[val];
+    if (autoQty) {
+      handleQuantityChange(autoQty);
+    }
+  }, [handleQuantityChange]);
+
   const handleTicketChange = useCallback((index: number, field: keyof TicketEntry, value: string) => {
     setTickets(prev => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
 
-      // Auto-fill seats sequentially when changing seat on first ticket
       if (field === "seat" && index === 0) {
         const num = parseInt(value);
         if (!isNaN(num)) {
@@ -138,7 +176,6 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
           }
         }
       }
-      // Auto-fill row and faceValue from first ticket
       if (field === "row" && index === 0) {
         for (let i = 1; i < next.length; i++) {
           if (!next[i].row) next[i] = { ...next[i], row: value };
@@ -151,6 +188,23 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
       }
       return next;
     });
+  }, []);
+
+  const assignMember = useCallback((index: number, member: MemberRow) => {
+    setTickets(prev => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        memberId: member.id,
+        firstName: member.first_name,
+        lastName: member.last_name,
+        email: member.email || "",
+        password: member.email_password || member.member_password || "",
+        passLink: member.pass_link || "",
+      };
+      return next;
+    });
+    setMemberPopoverOpen(null);
   }, []);
 
   const removeTicket = useCallback((index: number) => {
@@ -167,7 +221,6 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
     setQuantity(prev => prev + 1);
   }, []);
 
-  // CSV Import
   const handleCsvImport = useCallback((text: string) => {
     const lines = text.trim().split("\n");
     if (lines.length < 2) { toast.error("CSV needs a header row and at least one data row"); return; }
@@ -204,8 +257,9 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
         lastName: cols[colMap.lastName] || "",
         email: cols[colMap.email] || "",
         password: cols[colMap.password] || "",
+        memberId: "",
+        passLink: "",
       });
-      // If section/block found in CSV, set shared fields from first row
       if (i === 1) {
         if (colMap.section !== undefined && cols[colMap.section]) setSection(cols[colMap.section]);
         if (colMap.block !== undefined && cols[colMap.block]) setBlock(cols[colMap.block]);
@@ -255,7 +309,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
       supporter_id: null,
       email: t.email || null,
       password: t.password || null,
-      iphone_pass_link: null,
+      iphone_pass_link: t.passLink || null,
       android_pass_link: null,
       pk_pass_url: null,
       org_id: orgId,
@@ -271,10 +325,15 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
     onCreated();
   };
 
+  const getMemberName = (ticket: TicketEntry) => {
+    const name = [ticket.firstName, ticket.lastName].filter(Boolean).join(" ");
+    return name || null;
+  };
+
   return (
     <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-2xl max-h-[92vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-6 pt-5 pb-3">
+      <DialogContent className="max-w-2xl max-h-[92vh] flex flex-col p-0 gap-0 md:max-w-[680px]">
+        <DialogHeader className="px-4 sm:px-6 pt-5 pb-3">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-lg">Add Inventory</DialogTitle>
             <Button
@@ -289,7 +348,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-4 space-y-4">
           {/* CSV Import Panel */}
           {showImport && (
             <div className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-4 space-y-3">
@@ -336,7 +395,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
           )}
 
           {/* Shared Fields */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Club / Venue</Label>
               <Select value={venue} onValueChange={(v) => { setVenue(v); setEventId(""); setSection(""); setBlock(""); }}>
@@ -364,7 +423,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Category</Label>
               <Select value={category} onValueChange={(v) => { setCategory(v as "GA" | "HOSPO"); setSection(""); setBlock(""); }}>
@@ -406,7 +465,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
             )}
             <div className="space-y-1.5">
               <Label className="text-xs">Split Type</Label>
-              <Select value={splitType} onValueChange={setSplitType}>
+              <Select value={splitType} onValueChange={handleSplitTypeChange}>
                 <SelectTrigger className="h-9"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="singles">Singles</SelectItem>
@@ -419,7 +478,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Source</Label>
               <Select value={source} onValueChange={setSource}>
@@ -472,19 +531,24 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
               {tickets.map((ticket, idx) => {
                 if (removedIds.has(ticket.id)) return null;
                 const isExpanded = expandedTickets.has(ticket.id);
+                const memberName = getMemberName(ticket);
                 return (
                   <div key={ticket.id} className="rounded-lg border bg-card p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-muted-foreground">Ticket {idx + 1}</span>
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        Ticket {idx + 1}
+                        {memberName && <span className="text-foreground ml-1">— {memberName}</span>}
+                      </span>
                       <button
                         onClick={() => removeTicket(idx)}
-                        className="text-muted-foreground hover:text-destructive p-0.5"
+                        className="text-muted-foreground hover:text-destructive p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 sm:p-0.5 flex items-center justify-center"
                         title="Remove"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    {/* Row / Seat / Face Value — stacks on mobile */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div className="space-y-1">
                         <Label className="text-[10px] text-muted-foreground">Row</Label>
                         <Input
@@ -523,12 +587,49 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
                         return next;
                       });
                     }}>
-                      <CollapsibleTrigger className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                      <CollapsibleTrigger className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1">
                         {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                         Login Details
                       </CollapsibleTrigger>
-                      <CollapsibleContent className="pt-2">
-                        <div className="grid grid-cols-2 gap-2">
+                      <CollapsibleContent className="pt-2 space-y-2">
+                        {/* Assign Member dropdown */}
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Assign Member</Label>
+                          <Popover open={memberPopoverOpen === ticket.id} onOpenChange={(open) => setMemberPopoverOpen(open ? ticket.id : null)}>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" size="sm" className="w-full justify-start h-8 text-xs gap-1.5">
+                                <UserSearch className="h-3 w-3 text-muted-foreground shrink-0" />
+                                {ticket.memberId
+                                  ? `${ticket.firstName} ${ticket.lastName}`
+                                  : "Search members…"
+                                }
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)] sm:w-72" align="start">
+                              <Command>
+                                <CommandInput placeholder="Search by name or email…" />
+                                <CommandList>
+                                  <CommandEmpty>No members found</CommandEmpty>
+                                  <CommandGroup>
+                                    {members.map(m => (
+                                      <CommandItem
+                                        key={m.id}
+                                        value={`${m.first_name} ${m.last_name} ${m.email || ""}`}
+                                        onSelect={() => assignMember(idx, m)}
+                                        className="flex flex-col items-start py-2"
+                                      >
+                                        <span className="font-medium text-xs">{m.first_name} {m.last_name}</span>
+                                        {m.email && <span className="text-[10px] text-muted-foreground">{m.email}</span>}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div className="space-y-1">
                             <Label className="text-[10px] text-muted-foreground">First Name</Label>
                             <Input value={ticket.firstName} onChange={e => handleTicketChange(idx, "firstName", e.target.value)} className="h-8 text-xs" placeholder="John" />
@@ -546,12 +647,25 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
                             <Input value={ticket.password} onChange={e => handleTicketChange(idx, "password", e.target.value)} className="h-8 text-xs" placeholder="••••••" />
                           </div>
                         </div>
+
+                        {/* Pass Link */}
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Pass Link</Label>
+                          <div className="flex items-center gap-1">
+                            <Input value={ticket.passLink} onChange={e => handleTicketChange(idx, "passLink", e.target.value)} className="h-8 text-xs" placeholder="https://..." />
+                            {ticket.passLink && (
+                              <a href={ticket.passLink} target="_blank" rel="noopener" className="p-1.5 rounded hover:bg-muted/60 shrink-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center">
+                                <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
                       </CollapsibleContent>
                     </Collapsible>
                   </div>
                 );
               })}
-              <Button variant="ghost" size="sm" onClick={addTicketRow} className="w-full text-xs gap-1 border border-dashed">
+              <Button variant="ghost" size="sm" onClick={addTicketRow} className="w-full text-xs gap-1 border border-dashed min-h-[44px]">
                 <Plus className="h-3.5 w-3.5" /> Add Ticket
               </Button>
             </div>
@@ -581,61 +695,25 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
                       <tr key={ticket.id} className="border-b last:border-0 hover:bg-muted/20">
                         <td className="px-2 py-1 text-muted-foreground font-mono">{idx + 1}</td>
                         <td className="px-1 py-1">
-                          <input
-                            value={ticket.row}
-                            onChange={e => handleTicketChange(idx, "row", e.target.value)}
-                            className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs"
-                            placeholder="A"
-                          />
+                          <input value={ticket.row} onChange={e => handleTicketChange(idx, "row", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="A" />
                         </td>
                         <td className="px-1 py-1">
-                          <input
-                            value={ticket.seat}
-                            onChange={e => handleTicketChange(idx, "seat", e.target.value)}
-                            className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs"
-                            placeholder="50"
-                          />
+                          <input value={ticket.seat} onChange={e => handleTicketChange(idx, "seat", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="50" />
                         </td>
                         <td className="px-1 py-1">
-                          <input
-                            type="number"
-                            value={ticket.faceValue}
-                            onChange={e => handleTicketChange(idx, "faceValue", e.target.value)}
-                            className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs"
-                            placeholder="0.00"
-                          />
+                          <input type="number" value={ticket.faceValue} onChange={e => handleTicketChange(idx, "faceValue", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="0.00" />
                         </td>
                         <td className="px-1 py-1">
-                          <input
-                            value={ticket.firstName}
-                            onChange={e => handleTicketChange(idx, "firstName", e.target.value)}
-                            className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs"
-                            placeholder="John"
-                          />
+                          <input value={ticket.firstName} onChange={e => handleTicketChange(idx, "firstName", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="John" />
                         </td>
                         <td className="px-1 py-1">
-                          <input
-                            value={ticket.lastName}
-                            onChange={e => handleTicketChange(idx, "lastName", e.target.value)}
-                            className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs"
-                            placeholder="Smith"
-                          />
+                          <input value={ticket.lastName} onChange={e => handleTicketChange(idx, "lastName", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="Smith" />
                         </td>
                         <td className="px-1 py-1">
-                          <input
-                            value={ticket.email}
-                            onChange={e => handleTicketChange(idx, "email", e.target.value)}
-                            className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs"
-                            placeholder="email"
-                          />
+                          <input value={ticket.email} onChange={e => handleTicketChange(idx, "email", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="email" />
                         </td>
                         <td className="px-1 py-1">
-                          <input
-                            value={ticket.password}
-                            onChange={e => handleTicketChange(idx, "password", e.target.value)}
-                            className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs"
-                            placeholder="pass"
-                          />
+                          <input value={ticket.password} onChange={e => handleTicketChange(idx, "password", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="pass" />
                         </td>
                         <td className="px-1 py-1">
                           <button onClick={() => removeTicket(idx)} className="text-muted-foreground hover:text-destructive p-0.5">
@@ -649,7 +727,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
               </table>
               <button
                 onClick={addTicketRow}
-                className="w-full text-xs text-muted-foreground hover:text-foreground py-2 flex items-center justify-center gap-1 border-t hover:bg-muted/30 transition-colors"
+                className="w-full text-xs text-muted-foreground hover:text-foreground py-2 flex items-center justify-center gap-1 border-t hover:bg-muted/30 transition-colors min-h-[44px]"
               >
                 <Plus className="h-3 w-3" /> Add Row
               </button>
@@ -658,7 +736,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="border-t px-6 py-3 flex items-center justify-between bg-muted/30">
+        <div className="border-t px-4 sm:px-6 py-3 flex items-center justify-between bg-muted/30 sticky bottom-0">
           <div className="flex items-center gap-3">
             <Badge variant="secondary" className="text-xs font-mono">
               {validTickets.length} ticket{validTickets.length !== 1 ? "s" : ""} ready
@@ -669,7 +747,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
               </span>
             )}
           </div>
-          <Button onClick={handleSubmit} disabled={loading || hasErrors} size="sm" className="min-w-[140px]">
+          <Button onClick={handleSubmit} disabled={loading || hasErrors} size="sm" className="min-w-[120px] sm:min-w-[140px] min-h-[44px] sm:min-h-0">
             {loading ? "Adding..." : `Add ${validTickets.length > 1 ? "All " : ""}${validTickets.length} Ticket${validTickets.length !== 1 ? "s" : ""}`}
           </Button>
         </div>
