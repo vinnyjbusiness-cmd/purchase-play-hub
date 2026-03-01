@@ -109,10 +109,14 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
 
     const map = new Map<string, TicketGroup>();
     tickets.forEach(t => {
-      // Group by purchase_id if available, otherwise by supplier+section (all loose inventory together)
-      const key = t.purchase_id
-        ? `purchase:${t.purchase_id}`
-        : `inv:${t.supplier_name}|${t.section || ""}`;
+      // Match inventory page grouping: by purchase_id, or by section+row for loose inventory
+      let key: string;
+      if (t.purchase_id) {
+        key = `purchase:${t.purchase_id}`;
+      } else {
+        const sig = [t.section || t.category || "", t.row_name || ""].join("|");
+        key = `inv:${t.supplier_name}|${sig}`;
+      }
 
       if (!map.has(key)) {
         map.set(key, {
@@ -127,14 +131,12 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
       map.get(key)!.tickets.push(t);
     });
 
-    // Set lead booker from first ticket with a name, sort tickets
+    // Set lead booker from first ticket with a name, sort tickets by seat number
     for (const g of map.values()) {
       const bt = g.tickets.find(t => t.first_name || t.last_name);
       if (bt) g.leadBooker = [bt.first_name, bt.last_name].filter(Boolean).join(" ");
 
       g.tickets.sort((a, b) => {
-        const rowCmp = (a.row_name || "").localeCompare(b.row_name || "");
-        if (rowCmp !== 0) return rowCmp;
         const sA = parseInt(a.seat || "0") || 0;
         const sB = parseInt(b.seat || "0") || 0;
         return sA - sB;
@@ -259,6 +261,14 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {group.section || "—"}
+                            {(() => {
+                              const rows = [...new Set(group.tickets.map(t => t.row_name).filter(Boolean))];
+                              const seats = group.tickets.map(t => t.seat).filter(Boolean).sort((a, b) => (parseInt(a!) || 0) - (parseInt(b!) || 0));
+                              const parts: string[] = [];
+                              if (rows.length > 0) parts.push(`Row ${rows.join(", ")}`);
+                              if (seats.length > 0) parts.push(`Seats ${seats.join(", ")}`);
+                              return parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
+                            })()}
                           </p>
                           {group.leadBooker && (
                             <p className="text-xs mt-0.5">
