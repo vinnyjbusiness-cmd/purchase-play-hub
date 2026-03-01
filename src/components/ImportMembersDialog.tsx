@@ -16,6 +16,20 @@ import {
 } from "@/components/ui/tooltip";
 import { Upload, X, AlertTriangle, Ticket } from "lucide-react";
 
+/** Normalize date strings to YYYY-MM-DD for Postgres */
+function normalizeDate(raw: string): string | null {
+  if (!raw || !raw.trim()) return null;
+  const s = raw.trim();
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+  if (m) {
+    let year = m[3];
+    if (year.length === 2) year = (parseInt(year) > 50 ? "19" : "20") + year;
+    return `${year}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  }
+  return s;
+}
+
 interface ImportMembersDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -181,7 +195,7 @@ export default function ImportMembersDialog({ open, onOpenChange, orgId, onCompl
       member_password: r.member_password || null,
       email_password: r.email_password || null,
       phone_number: r.phone_number || null,
-      date_of_birth: r.date_of_birth || null,
+      date_of_birth: normalizeDate(r.date_of_birth),
       postcode: r.postcode || null,
       address: r.address || null,
       iphone_pass_link: r.iphone_pass_link || null,
