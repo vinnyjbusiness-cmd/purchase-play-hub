@@ -27,6 +27,8 @@ interface AvailableTicket {
   seat: string | null;
   purchase_id: string | null;
   face_value: number | null;
+  first_name: string | null;
+  last_name: string | null;
   supplier_name: string;
   supplier_order_id: string | null;
   unit_cost: number;
@@ -52,7 +54,7 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
     async function load() {
       const { data: inventory } = await supabase
         .from("inventory")
-        .select("id, category, section, row_name, seat, purchase_id, status, face_value")
+        .select("id, category, section, row_name, seat, purchase_id, status, face_value, first_name, last_name")
         .eq("event_id", eventId)
         .in("status", ["available", "reserved"]);
 
@@ -81,7 +83,6 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
             const unitCost = Number(p?.unit_cost || 0);
             const faceValue = Number(inv.face_value || 0);
             const effectiveCost = unitCost > 0 ? unitCost : faceValue;
-            // Filter out £0.00 entries
             if (effectiveCost <= 0) return null;
             return {
               id: inv.id,
@@ -91,7 +92,9 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
               seat: inv.seat,
               purchase_id: inv.purchase_id,
               face_value: inv.face_value,
-              supplier_name: p?.suppliers?.name || "Stock",
+              first_name: inv.first_name,
+              last_name: inv.last_name,
+              supplier_name: p?.suppliers?.name || "Inventory",
               supplier_order_id: p?.supplier_order_id || null,
               unit_cost: effectiveCost,
               currency: p?.currency || "GBP",
@@ -103,7 +106,6 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
     load();
   }, [eventId, existingInventoryIds]);
 
-  // Group by contact + event (same supplier_name, category, section, unit_cost)
   const groups = useMemo((): TicketGroup[] => {
     if (tickets.length === 0) return [];
 
@@ -150,7 +152,6 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
     });
   };
 
-  // Compute which ticket IDs are selected
   const selectedIds = useMemo(() => {
     const ids: string[] = [];
     groups.forEach(g => {
@@ -194,6 +195,24 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
     return s + (t?.unit_cost || 0);
   }, 0);
 
+  /** Build seat summary string from tickets in a group */
+  const seatSummary = (groupTickets: AvailableTicket[]) => {
+    const parts: string[] = [];
+    const rows = [...new Set(groupTickets.map(t => t.row_name).filter(Boolean))];
+    if (rows.length > 0) parts.push(`Row ${rows.join(", ")}`);
+    const seats = groupTickets.map(t => t.seat).filter(Boolean);
+    if (seats.length > 0 && seats.length <= 6) parts.push(`Seats ${seats.join(", ")}`);
+    else if (seats.length > 6) parts.push(`${seats.length} seats`);
+    return parts.length > 0 ? parts.join(" · ") : null;
+  };
+
+  /** Get lead booker name from first ticket that has one */
+  const leadBooker = (groupTickets: AvailableTicket[]) => {
+    const t = groupTickets.find(t => t.first_name || t.last_name);
+    if (!t) return null;
+    return [t.first_name, t.last_name].filter(Boolean).join(" ");
+  };
+
   return (
     <Dialog open onOpenChange={() => onClose()}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
@@ -216,6 +235,8 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
               {groups.map((group) => {
                 const count = selectedCounts[group.key] || 0;
                 const max = group.tickets.length;
+                const booker = leadBooker(group.tickets);
+                const seats = seatSummary(group.tickets);
                 return (
                   <div
                     key={group.key}
@@ -232,10 +253,18 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {group.category}
-                          {group.section && ` · ${group.section}`}
+                          {group.section || "—"}
                           {` · ${sym(group.currency)}${group.unit_cost.toFixed(2)}/ea`}
                         </p>
+                        {seats && (
+                          <p className="text-xs text-muted-foreground">{seats}</p>
+                        )}
+                        {booker && (
+                          <p className="text-xs mt-0.5">
+                            <span className="text-muted-foreground">Lead Booker:</span>{" "}
+                            <span className="font-medium text-foreground">{booker}</span>
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Button
