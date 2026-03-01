@@ -57,12 +57,10 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const now = new Date().toISOString();
     supabase
       .from("events")
       .select("id, match_code, home_team, away_team, event_date, venue, competition")
-      .gte("event_date", now)
-      .order("event_date")
+      .order("event_date", { ascending: false })
       .then(({ data }) => setEvents(data || []));
   }, []);
 
