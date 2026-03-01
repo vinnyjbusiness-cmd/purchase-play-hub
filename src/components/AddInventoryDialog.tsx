@@ -635,7 +635,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
                                     {members.map(m => (
                                       <CommandItem
                                         key={m.id}
-                                        value={`${m.first_name} ${m.last_name} ${m.email || ""}`}
+                                        value={`${m.first_name} ${m.last_name}`}
                                         onSelect={() => assignMember(idx, m)}
                                         className="flex flex-col items-start py-2"
                                       >
