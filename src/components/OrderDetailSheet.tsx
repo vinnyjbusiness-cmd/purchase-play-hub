@@ -33,7 +33,9 @@ interface LinkedTicket {
   supplier_name: string;
   supplier_order_id: string | null;
   unit_cost: number;
+  face_value: number;
   purchase_currency: string;
+  source: string;
 }
 
 interface OrderInfo {
@@ -91,21 +93,29 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
       const inventoryIds = orderLines.map((ol) => ol.inventory_id);
       const { data: inventoryData } = await supabase
         .from("inventory")
-        .select("id, category, section, row_name, seat, purchase_id")
+        .select("id, category, section, row_name, seat, purchase_id, face_value, source")
         .in("id", inventoryIds);
 
       if (inventoryData && inventoryData.length > 0) {
-        const purchaseIds = [...new Set(inventoryData.map((i) => i.purchase_id))];
-        const { data: purchaseData } = await supabase
-          .from("purchases")
-          .select("id, unit_cost, currency, supplier_order_id, suppliers(name)")
-          .in("id", purchaseIds);
-
-        const purchaseMap = new Map((purchaseData || []).map((p) => [p.id, p]));
+        const purchaseIds = [...new Set(inventoryData.map((i) => i.purchase_id).filter(Boolean))];
+        let purchaseMap = new Map();
+        if (purchaseIds.length > 0) {
+          const { data: purchaseData } = await supabase
+            .from("purchases")
+            .select("id, unit_cost, currency, supplier_order_id, suppliers(name)")
+            .in("id", purchaseIds);
+          purchaseMap = new Map((purchaseData || []).map((p) => [p.id, p]));
+        }
 
         const tickets: LinkedTicket[] = inventoryData.map((inv) => {
           const ol = orderLines.find((o) => o.inventory_id === inv.id)!;
-          const purchase = purchaseMap.get(inv.purchase_id) as any;
+          const purchase = inv.purchase_id ? purchaseMap.get(inv.purchase_id) as any : null;
+          const unitCost = Number(purchase?.unit_cost || 0);
+          const faceValue = Number(inv.face_value || 0);
+          // Use purchase unit_cost if available, otherwise face_value
+          const effectiveCost = unitCost > 0 ? unitCost : faceValue;
+          // Supplier: from purchase if exists, otherwise use inventory source
+          const supplierName = purchase?.suppliers?.name || inv.source || "Inventory";
           return {
             order_line_id: ol.id,
             inventory_id: inv.id,
@@ -114,10 +124,12 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
             row_name: inv.row_name,
             seat: inv.seat,
             purchase_id: inv.purchase_id,
-            supplier_name: purchase?.suppliers?.name || "Unknown",
+            supplier_name: supplierName,
             supplier_order_id: purchase?.supplier_order_id || null,
-            unit_cost: Number(purchase?.unit_cost || 0),
+            unit_cost: effectiveCost,
+            face_value: faceValue,
             purchase_currency: purchase?.currency || "GBP",
+            source: inv.source || "IJK",
           };
         });
         setLinkedTickets(tickets);
@@ -151,7 +163,41 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
   const totalCost = linkedTickets.reduce((s, t) => s + t.unit_cost, 0);
   const saleTotal = Number(order.sale_price) * order.quantity;
   const fees = Number(order.fees) || 0;
-  const profit = saleTotal - fees - totalCost;
+
+  // Check if any tickets are IJK sourced
+  const ijkTickets = linkedTickets.filter(t => t.source === "IJK");
+  const nonIjkTickets = linkedTickets.filter(t => t.source !== "IJK");
+
+  // For IJK tickets: profit = (sale revenue - face value cost) / 2
+  // For non-IJK: profit = sale revenue - cost
+  let profit: number;
+  let ijkSplit: number | null = null;
+
+  if (ijkTickets.length > 0 && ijkTickets.length === linkedTickets.length) {
+    // All tickets are IJK
+    const ijkFaceTotal = ijkTickets.reduce((s, t) => s + t.face_value, 0);
+    const grossProfit = saleTotal - fees - ijkFaceTotal;
+    ijkSplit = grossProfit / 2;
+    profit = ijkSplit;
+  } else if (ijkTickets.length > 0) {
+    // Mixed - split proportionally by ticket
+    const perTicketSale = (saleTotal - fees) / order.quantity;
+    let total = 0;
+    let ijkShareTotal = 0;
+    for (const t of nonIjkTickets) {
+      total += perTicketSale - t.unit_cost;
+    }
+    for (const t of ijkTickets) {
+      const ticketGrossProfit = perTicketSale - t.face_value;
+      ijkShareTotal += ticketGrossProfit / 2;
+      total += ticketGrossProfit / 2;
+    }
+    ijkSplit = ijkShareTotal;
+    profit = total;
+  } else {
+    profit = saleTotal - fees - totalCost;
+  }
+
   const sym = (c: string) => (c === "GBP" ? "£" : c === "USD" ? "$" : "€");
 
   return (
@@ -285,7 +331,7 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
               <div className="rounded-lg border p-4 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Sale ({order.quantity}× £{Number(order.sale_price).toFixed(2)})</span>
-                  <span className="font-medium">£{(Number(order.sale_price) * order.quantity).toFixed(2)}</span>
+                  <span className="font-medium">£{saleTotal.toFixed(2)}</span>
                 </div>
                 {fees > 0 && (
                   <div className="flex justify-between">
@@ -295,12 +341,28 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
                 )}
                 <Separator />
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Supply Cost ({linkedTickets.length} ticket{linkedTickets.length !== 1 ? "s" : ""})</span>
+                  <span className="text-muted-foreground">
+                    Supply Cost ({linkedTickets.length} ticket{linkedTickets.length !== 1 ? "s" : ""})
+                    {ijkTickets.length > 0 && " — Face Value"}
+                  </span>
                   <span className="font-medium text-destructive">-£{totalCost.toFixed(2)}</span>
                 </div>
+                {ijkSplit !== null && (
+                  <>
+                    <Separator />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Gross Profit</span>
+                      <span className="font-medium">£{(saleTotal - fees - totalCost).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">IJK 50/50 Split</span>
+                      <span className="font-medium text-destructive">-£{ijkSplit.toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
                 <Separator />
                 <div className="flex justify-between text-base font-bold">
-                  <span>Profit</span>
+                  <span>{ijkSplit !== null ? "Your Profit" : "Profit"}</span>
                   <span className={profit >= 0 ? "text-success" : "text-destructive"}>
                     {profit >= 0 ? "+" : ""}£{profit.toFixed(2)}
                   </span>
