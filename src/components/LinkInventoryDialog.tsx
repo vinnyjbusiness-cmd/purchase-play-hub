@@ -39,7 +39,6 @@ interface TicketGroup {
   key: string;
   supplierName: string;
   section: string | null;
-  unit_cost: number;
   currency: string;
   leadBooker: string | null;
   tickets: AvailableTicket[];
@@ -110,30 +109,30 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
 
     const map = new Map<string, TicketGroup>();
     tickets.forEach(t => {
-      const key = `${t.supplier_name}|${t.section || ""}|${t.unit_cost}|${t.currency}`;
-      if (!map.has(key)) {
-        const bookerTicket = tickets.filter(
-          tt => `${tt.supplier_name}|${tt.section || ""}|${tt.unit_cost}|${tt.currency}` === key
-        ).find(tt => tt.first_name || tt.last_name);
-        const booker = bookerTicket
-          ? [bookerTicket.first_name, bookerTicket.last_name].filter(Boolean).join(" ")
-          : null;
+      // Group by purchase_id if available, otherwise by supplier+section+lead booker name
+      const bookerName = [t.first_name, t.last_name].filter(Boolean).join(" ").trim();
+      const key = t.purchase_id
+        ? `purchase:${t.purchase_id}`
+        : `inv:${t.supplier_name}|${t.section || ""}|${bookerName}`;
 
+      if (!map.has(key)) {
         map.set(key, {
           key,
           supplierName: t.supplier_name,
           section: t.section,
-          unit_cost: t.unit_cost,
           currency: t.currency,
-          leadBooker: booker,
+          leadBooker: null,
           tickets: [],
         });
       }
       map.get(key)!.tickets.push(t);
     });
 
-    // Sort tickets within each group by row then seat
+    // Set lead booker from first ticket with a name, sort tickets
     for (const g of map.values()) {
+      const bt = g.tickets.find(t => t.first_name || t.last_name);
+      if (bt) g.leadBooker = [bt.first_name, bt.last_name].filter(Boolean).join(" ");
+
       g.tickets.sort((a, b) => {
         const rowCmp = (a.row_name || "").localeCompare(b.row_name || "");
         if (rowCmp !== 0) return rowCmp;
@@ -261,7 +260,6 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {group.section || "—"}
-                            {` · ${sym(group.currency)}${group.unit_cost.toFixed(2)}/ea`}
                           </p>
                           {group.leadBooker && (
                             <p className="text-xs mt-0.5">
@@ -282,17 +280,27 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
                     <div className="px-3 pb-3 flex flex-wrap gap-1.5">
                       {group.tickets.map(t => {
                         const isSelected = selectedIds.has(t.id);
+                        const label = chipLabel(t);
+                        const name = [t.first_name, t.last_name].filter(Boolean).join(" ").trim();
                         return (
                           <button
                             key={t.id}
                             onClick={() => toggleTicket(t.id)}
-                            className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
+                            title={name || undefined}
+                            className={`inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all ${
                               isSelected
-                                ? "bg-primary text-primary-foreground border-primary"
-                                : "bg-muted/50 text-foreground border-border hover:border-primary/50"
+                                ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                : "bg-muted/40 text-foreground border-border hover:border-primary/50 hover:bg-muted"
                             }`}
                           >
-                            {chipLabel(t)}
+                            <span className={`inline-flex items-center justify-center h-5 min-w-[20px] px-1 rounded text-[10px] font-bold ${
+                              isSelected ? "bg-primary-foreground/20" : "bg-background"
+                            }`}>
+                              {t.seat || "—"}
+                            </span>
+                            <span className="text-[11px]">
+                              {t.row_name ? `Row ${t.row_name}` : label === "Ticket" ? (name || "Ticket") : ""}
+                            </span>
                           </button>
                         );
                       })}
