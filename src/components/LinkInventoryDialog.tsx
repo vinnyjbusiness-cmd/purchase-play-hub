@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Minus, Plus } from "lucide-react";
+import { Check } from "lucide-react";
 
 interface Props {
   orderId: string;
@@ -38,16 +38,16 @@ interface AvailableTicket {
 interface TicketGroup {
   key: string;
   supplierName: string;
-  category: string;
   section: string | null;
   unit_cost: number;
   currency: string;
+  leadBooker: string | null;
   tickets: AvailableTicket[];
 }
 
 export default function LinkInventoryDialog({ orderId, eventId, existingInventoryIds, onClose, onLinked }: Props) {
   const [tickets, setTickets] = useState<AvailableTicket[]>([]);
-  const [selectedCounts, setSelectedCounts] = useState<Record<string, number>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -64,7 +64,6 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
       }
 
       const filtered = inventory.filter((i) => !existingInventoryIds.includes(i.id));
-      
       const purchaseIds = [...new Set(filtered.map((i) => i.purchase_id).filter(Boolean))] as string[];
 
       let purchaseMap = new Map();
@@ -111,63 +110,71 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
 
     const map = new Map<string, TicketGroup>();
     tickets.forEach(t => {
-      const key = `${t.supplier_name}|${t.category}|${t.section || ""}|${t.unit_cost}|${t.currency}`;
+      const key = `${t.supplier_name}|${t.section || ""}|${t.unit_cost}|${t.currency}`;
       if (!map.has(key)) {
+        const bookerTicket = tickets.filter(
+          tt => `${tt.supplier_name}|${tt.section || ""}|${tt.unit_cost}|${tt.currency}` === key
+        ).find(tt => tt.first_name || tt.last_name);
+        const booker = bookerTicket
+          ? [bookerTicket.first_name, bookerTicket.last_name].filter(Boolean).join(" ")
+          : null;
+
         map.set(key, {
           key,
           supplierName: t.supplier_name,
-          category: t.category,
           section: t.section,
           unit_cost: t.unit_cost,
           currency: t.currency,
+          leadBooker: booker,
           tickets: [],
         });
       }
       map.get(key)!.tickets.push(t);
     });
 
+    // Sort tickets within each group by row then seat
+    for (const g of map.values()) {
+      g.tickets.sort((a, b) => {
+        const rowCmp = (a.row_name || "").localeCompare(b.row_name || "");
+        if (rowCmp !== 0) return rowCmp;
+        const sA = parseInt(a.seat || "0") || 0;
+        const sB = parseInt(b.seat || "0") || 0;
+        return sA - sB;
+      });
+    }
+
     return Array.from(map.values()).sort((a, b) => b.tickets.length - a.tickets.length);
   }, [tickets]);
 
-  const adjustCount = (groupKey: string, delta: number, max: number) => {
-    setSelectedCounts(prev => {
-      const current = prev[groupKey] || 0;
-      const next = Math.max(0, Math.min(max, current + delta));
-      if (next === 0) {
-        const { [groupKey]: _, ...rest } = prev;
-        return rest;
-      }
-      return { ...prev, [groupKey]: next };
+  const toggleTicket = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
   };
 
-  const selectAll = (groupKey: string, max: number) => {
-    setSelectedCounts(prev => {
-      const current = prev[groupKey] || 0;
-      if (current === max) {
-        const { [groupKey]: _, ...rest } = prev;
-        return rest;
+  const toggleGroup = (group: TicketGroup) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      const allSelected = group.tickets.every(t => next.has(t.id));
+      if (allSelected) {
+        group.tickets.forEach(t => next.delete(t.id));
+      } else {
+        group.tickets.forEach(t => next.add(t.id));
       }
-      return { ...prev, [groupKey]: max };
+      return next;
     });
   };
 
-  const selectedIds = useMemo(() => {
-    const ids: string[] = [];
-    groups.forEach(g => {
-      const count = selectedCounts[g.key] || 0;
-      for (let i = 0; i < count && i < g.tickets.length; i++) {
-        ids.push(g.tickets[i].id);
-      }
-    });
-    return ids;
-  }, [groups, selectedCounts]);
+  const selectedArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
 
   const handleLink = async () => {
-    if (selectedIds.length === 0) return;
+    if (selectedArray.length === 0) return;
     setLoading(true);
     try {
-      const lines = selectedIds.map((inventoryId) => ({
+      const lines = selectedArray.map((inventoryId) => ({
         order_id: orderId,
         inventory_id: inventoryId,
       }));
@@ -177,10 +184,10 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
       const { error: invError } = await supabase
         .from("inventory")
         .update({ status: "sold" as any })
-        .in("id", selectedIds);
+        .in("id", selectedArray);
       if (invError) throw invError;
 
-      toast.success(`${selectedIds.length} ticket${selectedIds.length !== 1 ? "s" : ""} linked`);
+      toast.success(`${selectedArray.length} ticket${selectedArray.length !== 1 ? "s" : ""} linked`);
       onLinked();
     } catch (err: any) {
       toast.error(err.message);
@@ -190,27 +197,18 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
   };
 
   const sym = (c: string) => (c === "GBP" ? "£" : c === "USD" ? "$" : "€");
-  const totalCost = selectedIds.reduce((s, id) => {
+  const totalCost = selectedArray.reduce((s, id) => {
     const t = tickets.find((t) => t.id === id);
     return s + (t?.unit_cost || 0);
   }, 0);
 
-  /** Build seat summary string from tickets in a group */
-  const seatSummary = (groupTickets: AvailableTicket[]) => {
+  /** Display label for a ticket chip */
+  const chipLabel = (t: AvailableTicket) => {
     const parts: string[] = [];
-    const rows = [...new Set(groupTickets.map(t => t.row_name).filter(Boolean))];
-    if (rows.length > 0) parts.push(`Row ${rows.join(", ")}`);
-    const seats = groupTickets.map(t => t.seat).filter(Boolean);
-    if (seats.length > 0 && seats.length <= 6) parts.push(`Seats ${seats.join(", ")}`);
-    else if (seats.length > 6) parts.push(`${seats.length} seats`);
-    return parts.length > 0 ? parts.join(" · ") : null;
-  };
-
-  /** Get lead booker name from first ticket that has one */
-  const leadBooker = (groupTickets: AvailableTicket[]) => {
-    const t = groupTickets.find(t => t.first_name || t.last_name);
-    if (!t) return null;
-    return [t.first_name, t.last_name].filter(Boolean).join(" ");
+    if (t.row_name) parts.push(`R${t.row_name}`);
+    if (t.seat) parts.push(`S${t.seat}`);
+    if (parts.length === 0) return "Ticket";
+    return parts.join(" ");
   };
 
   return (
@@ -228,88 +226,93 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
         ) : (
           <>
             <p className="text-sm text-muted-foreground mb-3">
-              Select how many tickets to link from each source.
+              Tap individual seats to select, or tap the header to select all.
             </p>
 
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
               {groups.map((group) => {
-                const count = selectedCounts[group.key] || 0;
-                const max = group.tickets.length;
-                const booker = leadBooker(group.tickets);
-                const seats = seatSummary(group.tickets);
+                const groupSelectedCount = group.tickets.filter(t => selectedIds.has(t.id)).length;
+                const allSelected = groupSelectedCount === group.tickets.length;
+
                 return (
                   <div
                     key={group.key}
-                    className={`p-3 rounded-lg border transition-colors ${
-                      count > 0 ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                    className={`rounded-lg border transition-colors ${
+                      groupSelectedCount > 0 ? "border-primary bg-primary/5" : "hover:bg-muted/50"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">{group.supplierName}</span>
-                          <Badge variant="secondary" className="text-xs">
-                            {max} ticket{max !== 1 ? "s" : ""}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {group.section || "—"}
-                          {` · ${sym(group.currency)}${group.unit_cost.toFixed(2)}/ea`}
-                        </p>
-                        {seats && (
-                          <p className="text-xs text-muted-foreground">{seats}</p>
-                        )}
-                        {booker && (
-                          <p className="text-xs mt-0.5">
-                            <span className="text-muted-foreground">Lead Booker:</span>{" "}
-                            <span className="font-medium text-foreground">{booker}</span>
+                    {/* Group header - click to select all */}
+                    <button
+                      className="w-full p-3 text-left"
+                      onClick={() => toggleGroup(group)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold">{group.supplierName}</span>
+                            <Badge variant="secondary" className="text-xs">
+                              {group.tickets.length} ticket{group.tickets.length !== 1 ? "s" : ""}
+                            </Badge>
+                            {groupSelectedCount > 0 && (
+                              <Badge variant="default" className="text-[10px] py-0">
+                                {groupSelectedCount} selected
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {group.section || "—"}
+                            {` · ${sym(group.currency)}${group.unit_cost.toFixed(2)}/ea`}
                           </p>
-                        )}
+                          {group.leadBooker && (
+                            <p className="text-xs mt-0.5">
+                              <span className="text-muted-foreground">Lead Booker:</span>{" "}
+                              <span className="font-medium text-foreground">{group.leadBooker}</span>
+                            </p>
+                          )}
+                        </div>
+                        <div className={`h-5 w-5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                          allSelected ? "bg-primary border-primary" : "border-muted-foreground/30"
+                        }`}>
+                          {allSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="h-8 w-8"
-                          disabled={count <= 0}
-                          onClick={() => adjustCount(group.key, -1, max)}
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </Button>
-                        <button
-                          className="w-8 text-center text-sm font-bold tabular-nums"
-                          onClick={() => selectAll(group.key, max)}
-                          title="Toggle all"
-                        >
-                          {count}
-                        </button>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="h-8 w-8"
-                          disabled={count >= max}
-                          onClick={() => adjustCount(group.key, 1, max)}
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                    </button>
+
+                    {/* Individual seat chips */}
+                    <div className="px-3 pb-3 flex flex-wrap gap-1.5">
+                      {group.tickets.map(t => {
+                        const isSelected = selectedIds.has(t.id);
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => toggleTicket(t.id)}
+                            className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
+                              isSelected
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-muted/50 text-foreground border-border hover:border-primary/50"
+                            }`}
+                          >
+                            {chipLabel(t)}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {selectedIds.length > 0 && (
+            {selectedArray.length > 0 && (
               <div className="rounded-lg bg-muted p-3 text-sm">
                 <div className="flex justify-between">
-                  <span>{selectedIds.length} ticket{selectedIds.length !== 1 ? "s" : ""} selected</span>
+                  <span>{selectedArray.length} ticket{selectedArray.length !== 1 ? "s" : ""} selected</span>
                   <span className="font-semibold">Total cost: £{totalCost.toFixed(2)}</span>
                 </div>
               </div>
             )}
 
-            <Button onClick={handleLink} disabled={selectedIds.length === 0 || loading} className="w-full">
-              {loading ? "Linking..." : `Link ${selectedIds.length} Ticket${selectedIds.length !== 1 ? "s" : ""}`}
+            <Button onClick={handleLink} disabled={selectedArray.length === 0 || loading} className="w-full">
+              {loading ? "Linking..." : `Link ${selectedArray.length} Ticket${selectedArray.length !== 1 ? "s" : ""}`}
             </Button>
           </>
         )}
