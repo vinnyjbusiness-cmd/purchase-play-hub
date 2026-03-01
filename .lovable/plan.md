@@ -1,88 +1,58 @@
 
 
-## Listings Manager Page
+## Members Pass Links Enhancement
 
 ### Overview
-A new "Listings Manager" page for managing ticket listings across platforms (Tixstock, FootballTicketNet, LiveFootball, Fanpass). Events are grouped as collapsible cards with per-listing controls for publishing, pricing, and deletion.
+Add iPhone, Android, and PK Pass support to the Members page with file upload for .pkpass files, pass indicator icons in the table, and full edit support.
 
-### 1. Database: New `listings` table
+### 1. Database Changes
 
-Uses the existing `events` table (no new events table needed).
+**Members table** -- add three new columns:
+- `iphone_pass_link` (text, nullable) -- URL for iPhone wallet pass
+- `android_pass_link` (text, nullable) -- URL for Android wallet pass  
+- `pk_pass_url` (text, nullable) -- Supabase Storage URL for uploaded .pkpass file
 
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK, gen_random_uuid() |
-| org_id | uuid | NOT NULL |
-| event_id | uuid | NOT NULL, FK to events |
-| platform | text | NOT NULL (tixstock, footballticketnet, livefootball, fanpass) |
-| section | text | nullable |
-| row | text | nullable |
-| seat_from | text | nullable |
-| seat_to | text | nullable |
-| quantity | integer | NOT NULL, default 1 |
-| price | numeric | NOT NULL |
-| face_value | numeric | nullable |
-| status | text | NOT NULL, default 'published' |
-| external_listing_id | text | nullable |
-| last_synced_at | timestamptz | nullable |
-| created_at | timestamptz | default now() |
-| updated_at | timestamptz | default now() |
+**Storage** -- create a `pkpass-files` bucket (public) with RLS policies allowing authenticated users to upload/read and admins to delete.
 
-RLS: Admin-only full access, authenticated SELECT.
+### 2. Add/Edit Member Modal Updates
 
-### 2. New Page: `src/pages/ListingsManager.tsx`
+**File: `src/pages/Members.tsx`**
 
-**Layout:**
-- Header: "Listings Manager" title with page-level search input
-- Horizontal filter tabs: All | Tixstock | FootballTicketNet | LiveFootball | Fanpass (matching existing FilterSelect/tab style)
-- Each platform tab shows a "Sync" button and "Last synced" timestamp
-- Below tabs: event cards in a vertical stack
+- Add `iphone_pass_link`, `android_pass_link`, `pk_pass_url` to `EMPTY_FORM` and `Member` interface
+- Add a "Pass Links" section below the Address field with:
+  - iPhone Pass Link: URL input with Apple icon and copy button
+  - Android Pass Link: URL input with Smartphone icon and copy button  
+  - PK Pass: drag-and-drop file upload zone accepting `.pkpass` files only. Shows filename + remove/download buttons after upload. Uploads to `pkpass-files/{member_id}/{filename}` in Storage.
+- When editing, pre-fill all three fields; PK Pass shows the existing filename with Download/Replace/Remove options
+- `handleSave` updated to include the three new fields in the payload and handle file upload before saving
+- Modal uses `max-h-[90vh] overflow-y-auto` with sticky footer on mobile via `sm:max-w-lg w-full h-full sm:h-auto`
 
-**Event Cards (collapsed):**
-- Dark gradient background (reusing EVENT_PALETTE from Orders)
-- Club badge via CLUBS lookup on the left
-- Match name, date, venue
-- Total listings count badge
-- Status pill: Active (all published), Partial (mixed), Unlisted (none published)
-- Chevron toggle to expand
+### 3. Members Table -- Passes Column
 
-**Event Cards (expanded):**
-- "Publish All" / "Unpublish All" buttons at top-right
-- "Add Listing" button opening a modal
-- Sub-listing rows as compact cards showing:
-  - Platform badge (Tixstock=purple, FootballTicketNet=amber, LiveFootball=green, Fanpass=blue)
-  - Section / Row / Seat info
-  - Quantity, Price per ticket
-  - Publish/Unpublish toggle
-  - Inline price edit input
-  - Delete button
+Add a "Passes" column after Address showing three icon badges per row:
+- Apple icon (lit/dimmed based on `iphone_pass_link`)
+- Smartphone icon (lit/dimmed based on `android_pass_link`)
+- Ticket icon (lit/dimmed based on `pk_pass_url`)
 
-**Add/Edit Listing Modal:**
-- Fields: Platform (dropdown), Section, Row, Seat From, Seat To, Quantity, Price, Face Value
+Desktop: hovering a lit badge shows a Tooltip with the link type. Clicking copies the link (or triggers download for PK pass) with a toast confirmation.
 
-**Sync Button:**
-- Placeholder function per platform that shows a toast ("Sync not yet connected - API key required")
-- Updates `last_synced_at` concept (stored in component state for now)
+Update `colSpan` values for empty/loading states to account for the new column.
 
-### 3. Routing and Sidebar
+### 4. Inventory Integration
 
-**`src/App.tsx`:**
-- Add route `/listings` wrapped in `<AdminOnly>`
-- Import ListingsManager page
+The inventory system already stores `iphone_pass_link`, `android_pass_link`, and `pk_pass_url` per ticket, and the `AddInventoryDialog` already auto-fills from member data. Update the member query in `AddInventoryDialog.tsx` to also fetch `iphone_pass_link`, `android_pass_link`, and `pk_pass_url` from members, and propagate those to inventory tickets when a member is assigned.
 
-**`src/components/AppSidebar.tsx`:**
-- Add nav item `{ to: "/listings", icon: Globe, label: "Listings" }` in admin nav items, near the Orders/Events section
+### 5. Files Summary
 
-### 4. Mobile Responsiveness
-- Event cards stack vertically (already natural)
-- Sub-listing rows become compact stacked cards on mobile (grid cols adjust)
-- Add Listing modal goes near-fullscreen on mobile via Dialog responsive classes
-
-### Files Summary
 | File | Action |
 |---|---|
-| Database migration | Create `listings` table with RLS |
-| `src/pages/ListingsManager.tsx` | New page with tabs, event cards, listing CRUD |
-| `src/App.tsx` | Add route |
-| `src/components/AppSidebar.tsx` | Add sidebar link |
+| Migration SQL | Add 3 columns to members, create pkpass-files bucket + RLS |
+| `src/pages/Members.tsx` | Add pass fields to form, Passes column to table, file upload logic |
+| `src/components/AddInventoryDialog.tsx` | Fetch new pass fields from members, auto-fill to tickets |
+
+### 6. Responsive Behaviour
+- Modal: full-screen on mobile (`h-[100dvh] sm:h-auto sm:max-w-lg`), scrollable body, sticky footer
+- Pass fields stack to single column on mobile (`grid-cols-1 sm:grid-cols-2`)
+- Upload zone full-width on all breakpoints
+- Pass indicator icons use `min-w-[44px] min-h-[44px]` touch targets on mobile
 
