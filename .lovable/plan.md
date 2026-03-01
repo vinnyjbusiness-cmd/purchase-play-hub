@@ -1,58 +1,63 @@
 
 
-## Members Pass Links Enhancement
+## Import Members from Google Sheets
 
 ### Overview
-Add iPhone, Android, and PK Pass support to the Members page with file upload for .pkpass files, pass indicator icons in the table, and full edit support.
+Create a new `ImportMembersDialog` component accessible from the Members page via a prominent button. Users paste tab-separated data copied from Google Sheets, preview and edit rows, optionally upload `.pkpass` files per row, then bulk import.
 
-### 1. Database Changes
+### 1. New Component: `src/components/ImportMembersDialog.tsx`
 
-**Members table** -- add three new columns:
-- `iphone_pass_link` (text, nullable) -- URL for iPhone wallet pass
-- `android_pass_link` (text, nullable) -- URL for Android wallet pass  
-- `pk_pass_url` (text, nullable) -- Supabase Storage URL for uploaded .pkpass file
+**Paste Area**
+- Large textarea with placeholder instructions ("Copy your data from Google Sheets and paste it here...")
+- On paste/change, parse tab-separated values (TSV): split by newlines, split each line by `\t`
+- Read first row as headers, map case-insensitively with whitespace trimming:
 
-**Storage** -- create a `pkpass-files` bucket (public) with RLS policies allowing authenticated users to upload/read and admins to delete.
-
-### 2. Add/Edit Member Modal Updates
-
-**File: `src/pages/Members.tsx`**
-
-- Add `iphone_pass_link`, `android_pass_link`, `pk_pass_url` to `EMPTY_FORM` and `Member` interface
-- Add a "Pass Links" section below the Address field with:
-  - iPhone Pass Link: URL input with Apple icon and copy button
-  - Android Pass Link: URL input with Smartphone icon and copy button  
-  - PK Pass: drag-and-drop file upload zone accepting `.pkpass` files only. Shows filename + remove/download buttons after upload. Uploads to `pkpass-files/{member_id}/{filename}` in Storage.
-- When editing, pre-fill all three fields; PK Pass shows the existing filename with Download/Replace/Remove options
-- `handleSave` updated to include the three new fields in the payload and handle file upload before saving
-- Modal uses `max-h-[90vh] overflow-y-auto` with sticky footer on mobile via `sm:max-w-lg w-full h-full sm:h-auto`
-
-### 3. Members Table -- Passes Column
-
-Add a "Passes" column after Address showing three icon badges per row:
-- Apple icon (lit/dimmed based on `iphone_pass_link`)
-- Smartphone icon (lit/dimmed based on `android_pass_link`)
-- Ticket icon (lit/dimmed based on `pk_pass_url`)
-
-Desktop: hovering a lit badge shows a Tooltip with the link type. Clicking copies the link (or triggers download for PK pass) with a toast confirmation.
-
-Update `colSpan` values for empty/loading states to account for the new column.
-
-### 4. Inventory Integration
-
-The inventory system already stores `iphone_pass_link`, `android_pass_link`, and `pk_pass_url` per ticket, and the `AddInventoryDialog` already auto-fills from member data. Update the member query in `AddInventoryDialog.tsx` to also fetch `iphone_pass_link`, `android_pass_link`, and `pk_pass_url` from members, and propagate those to inventory tickets when a member is assigned.
-
-### 5. Files Summary
-
-| File | Action |
+| Sheet Header | DB Field |
 |---|---|
-| Migration SQL | Add 3 columns to members, create pkpass-files bucket + RLS |
-| `src/pages/Members.tsx` | Add pass fields to form, Passes column to table, file upload logic |
-| `src/components/AddInventoryDialog.tsx` | Fetch new pass fields from members, auto-fill to tickets |
+| first name | first_name |
+| last name | last_name |
+| supporter id | supporter_id |
+| email | email |
+| member password | member_password |
+| email password | email_password |
+| phone number | phone_number |
+| dob | date_of_birth |
+| postcode | postcode |
+| adress / address | address |
+| iphone links | iphone_pass_link |
+| android links | android_pass_link |
 
-### 6. Responsive Behaviour
-- Modal: full-screen on mobile (`h-[100dvh] sm:h-auto sm:max-w-lg`), scrollable body, sticky footer
-- Pass fields stack to single column on mobile (`grid-cols-1 sm:grid-cols-2`)
-- Upload zone full-width on all breakpoints
-- Pass indicator icons use `min-w-[44px] min-h-[44px]` touch targets on mobile
+**Preview Table**
+- Rendered after parsing, with a live badge counter ("32 members detected")
+- Each row has: checkbox (include/exclude), all mapped fields in columns, inline remove button
+- Validation highlights: red background + warning icon on rows missing first_name, last_name, or email
+- Duplicate detection: query existing member emails from Supabase on parse, show yellow "Already exists -- will skip" badge on matching rows; auto-uncheck duplicates
+- PK Pass column: small "Upload .pkpass" button per row opening a file picker (accept=".pkpass"), shows filename + remove once uploaded
 
+**Footer (sticky on mobile)**
+- Live count: "X members ready to import"
+- Select All / Deselect All toggle
+- "Import X Members" button that:
+  1. Uploads any `.pkpass` files to the `pkpass-files` storage bucket
+  2. Bulk inserts all checked, valid, non-duplicate rows into the `members` table
+  3. Shows summary toast: imported count, skipped duplicates, failures
+
+### 2. Members Page Update: `src/pages/Members.tsx`
+
+- Add an "Import from Google Sheets" button in the header button group (with a spreadsheet/table icon)
+- Wire it to open/close state for `ImportMembersDialog`
+- Pass `orgId` and `onComplete` callback (to refresh member list) as props
+
+### 3. Responsive Behavior
+
+- Mobile: textarea full-width, preview table scrolls horizontally, footer is sticky at bottom with `position: sticky`
+- iPad: comfortable padding, horizontal scroll on table if needed
+- Desktop: all columns visible with comfortable spacing
+
+### Technical Notes
+
+- No database migration needed -- all columns already exist on the `members` table
+- The `pkpass-files` storage bucket already exists and is public
+- TSV parsing handles Google Sheets copy format (tab-delimited); the existing CSV import remains unchanged
+- Duplicate check uses a single `.select("email")` query against existing members for the org before import
+- Bulk insert uses `.insert()` with an array of row objects
