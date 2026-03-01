@@ -9,7 +9,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Check } from "lucide-react";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Props {
   orderId: string;
@@ -23,6 +24,7 @@ interface AvailableTicket {
   id: string;
   category: string;
   section: string | null;
+  block: string | null;
   row_name: string | null;
   seat: string | null;
   purchase_id: string | null;
@@ -39,21 +41,32 @@ interface TicketGroup {
   key: string;
   supplierName: string;
   section: string | null;
+  block: string | null;
   currency: string;
   leadBooker: string | null;
   tickets: AvailableTicket[];
 }
 
+const GRADIENT_PALETTE = [
+  "from-violet-600/90 to-indigo-700/90",
+  "from-emerald-600/90 to-teal-700/90",
+  "from-rose-600/90 to-pink-700/90",
+  "from-amber-600/90 to-orange-700/90",
+  "from-sky-600/90 to-cyan-700/90",
+  "from-fuchsia-600/90 to-purple-700/90",
+];
+
 export default function LinkInventoryDialog({ orderId, eventId, existingInventoryIds, onClose, onLinked }: Props) {
   const [tickets, setTickets] = useState<AvailableTicket[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function load() {
       const { data: inventory } = await supabase
         .from("inventory")
-        .select("id, category, section, row_name, seat, purchase_id, status, face_value, first_name, last_name")
+        .select("id, category, section, block, row_name, seat, purchase_id, status, face_value, first_name, last_name")
         .eq("event_id", eventId)
         .in("status", ["available", "reserved"]);
 
@@ -86,6 +99,7 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
               id: inv.id,
               category: inv.category,
               section: inv.section,
+              block: (inv as any).block || null,
               row_name: inv.row_name,
               seat: inv.seat,
               purchase_id: inv.purchase_id,
@@ -104,12 +118,13 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
     load();
   }, [eventId, existingInventoryIds]);
 
-  const groups = useMemo((): TicketGroup[] => {
+  // Group tickets: first by section, then by purchase/row within each section
+  const sectionGroups = useMemo(() => {
     if (tickets.length === 0) return [];
 
-    const map = new Map<string, TicketGroup>();
+    // Build ticket groups (by purchase or row)
+    const groupMap = new Map<string, TicketGroup>();
     tickets.forEach(t => {
-      // Match inventory page grouping: by purchase_id, or by section+row for loose inventory
       let key: string;
       if (t.purchase_id) {
         key = `purchase:${t.purchase_id}`;
@@ -118,32 +133,43 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
         key = `inv:${t.supplier_name}|${sig}`;
       }
 
-      if (!map.has(key)) {
-        map.set(key, {
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
           key,
           supplierName: t.supplier_name,
           section: t.section,
+          block: t.block,
           currency: t.currency,
           leadBooker: null,
           tickets: [],
         });
       }
-      map.get(key)!.tickets.push(t);
+      groupMap.get(key)!.tickets.push(t);
     });
 
-    // Set lead booker from first ticket with a name, sort tickets by seat number
-    for (const g of map.values()) {
+    // Finalize groups
+    for (const g of groupMap.values()) {
       const bt = g.tickets.find(t => t.first_name || t.last_name);
       if (bt) g.leadBooker = [bt.first_name, bt.last_name].filter(Boolean).join(" ");
-
-      g.tickets.sort((a, b) => {
-        const sA = parseInt(a.seat || "0") || 0;
-        const sB = parseInt(b.seat || "0") || 0;
-        return sA - sB;
-      });
+      g.tickets.sort((a, b) => (parseInt(a.seat || "0") || 0) - (parseInt(b.seat || "0") || 0));
     }
 
-    return Array.from(map.values()).sort((a, b) => b.tickets.length - a.tickets.length);
+    // Group by section name
+    const sectionMap = new Map<string, TicketGroup[]>();
+    for (const g of groupMap.values()) {
+      const sec = g.section || g.tickets[0]?.category || "Other";
+      if (!sectionMap.has(sec)) sectionMap.set(sec, []);
+      sectionMap.get(sec)!.push(g);
+    }
+
+    // Sort groups within each section by size desc
+    const result = Array.from(sectionMap.entries()).map(([name, groups]) => ({
+      name,
+      groups: groups.sort((a, b) => b.tickets.length - a.tickets.length),
+      totalTickets: groups.reduce((s, g) => s + g.tickets.length, 0),
+    }));
+
+    return result.sort((a, b) => b.totalTickets - a.totalTickets);
   }, [tickets]);
 
   const toggleTicket = (id: string) => {
@@ -164,6 +190,14 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
       } else {
         group.tickets.forEach(t => next.add(t.id));
       }
+      return next;
+    });
+  };
+
+  const toggleSection = (sectionName: string) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      next.has(sectionName) ? next.delete(sectionName) : next.add(sectionName);
       return next;
     });
   };
@@ -196,153 +230,170 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
     }
   };
 
-  const sym = (c: string) => (c === "GBP" ? "£" : c === "USD" ? "$" : "€");
   const totalCost = selectedArray.reduce((s, id) => {
     const t = tickets.find((t) => t.id === id);
     return s + (t?.unit_cost || 0);
   }, 0);
 
-  /** Display label for a ticket chip */
-  const chipLabel = (t: AvailableTicket) => {
-    const parts: string[] = [];
-    if (t.row_name) parts.push(`R${t.row_name}`);
-    if (t.seat) parts.push(`S${t.seat}`);
-    if (parts.length === 0) return "Ticket";
-    return parts.join(" ");
-  };
-
   return (
     <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto p-0">
+        <DialogHeader className="px-5 pt-5 pb-3">
           <DialogTitle>Link Tickets to Order</DialogTitle>
         </DialogHeader>
 
         {tickets.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">
+          <div className="py-8 text-center text-sm text-muted-foreground px-5">
             <p>No available tickets for this event</p>
             <p className="text-xs mt-1">Add a purchase first to create inventory</p>
           </div>
         ) : (
-          <>
-            <p className="text-sm text-muted-foreground mb-3">
-              Tap individual seats to select, or tap the header to select all.
+          <div className="flex flex-col">
+            <p className="text-xs text-muted-foreground px-5 mb-3">
+              Tap individual seats or tap the card header to select all.
             </p>
 
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
-              {groups.map((group) => {
-                const groupSelectedCount = group.tickets.filter(t => selectedIds.has(t.id)).length;
-                const allSelected = groupSelectedCount === group.tickets.length;
+            <div className="space-y-4 max-h-[55vh] overflow-y-auto px-5 pb-3">
+              {sectionGroups.map((section) => {
+                const isSectionCollapsed = collapsedSections.has(section.name);
+                const sectionSelectedCount = section.groups.reduce(
+                  (s, g) => s + g.tickets.filter(t => selectedIds.has(t.id)).length, 0
+                );
 
                 return (
-                  <div
-                    key={group.key}
-                    className={`rounded-lg border transition-colors ${
-                      groupSelectedCount > 0 ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-                    }`}
-                  >
-                    {/* Group header - click to select all */}
+                  <div key={section.name}>
+                    {/* Section header */}
                     <button
-                      className="w-full p-3 text-left"
-                      onClick={() => toggleGroup(group)}
+                      onClick={() => toggleSection(section.name)}
+                      className="w-full flex items-center gap-2 mb-2"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold">{group.supplierName}</span>
-                            <Badge variant="secondary" className="text-xs">
-                              {group.tickets.length} ticket{group.tickets.length !== 1 ? "s" : ""}
-                            </Badge>
-                            {groupSelectedCount > 0 && (
-                              <Badge variant="default" className="text-[10px] py-0">
-                                {groupSelectedCount} selected
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {group.section || "—"}
-                            {(() => {
-                              const rows = [...new Set(group.tickets.map(t => t.row_name).filter(Boolean))];
-                              const seats = group.tickets.map(t => t.seat).filter(Boolean).sort((a, b) => (parseInt(a!) || 0) - (parseInt(b!) || 0));
-                              const parts: string[] = [];
-                              if (rows.length > 0) parts.push(`Row ${rows.join(", ")}`);
-                              if (seats.length > 0) parts.push(`Seats ${seats.join(", ")}`);
-                              return parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
-                            })()}
-                          </p>
-                          {group.leadBooker && (
-                            <p className="text-xs mt-0.5">
-                              <span className="text-muted-foreground">Lead Booker:</span>{" "}
-                              <span className="font-medium text-foreground">{group.leadBooker}</span>
-                            </p>
-                          )}
-                        </div>
-                        <div className={`h-5 w-5 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                          allSelected ? "bg-primary border-primary" : "border-muted-foreground/30"
-                        }`}>
-                          {allSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-                        </div>
-                      </div>
+                      {isSectionCollapsed
+                        ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      }
+                      <h3 className="text-xs font-black uppercase tracking-wide text-foreground">{section.name}</h3>
+                      <Badge variant="outline" className="text-[9px] font-bold">
+                        {section.totalTickets} ticket{section.totalTickets !== 1 ? "s" : ""}
+                      </Badge>
+                      {sectionSelectedCount > 0 && (
+                        <Badge className="text-[9px] bg-primary text-primary-foreground">
+                          {sectionSelectedCount} selected
+                        </Badge>
+                      )}
                     </button>
 
-                    {/* Individual seat chips */}
-                    <div className="px-3 pb-3 flex flex-wrap gap-2">
-                      {group.tickets.map(t => {
-                        const isSelected = selectedIds.has(t.id);
-                        const name = [t.first_name, t.last_name].filter(Boolean).join(" ").trim();
-                        const hasSeatInfo = t.seat || t.row_name;
-                        return (
-                          <button
-                            key={t.id}
-                            onClick={() => toggleTicket(t.id)}
-                            title={name || undefined}
-                            className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs border transition-all ${
-                              isSelected
-                                ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                                : "bg-muted/30 text-foreground border-border hover:border-primary/50 hover:bg-muted/60"
-                            }`}
-                          >
-                            {hasSeatInfo ? (
-                              <>
-                                {t.seat && (
-                                  <span className="font-bold text-sm tabular-nums">{t.seat}</span>
-                                )}
-                                {t.row_name && (
-                                  <span className={`text-[11px] ${isSelected ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                                    Row {t.row_name}
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <span className="text-[11px]">{name || "Ticket"}</span>
-                            )}
-                            {name && hasSeatInfo && (
-                              <span className={`text-[10px] ${isSelected ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-                                · {name}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {/* Groups within section */}
+                    {!isSectionCollapsed && (
+                      <div className="space-y-3">
+                        {section.groups.map((group, groupIdx) => {
+                          const groupSelectedCount = group.tickets.filter(t => selectedIds.has(t.id)).length;
+                          const allSelected = groupSelectedCount === group.tickets.length;
+                          const gradient = GRADIENT_PALETTE[groupIdx % GRADIENT_PALETTE.length];
+                          const rows = [...new Set(group.tickets.map(t => t.row_name).filter(Boolean))];
+                          const seats = group.tickets.map(t => t.seat).filter(Boolean).sort((a, b) => (parseInt(a!) || 0) - (parseInt(b!) || 0));
+
+                          return (
+                            <div key={group.key} className="rounded-xl overflow-hidden shadow-md">
+                              {/* Gradient card header */}
+                              <button
+                                className={cn("w-full bg-gradient-to-br text-white px-4 py-3 text-left", gradient)}
+                                onClick={() => toggleGroup(group)}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold">{group.supplierName}</span>
+                                      <Badge className="bg-white/20 text-white border-0 text-[9px] font-bold">
+                                        {group.tickets.length} ticket{group.tickets.length !== 1 ? "s" : ""}
+                                      </Badge>
+                                      {groupSelectedCount > 0 && (
+                                        <Badge className="bg-white/30 text-white border-0 text-[9px]">
+                                          {groupSelectedCount} ✓
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-white/70 font-mono mt-1">
+                                      {group.block && <><span className="text-white font-semibold">{group.block}</span> · </>}
+                                      {rows.length > 0 && <>Row <span className="text-white font-semibold">{rows.join(", ")}</span> · </>}
+                                      {seats.length > 0 && <>Seats <span className="text-white font-semibold">{seats.join(", ")}</span></>}
+                                    </p>
+                                    {group.leadBooker && (
+                                      <p className="text-[10px] text-white/60 mt-1">
+                                        Lead Booker: <span className="text-white/90 font-medium">{group.leadBooker}</span>
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className={cn(
+                                    "h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors",
+                                    allSelected ? "bg-white border-white" : "border-white/40"
+                                  )}>
+                                    {allSelected && <Check className="h-3 w-3 text-violet-700" />}
+                                  </div>
+                                </div>
+                              </button>
+
+                              {/* Seat chips */}
+                              <div className="bg-card border border-t-0 rounded-b-xl px-3 py-3 flex flex-wrap gap-1.5">
+                                {group.tickets.map(t => {
+                                  const isSelected = selectedIds.has(t.id);
+                                  const name = [t.first_name, t.last_name].filter(Boolean).join(" ").trim();
+                                  return (
+                                    <button
+                                      key={t.id}
+                                      onClick={() => toggleTicket(t.id)}
+                                      title={name || undefined}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border transition-all",
+                                        isSelected
+                                          ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                          : "bg-muted/30 text-foreground border-border hover:border-primary/50 hover:bg-muted/60"
+                                      )}
+                                    >
+                                      <span className={cn(
+                                        "flex items-center justify-center h-6 w-6 rounded text-[11px] font-bold font-mono",
+                                        isSelected ? "bg-white/20" : "bg-primary/10 text-primary"
+                                      )}>
+                                        {t.seat || "—"}
+                                      </span>
+                                      {t.row_name && (
+                                        <span className={cn("text-[10px]", isSelected ? "text-primary-foreground/70" : "text-muted-foreground")}>
+                                          R{t.row_name}
+                                        </span>
+                                      )}
+                                      {name && (
+                                        <span className={cn("text-[10px]", isSelected ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                                          · {name}
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
 
-            {selectedArray.length > 0 && (
-              <div className="rounded-lg bg-muted p-3 text-sm">
-                <div className="flex justify-between">
-                  <span>{selectedArray.length} ticket{selectedArray.length !== 1 ? "s" : ""} selected</span>
-                  <span className="font-semibold">Total cost: £{totalCost.toFixed(2)}</span>
+            {/* Footer */}
+            <div className="border-t px-5 py-4 space-y-3">
+              {selectedArray.length > 0 && (
+                <div className="rounded-lg bg-muted p-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="font-medium">{selectedArray.length} ticket{selectedArray.length !== 1 ? "s" : ""} selected</span>
+                    <span className="font-bold font-mono">£{totalCost.toFixed(2)}</span>
+                  </div>
                 </div>
-              </div>
-            )}
-
-            <Button onClick={handleLink} disabled={selectedArray.length === 0 || loading} className="w-full">
-              {loading ? "Linking..." : `Link ${selectedArray.length} Ticket${selectedArray.length !== 1 ? "s" : ""}`}
-            </Button>
-          </>
+              )}
+              <Button onClick={handleLink} disabled={selectedArray.length === 0 || loading} className="w-full">
+                {loading ? "Linking..." : `Link ${selectedArray.length} Ticket${selectedArray.length !== 1 ? "s" : ""}`}
+              </Button>
+            </div>
+          </div>
         )}
       </DialogContent>
     </Dialog>
