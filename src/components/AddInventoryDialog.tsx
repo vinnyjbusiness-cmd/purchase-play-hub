@@ -179,7 +179,10 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
         const num = parseInt(value);
         if (!isNaN(num)) {
           for (let i = 1; i < next.length; i++) {
-            if (!next[i].seat || next[i].seat === String(num + i - 1)) {
+            // Always auto-increment from ticket 1's seat
+            const prevExpected = next[i].seat;
+            const wasAutoFilled = !prevExpected || /^\d+$/.test(prevExpected);
+            if (wasAutoFilled) {
               next[i] = { ...next[i], seat: String(num + i) };
             }
           }
@@ -187,12 +190,15 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
       }
       if (field === "row" && index === 0) {
         for (let i = 1; i < next.length; i++) {
-          if (!next[i].row) next[i] = { ...next[i], row: value };
+          // Always propagate row from ticket 1
+          next[i] = { ...next[i], row: value };
         }
       }
       if (field === "faceValue" && index === 0) {
         for (let i = 1; i < next.length; i++) {
-          if (!next[i].faceValue) next[i] = { ...next[i], faceValue: value };
+          if (!next[i].faceValue || next[i].faceValue === prev[0].faceValue) {
+            next[i] = { ...next[i], faceValue: value };
+          }
         }
       }
       return next;
