@@ -149,6 +149,7 @@ export default function MembersPage() {
   const [pkPassFileName, setPkPassFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const fetchMembers = async () => {
     if (!orgId) return;
     setLoading(true);
@@ -305,6 +306,15 @@ export default function MembersPage() {
     else { toast({ title: "Member deleted" }); fetchMembers(); }
   };
 
+  const handleDeleteAll = async () => {
+    if (!orgId) return;
+    setDeleting(true);
+    const { error } = await supabase.from("members").delete().eq("org_id", orgId);
+    if (error) toast({ title: "Error deleting members", description: error.message, variant: "destructive" });
+    else { toast({ title: `All members deleted` }); fetchMembers(); }
+    setDeleting(false);
+  };
+
   const removePkPass = () => {
     setPkPassFile(null);
     setPkPassFileName(null);
@@ -387,6 +397,29 @@ export default function MembersPage() {
           <Button variant="outline" size="sm" onClick={exportCSV} disabled={!members.length}>
             <Download className="h-4 w-4 mr-1" /> Export
           </Button>
+          {members.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                  <Trash2 className="h-4 w-4 mr-1" /> Delete All
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete all {members.length} members?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently remove all members from your database. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteAll} disabled={deleting}>
+                    {deleting ? "Deleting…" : `Delete All ${members.length} Members`}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <Button size="sm" onClick={openAdd}>
             <Plus className="h-4 w-4 mr-1" /> Add Member
           </Button>
