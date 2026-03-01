@@ -90,10 +90,10 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="p-0.5 rounded hover:bg-muted/60 transition-colors"
+      className="p-1.5 sm:p-0.5 rounded hover:bg-muted/60 transition-colors min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
       title="Copy"
     >
-      {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3 text-muted-foreground" />}
+      {copied ? <Check className="h-4 w-4 sm:h-3 sm:w-3 text-success" /> : <Copy className="h-4 w-4 sm:h-3 sm:w-3 text-muted-foreground" />}
     </button>
   );
 }
@@ -488,13 +488,22 @@ export default function Inventory() {
 
                               return (
                                 <div key={qg.key} className="rounded-xl border bg-card overflow-hidden">
-                                  {/* Group header: email + area/row/seats + ticket count */}
-                                  <div className="px-5 py-3 flex items-start justify-between gap-4">
-                                    <div className="space-y-1">
-                                      {email && (
-                                        <p className="text-sm font-medium text-primary">{email}</p>
-                                      )}
-                                      <p className="text-xs text-muted-foreground font-mono">
+                                  {/* Group header: Lead Booker + area/row/seats + ticket count */}
+                                  <div className="px-4 sm:px-5 py-3 flex items-start justify-between gap-3 sm:gap-4">
+                                    <div className="space-y-0.5 min-w-0 flex-1">
+                                      {(() => {
+                                        const leadName = [qg.items[0]?.first_name, qg.items[0]?.last_name].filter(Boolean).join(" ");
+                                        return (
+                                          <>
+                                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Lead Booker</p>
+                                            <p className="text-sm font-bold text-foreground truncate">{leadName || "Unassigned"}</p>
+                                            {email && (
+                                              <p className="text-xs text-muted-foreground truncate">{email}</p>
+                                            )}
+                                          </>
+                                        );
+                                      })()}
+                                      <p className="text-xs text-muted-foreground font-mono mt-1">
                                         {area && <>Area <span className="text-foreground font-semibold">{area}</span></>}
                                         {row && <>{area ? " · " : ""}Row <span className="text-foreground font-semibold">{row}</span></>}
                                         {seats && <>{(area || row) ? " · " : ""}Seats <span className="text-foreground font-semibold">{seats}</span></>}
@@ -517,7 +526,7 @@ export default function Inventory() {
                                   </div>
 
                                   {/* Individual ticket chips */}
-                                  <div className="px-5 pb-4 flex flex-wrap gap-2">
+                                  <div className="px-4 sm:px-5 pb-4 flex flex-wrap gap-2">
                                     {qg.items.map((item, idx) => (
                                       <button
                                         key={item.id}

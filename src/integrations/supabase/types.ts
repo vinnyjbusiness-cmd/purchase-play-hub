@@ -591,7 +591,9 @@ export type Database = {
           last_name: string
           member_password: string | null
           org_id: string | null
+          pass_link: string | null
           phone_number: string | null
+          platform_login_url: string | null
           postcode: string | null
           supporter_id: string | null
           updated_at: string
@@ -607,7 +609,9 @@ export type Database = {
           last_name: string
           member_password?: string | null
           org_id?: string | null
+          pass_link?: string | null
           phone_number?: string | null
+          platform_login_url?: string | null
           postcode?: string | null
           supporter_id?: string | null
           updated_at?: string
@@ -623,7 +627,9 @@ export type Database = {
           last_name?: string
           member_password?: string | null
           org_id?: string | null
+          pass_link?: string | null
           phone_number?: string | null
+          platform_login_url?: string | null
           postcode?: string | null
           supporter_id?: string | null
           updated_at?: string
