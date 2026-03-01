@@ -109,11 +109,10 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
 
     const map = new Map<string, TicketGroup>();
     tickets.forEach(t => {
-      // Group by purchase_id if available, otherwise by supplier+section+lead booker name
-      const bookerName = [t.first_name, t.last_name].filter(Boolean).join(" ").trim();
+      // Group by purchase_id if available, otherwise by supplier+section (all loose inventory together)
       const key = t.purchase_id
         ? `purchase:${t.purchase_id}`
-        : `inv:${t.supplier_name}|${t.section || ""}|${bookerName}`;
+        : `inv:${t.supplier_name}|${t.section || ""}`;
 
       if (!map.has(key)) {
         map.set(key, {
@@ -277,30 +276,41 @@ export default function LinkInventoryDialog({ orderId, eventId, existingInventor
                     </button>
 
                     {/* Individual seat chips */}
-                    <div className="px-3 pb-3 flex flex-wrap gap-1.5">
+                    <div className="px-3 pb-3 flex flex-wrap gap-2">
                       {group.tickets.map(t => {
                         const isSelected = selectedIds.has(t.id);
-                        const label = chipLabel(t);
                         const name = [t.first_name, t.last_name].filter(Boolean).join(" ").trim();
+                        const hasSeatInfo = t.seat || t.row_name;
                         return (
                           <button
                             key={t.id}
                             onClick={() => toggleTicket(t.id)}
                             title={name || undefined}
-                            className={`inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                            className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs border transition-all ${
                               isSelected
                                 ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                                : "bg-muted/40 text-foreground border-border hover:border-primary/50 hover:bg-muted"
+                                : "bg-muted/30 text-foreground border-border hover:border-primary/50 hover:bg-muted/60"
                             }`}
                           >
-                            <span className={`inline-flex items-center justify-center h-5 min-w-[20px] px-1 rounded text-[10px] font-bold ${
-                              isSelected ? "bg-primary-foreground/20" : "bg-background"
-                            }`}>
-                              {t.seat || "—"}
-                            </span>
-                            <span className="text-[11px]">
-                              {t.row_name ? `Row ${t.row_name}` : label === "Ticket" ? (name || "Ticket") : ""}
-                            </span>
+                            {hasSeatInfo ? (
+                              <>
+                                {t.seat && (
+                                  <span className="font-bold text-sm tabular-nums">{t.seat}</span>
+                                )}
+                                {t.row_name && (
+                                  <span className={`text-[11px] ${isSelected ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                                    Row {t.row_name}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-[11px]">{name || "Ticket"}</span>
+                            )}
+                            {name && hasSeatInfo && (
+                              <span className={`text-[10px] ${isSelected ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                                · {name}
+                              </span>
+                            )}
                           </button>
                         );
                       })}
