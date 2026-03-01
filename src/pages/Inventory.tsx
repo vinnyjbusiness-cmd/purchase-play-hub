@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Ticket, Download, Apple, Smartphone, Copy, Check, Users, User, Pencil } from "lucide-react";
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Ticket, Download, Apple, Smartphone, Copy, Check, Users, User, Pencil, CheckSquare, Square } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import FilterSelect from "@/components/FilterSelect";
@@ -147,6 +147,8 @@ export default function Inventory() {
   const [showAdd, setShowAdd] = useState(false);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [manualAssigned, setManualAssigned] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [invRes, olRes] = await Promise.all([
@@ -263,6 +265,27 @@ export default function Inventory() {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  };
+
+  const toggleGroupCollapsed = (key: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const toggleManualAssigned = (key: string) => {
+    setManualAssigned(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const isGroupAssigned = (groupKey: string, groupItems: InventoryItem[]) => {
+    if (manualAssigned.has(groupKey)) return true;
+    return groupItems.length > 0 && groupItems.every(i => assignedSet.has(i.id));
   };
 
   return (
@@ -462,6 +485,206 @@ export default function Inventory() {
                     {/* Sections */}
                     {sectionEntries.map(([sectionName, sectionItems]) => {
                       const allGroups = groupByQuantity(sectionItems);
+                      const unassignedGroups = allGroups.filter(qg => !isGroupAssigned(qg.key, qg.items));
+                      const assignedGroups = allGroups.filter(qg => isGroupAssigned(qg.key, qg.items));
+
+                      const renderGroup = (qg: ReturnType<typeof groupByQuantity>[number]) => {
+                        const email = qg.items[0]?.email;
+                        const area = qg.items[0]?.block;
+                        const row = qg.items[0]?.row_name;
+                        const seats = qg.items.map(i => i.seat).filter(Boolean).join(", ");
+                        const isCollapsed = collapsedGroups.has(qg.key);
+                        const isAssigned = isGroupAssigned(qg.key, qg.items);
+
+                        return (
+                          <div key={qg.key} className={cn("rounded-xl border bg-card overflow-hidden", isAssigned && "opacity-60")}>
+                            {/* Group header */}
+                            <div className="px-4 sm:px-5 py-3 flex items-start justify-between gap-3 sm:gap-4">
+                              <button
+                                className="flex-1 min-w-0 text-left"
+                                onClick={() => toggleGroupCollapsed(qg.key)}
+                              >
+                                <div className="space-y-0.5">
+                                  {(() => {
+                                    const leadName = [qg.items[0]?.first_name, qg.items[0]?.last_name].filter(Boolean).join(" ");
+                                    return (
+                                      <>
+                                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Lead Booker</p>
+                                        <p className="text-sm font-bold text-foreground truncate">{leadName || "Unassigned"}</p>
+                                        {email && (
+                                          <p className="text-xs text-muted-foreground truncate">{email}</p>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
+                                  <p className="text-xs text-muted-foreground font-mono mt-1">
+                                    {area && <>Area <span className="text-foreground font-semibold">{area}</span></>}
+                                    {row && <>{area ? " · " : ""}Row <span className="text-foreground font-semibold">{row}</span></>}
+                                    {seats && <>{(area || row) ? " · " : ""}Seats <span className="text-foreground font-semibold">{seats}</span></>}
+                                  </p>
+                                </div>
+                              </button>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {/* Assigned checkbox */}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className={cn("h-7 w-7", isAssigned ? "text-success hover:text-success/80" : "text-muted-foreground hover:text-foreground")}
+                                  onClick={(e) => { e.stopPropagation(); toggleManualAssigned(qg.key); }}
+                                  title={isAssigned ? "Mark as unassigned" : "Mark as assigned"}
+                                >
+                                  {isAssigned ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                                </Button>
+                                {/* Edit button */}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                  onClick={(e) => { e.stopPropagation(); setSelectedId(qg.items[0]?.id || null); }}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                {/* Delete button */}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                  onClick={(e) => handleDeleteGroup(e, qg.items)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                                <div className="text-right ml-1">
+                                  <p className="text-xl font-bold text-destructive">{qg.qty}</p>
+                                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ticket{qg.qty !== 1 ? "s" : ""}</p>
+                                </div>
+                                {isCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                              </div>
+                            </div>
+
+                            {/* Collapsible ticket chips + details */}
+                            {!isCollapsed && (
+                              <>
+                                <div className="px-4 sm:px-5 pb-4 flex flex-wrap gap-2">
+                                  {qg.items.map((item, idx) => (
+                                    <button
+                                      key={item.id}
+                                      onClick={() => toggleItemExpanded(item.id)}
+                                      className={cn(
+                                        "flex items-center gap-2 rounded-lg border px-3 py-2 hover:bg-muted/60 transition-colors text-left",
+                                        expandedItems.has(item.id) ? "bg-muted/60 border-primary/30" : "bg-muted/30"
+                                      )}
+                                    >
+                                      <span className="flex items-center justify-center h-7 w-7 rounded bg-destructive/10 text-destructive text-xs font-bold font-mono">
+                                        {item.seat || (idx + 1)}
+                                      </span>
+                                      <div className="text-xs">
+                                        <p className="font-medium">{[item.first_name, item.last_name].filter(Boolean).join(" ") || "—"}</p>
+                                        <p className="text-muted-foreground">Ticket {idx + 1}/{qg.qty}</p>
+                                      </div>
+                                      {item.row_name && (
+                                        <Badge variant="outline" className="text-[9px] ml-1 font-mono">R{item.row_name}</Badge>
+                                      )}
+                                      <Badge variant="outline" className={cn("text-[9px]", statusColor[item.status] || "")}>
+                                        {item.status}
+                                      </Badge>
+                                      {item.source && item.source !== "Own" && item.source !== "Manual Entry" && (
+                                        <Badge variant="outline" className="text-[9px] bg-accent text-accent-foreground">
+                                          {item.source}
+                                        </Badge>
+                                      )}
+                                      {expandedItems.has(item.id) ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                                    </button>
+                                  ))}
+                                </div>
+
+                                {/* Expanded details */}
+                                {qg.items.filter(item => expandedItems.has(item.id)).map(item => {
+                                  const hasPassLinks = item.iphone_pass_link || item.android_pass_link || item.pk_pass_url;
+                                  const hasLoginDetails = item.first_name || item.last_name || item.email || item.password || item.supporter_id;
+                                  return (
+                                    <div key={`detail-${item.id}`} className="border-t px-5 py-3 space-y-3 bg-muted/10">
+                                      <p className="text-xs font-semibold text-muted-foreground">
+                                        Seat {item.seat || "—"} · {[item.first_name, item.last_name].filter(Boolean).join(" ") || "Unknown"}
+                                      </p>
+                                      {hasLoginDetails && (
+                                        <div className="rounded-lg bg-muted/30 p-3">
+                                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Login Details</p>
+                                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                            {item.supporter_id && (
+                                              <div className="flex items-center gap-1">
+                                                <div>
+                                                  <span className="text-muted-foreground block">Supporter ID</span>
+                                                  <span className="font-mono font-medium">{item.supporter_id}</span>
+                                                </div>
+                                                <CopyButton text={item.supporter_id} />
+                                              </div>
+                                            )}
+                                            {item.email && (
+                                              <div className="flex items-center gap-1">
+                                                <div>
+                                                  <span className="text-muted-foreground block">Email</span>
+                                                  <span className="font-medium">{item.email}</span>
+                                                </div>
+                                                <CopyButton text={item.email} />
+                                              </div>
+                                            )}
+                                            {item.password && (
+                                              <div className="flex items-center gap-1">
+                                                <div>
+                                                  <span className="text-muted-foreground block">Password</span>
+                                                  <span className="font-mono font-medium">{item.password}</span>
+                                                </div>
+                                                <CopyButton text={item.password} />
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {hasPassLinks && (
+                                        <div className="rounded-lg bg-muted/30 p-3">
+                                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Digital Passes</p>
+                                          <div className="space-y-2">
+                                            {item.iphone_pass_link && (
+                                              <div className="flex items-center gap-2 text-xs">
+                                                <Apple className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                <a href={item.iphone_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>{item.iphone_pass_link}</a>
+                                                <CopyButton text={item.iphone_pass_link} />
+                                              </div>
+                                            )}
+                                            {item.android_pass_link && (
+                                              <div className="flex items-center gap-2 text-xs">
+                                                <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                <a href={item.android_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>{item.android_pass_link}</a>
+                                                <CopyButton text={item.android_pass_link} />
+                                              </div>
+                                            )}
+                                            {item.pk_pass_url && (
+                                              <div className="flex items-center gap-2 text-xs">
+                                                <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                <a href={item.pk_pass_url} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>Download</a>
+                                                <CopyButton text={item.pk_pass_url} />
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-2 pt-1">
+                                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSelectedId(item.id)}>
+                                          <Pencil className="h-3 w-3 mr-1" /> Edit
+                                        </Button>
+                                        <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10" onClick={(e) => handleDelete(e, item)}>
+                                          <Trash2 className="h-3 w-3 mr-1" /> Delete
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </>
+                            )}
+                          </div>
+                        );
+                      };
+
                       return (
                         <div key={sectionName} className="px-5 py-4 space-y-3">
                           {/* Section title */}
@@ -470,7 +693,7 @@ export default function Inventory() {
                             <Badge className="bg-destructive text-destructive-foreground text-[10px] font-bold uppercase tracking-wider">
                               {sectionItems.length} Ticket{sectionItems.length !== 1 ? "s" : ""}
                             </Badge>
-                          {(() => {
+                            {(() => {
                               const src = sectionItems[0]?.source;
                               return src && src !== "IJK" && src !== "Manual Entry" ? (
                                 <span className="text-[10px] text-muted-foreground font-medium">via {src}</span>
@@ -478,173 +701,24 @@ export default function Inventory() {
                             })()}
                           </div>
 
-                          {/* Grouped ticket cards */}
-                          <div className="space-y-3">
-                            {allGroups.map(qg => {
-                              const email = qg.items[0]?.email;
-                              const area = qg.items[0]?.block;
-                              const row = qg.items[0]?.row_name;
-                              const seats = qg.items.map(i => i.seat).filter(Boolean).join(", ");
+                          {/* Unassigned groups (top) */}
+                          {unassignedGroups.length > 0 && (
+                            <div className="space-y-3">
+                              {unassignedGroups.map(renderGroup)}
+                            </div>
+                          )}
 
-                              return (
-                                <div key={qg.key} className="rounded-xl border bg-card overflow-hidden">
-                                  {/* Group header: Lead Booker + area/row/seats + ticket count */}
-                                  <div className="px-4 sm:px-5 py-3 flex items-start justify-between gap-3 sm:gap-4">
-                                    <div className="space-y-0.5 min-w-0 flex-1">
-                                      {(() => {
-                                        const leadName = [qg.items[0]?.first_name, qg.items[0]?.last_name].filter(Boolean).join(" ");
-                                        return (
-                                          <>
-                                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Lead Booker</p>
-                                            <p className="text-sm font-bold text-foreground truncate">{leadName || "Unassigned"}</p>
-                                            {email && (
-                                              <p className="text-xs text-muted-foreground truncate">{email}</p>
-                                            )}
-                                          </>
-                                        );
-                                      })()}
-                                      <p className="text-xs text-muted-foreground font-mono mt-1">
-                                        {area && <>Area <span className="text-foreground font-semibold">{area}</span></>}
-                                        {row && <>{area ? " · " : ""}Row <span className="text-foreground font-semibold">{row}</span></>}
-                                        {seats && <>{(area || row) ? " · " : ""}Seats <span className="text-foreground font-semibold">{seats}</span></>}
-                                      </p>
-                                    </div>
-                                    <div className="flex items-center gap-3 shrink-0">
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                        onClick={(e) => handleDeleteGroup(e, qg.items)}
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </Button>
-                                      <div className="text-right">
-                                        <p className="text-xl font-bold text-destructive">{qg.qty}</p>
-                                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ticket{qg.qty !== 1 ? "s" : ""}</p>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Individual ticket chips */}
-                                  <div className="px-4 sm:px-5 pb-4 flex flex-wrap gap-2">
-                                    {qg.items.map((item, idx) => (
-                                      <button
-                                        key={item.id}
-                                        onClick={() => toggleItemExpanded(item.id)}
-                                        className={cn(
-                                          "flex items-center gap-2 rounded-lg border px-3 py-2 hover:bg-muted/60 transition-colors text-left",
-                                          expandedItems.has(item.id) ? "bg-muted/60 border-primary/30" : "bg-muted/30"
-                                        )}
-                                      >
-                                        <span className="flex items-center justify-center h-7 w-7 rounded bg-destructive/10 text-destructive text-xs font-bold font-mono">
-                                          {item.seat || (idx + 1)}
-                                        </span>
-                                        <div className="text-xs">
-                                          <p className="font-medium">{[item.first_name, item.last_name].filter(Boolean).join(" ") || "—"}</p>
-                                          <p className="text-muted-foreground">Ticket {idx + 1}/{qg.qty}</p>
-                                        </div>
-                                        {item.row_name && (
-                                          <Badge variant="outline" className="text-[9px] ml-1 font-mono">R{item.row_name}</Badge>
-                                        )}
-                                        <Badge variant="outline" className={cn("text-[9px]", statusColor[item.status] || "")}>
-                                          {item.status}
-                                        </Badge>
-                                        {item.source && item.source !== "Own" && item.source !== "Manual Entry" && (
-                                          <Badge variant="outline" className="text-[9px] bg-accent text-accent-foreground">
-                                            {item.source}
-                                          </Badge>
-                                        )}
-                                        {expandedItems.has(item.id) ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
-                                      </button>
-                                    ))}
-                                  </div>
-
-                                  {/* Expanded details for individual tickets */}
-                                  {qg.items.filter(item => expandedItems.has(item.id)).map(item => {
-                                    const hasPassLinks = item.iphone_pass_link || item.android_pass_link || item.pk_pass_url;
-                                    const hasLoginDetails = item.first_name || item.last_name || item.email || item.password || item.supporter_id;
-                                    return (
-                                      <div key={`detail-${item.id}`} className="border-t px-5 py-3 space-y-3 bg-muted/10">
-                                        <p className="text-xs font-semibold text-muted-foreground">
-                                          Seat {item.seat || "—"} · {[item.first_name, item.last_name].filter(Boolean).join(" ") || "Unknown"}
-                                        </p>
-                                        {hasLoginDetails && (
-                                          <div className="rounded-lg bg-muted/30 p-3">
-                                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Login Details</p>
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                                              {item.supporter_id && (
-                                                <div className="flex items-center gap-1">
-                                                  <div>
-                                                    <span className="text-muted-foreground block">Supporter ID</span>
-                                                    <span className="font-mono font-medium">{item.supporter_id}</span>
-                                                  </div>
-                                                  <CopyButton text={item.supporter_id} />
-                                                </div>
-                                              )}
-                                              {item.email && (
-                                                <div className="flex items-center gap-1">
-                                                  <div>
-                                                    <span className="text-muted-foreground block">Email</span>
-                                                    <span className="font-medium">{item.email}</span>
-                                                  </div>
-                                                  <CopyButton text={item.email} />
-                                                </div>
-                                              )}
-                                              {item.password && (
-                                                <div className="flex items-center gap-1">
-                                                  <div>
-                                                    <span className="text-muted-foreground block">Password</span>
-                                                    <span className="font-mono font-medium">{item.password}</span>
-                                                  </div>
-                                                  <CopyButton text={item.password} />
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        )}
-                                        {hasPassLinks && (
-                                          <div className="rounded-lg bg-muted/30 p-3">
-                                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Digital Passes</p>
-                                            <div className="space-y-2">
-                                              {item.iphone_pass_link && (
-                                                <div className="flex items-center gap-2 text-xs">
-                                                  <Apple className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                                  <a href={item.iphone_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>{item.iphone_pass_link}</a>
-                                                  <CopyButton text={item.iphone_pass_link} />
-                                                </div>
-                                              )}
-                                              {item.android_pass_link && (
-                                                <div className="flex items-center gap-2 text-xs">
-                                                  <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                                  <a href={item.android_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>{item.android_pass_link}</a>
-                                                  <CopyButton text={item.android_pass_link} />
-                                                </div>
-                                              )}
-                                              {item.pk_pass_url && (
-                                                <div className="flex items-center gap-2 text-xs">
-                                                  <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                                  <a href={item.pk_pass_url} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>Download</a>
-                                                  <CopyButton text={item.pk_pass_url} />
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        )}
-                                        <div className="flex items-center gap-2 pt-1">
-                                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSelectedId(item.id)}>
-                                            <Pencil className="h-3 w-3 mr-1" /> Edit
-                                          </Button>
-                                          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10" onClick={(e) => handleDelete(e, item)}>
-                                            <Trash2 className="h-3 w-3 mr-1" /> Delete
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })}
-                          </div>
+                          {/* Assigned groups (bottom) */}
+                          {assignedGroups.length > 0 && (
+                            <div className="space-y-3 mt-4">
+                              <div className="flex items-center gap-2">
+                                <div className="h-px flex-1 bg-border" />
+                                <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold px-2">Assigned</span>
+                                <div className="h-px flex-1 bg-border" />
+                              </div>
+                              {assignedGroups.map(renderGroup)}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
