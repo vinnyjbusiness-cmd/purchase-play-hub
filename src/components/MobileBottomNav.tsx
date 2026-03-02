@@ -5,8 +5,8 @@ import { useState } from "react";
 import { useOrg } from "@/hooks/useOrg";
 import {
   CalendarDays, Package, Boxes, HeartPulse, Globe, Users, Banknote, BarChart3,
-  ClipboardList, ListTodo, CalendarClock, FileText, Mail, Siren, Truck, Contact,
-  MessageSquareText, FileSpreadsheet, Handshake, Sun, Moon, LogOut,
+  ClipboardList, ListTodo, CalendarClock, FileText, Siren, Truck, Contact,
+  MessageSquareText, Handshake, Sun, Moon, LogOut, KeyRound,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,22 +32,20 @@ export default function MobileBottomNav() {
         { to: "/world-cup", icon: Globe, label: "World Cup" },
         { to: "/events", icon: CalendarDays, label: "Events" },
         { to: "/suppliers", icon: Truck, label: "Contacts" },
-        { to: "/ijk-account", icon: Handshake, label: "IJK Account" },
         { to: "/members", icon: Contact, label: "Members" },
         { to: "/purchases", icon: Package, label: "Purchases" },
         { to: "/inventory", icon: Boxes, label: "Inventory" },
         { to: "/timeline", icon: CalendarClock, label: "Timeline" },
-        { to: "/platforms", icon: Globe, label: "Platforms" },
         { to: "/analytics", icon: BarChart3, label: "Analytics" },
         { to: "/cashflow", icon: Banknote, label: "Cashflow" },
         { to: "/invoices", icon: FileText, label: "Invoices" },
+        { to: "/ijk-account", icon: Handshake, label: "IJK" },
         { to: "/health", icon: HeartPulse, label: "Health" },
         { to: "/todos", icon: ListTodo, label: "To-Do" },
         { to: "/team", icon: Users, label: "Team" },
-        { to: "/team/communications", icon: Mail, label: "Comms" },
         { to: "/templates", icon: MessageSquareText, label: "Templates" },
-        { to: "/spreadsheet-templates", icon: FileSpreadsheet, label: "Sheets" },
         { to: "/activity", icon: ClipboardList, label: "Activity" },
+        { to: "/vault-passwords", icon: KeyRound, label: "Vault" },
       ]
     : [
         { to: "/purchases", icon: Package, label: "Purchases" },
