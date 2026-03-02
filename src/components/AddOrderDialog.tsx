@@ -272,7 +272,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
           {/* Category & Block */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Category *</Label>
+              <Label>{isWorldCup ? "Category *" : "Section *"}</Label>
               {isWorldCup ? (
                 <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
                   <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
