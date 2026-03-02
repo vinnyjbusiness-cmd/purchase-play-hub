@@ -563,18 +563,31 @@ export default function Inventory() {
                                 </div>
                               </div>
 
-                              {/* Seating info + ticket count row */}
-                              <div className="flex items-end justify-between mt-3">
-                                <p className="text-xs font-mono text-white/80">
-                                  {area && <>Area <span className="text-white font-semibold">{area}</span></>}
-                                  {row && <>{area ? " · " : ""}Row <span className="text-white font-semibold">{row}</span></>}
-                                  {seats && <>{(area || row) ? " · " : ""}Seats <span className="text-white font-semibold">{seats}</span></>}
-                                </p>
-                                <div className="text-right">
-                                  <p className="text-2xl font-black font-mono leading-none">{qg.qty}</p>
-                                  <p className="text-[9px] uppercase tracking-widest text-white/60 mt-0.5">Ticket{qg.qty !== 1 ? "s" : ""}</p>
-                                </div>
-                              </div>
+                              {/* Seating info + ticket count + cost row */}
+                              {(() => {
+                                const groupTotalCost = qg.items.reduce((sum, i) => sum + (i.face_value || 0), 0);
+                                return (
+                                  <div className="flex items-end justify-between mt-3">
+                                    <div>
+                                      <p className="text-xs font-mono text-white/80">
+                                        {area && <>Area <span className="text-white font-semibold">{area}</span></>}
+                                        {row && <>{area ? " · " : ""}Row <span className="text-white font-semibold">{row}</span></>}
+                                        {seats && <>{(area || row) ? " · " : ""}Seats <span className="text-white font-semibold">{seats}</span></>}
+                                      </p>
+                                      {groupTotalCost > 0 && (
+                                        <p className="text-xs font-mono text-white/70 mt-1">
+                                          Cost: <span className="text-white font-semibold">${groupTotalCost.toFixed(0)}</span>
+                                          <span className="text-white/50 ml-1">(${(groupTotalCost / qg.qty).toFixed(0)}/ea)</span>
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-2xl font-black font-mono leading-none">{qg.qty}</p>
+                                      <p className="text-[9px] uppercase tracking-widest text-white/60 mt-0.5">Ticket{qg.qty !== 1 ? "s" : ""}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
 
                               {/* Chevron */}
                               <div className="flex justify-center mt-2">
@@ -602,7 +615,12 @@ export default function Inventory() {
                                       </span>
                                       <div className="text-xs">
                                         <p className="font-medium">{[item.first_name, item.last_name].filter(Boolean).join(" ") || "—"}</p>
-                                        <p className="text-muted-foreground">Ticket {idx + 1}/{qg.qty}</p>
+                                        <p className="text-muted-foreground">
+                                          Ticket {idx + 1}/{qg.qty}
+                                          {item.face_value != null && item.face_value > 0 && (
+                                            <span className="ml-1 text-foreground font-mono font-semibold">${item.face_value.toFixed(0)}</span>
+                                          )}
+                                        </p>
                                       </div>
                                       {item.row_name && (
                                         <Badge variant="outline" className="text-[9px] ml-1 font-mono">R{item.row_name}</Badge>
@@ -632,32 +650,32 @@ export default function Inventory() {
                                       {hasLoginDetails && (
                                         <div className="rounded-lg bg-muted/30 p-3">
                                           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Login Details</p>
-                                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                                            {item.supporter_id && (
-                                              <div className="flex items-center gap-1">
-                                                <div>
-                                                  <span className="text-muted-foreground block">Supporter ID</span>
-                                                  <span className="font-mono font-medium">{item.supporter_id}</span>
-                                                </div>
-                                                <CopyButton text={item.supporter_id} />
-                                              </div>
-                                            )}
+                                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-xs">
                                             {item.email && (
-                                              <div className="flex items-center gap-1">
-                                                <div>
-                                                  <span className="text-muted-foreground block">Email</span>
-                                                  <span className="font-medium">{item.email}</span>
+                                              <div>
+                                                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block mb-0.5">FIFA Login</span>
+                                                <div className="flex items-center gap-1">
+                                                  <span className="font-medium truncate">{item.email}</span>
+                                                  <CopyButton text={item.email} />
                                                 </div>
-                                                <CopyButton text={item.email} />
                                               </div>
                                             )}
                                             {item.password && (
-                                              <div className="flex items-center gap-1">
-                                                <div>
-                                                  <span className="text-muted-foreground block">Password</span>
+                                              <div>
+                                                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block mb-0.5">FIFA Password</span>
+                                                <div className="flex items-center gap-1">
                                                   <span className="font-mono font-medium">{item.password}</span>
+                                                  <CopyButton text={item.password} />
                                                 </div>
-                                                <CopyButton text={item.password} />
+                                              </div>
+                                            )}
+                                            {item.supporter_id && (
+                                              <div>
+                                                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block mb-0.5">Supporter ID</span>
+                                                <div className="flex items-center gap-1">
+                                                  <span className="font-mono font-medium">{item.supporter_id}</span>
+                                                  <CopyButton text={item.supporter_id} />
+                                                </div>
                                               </div>
                                             )}
                                           </div>
@@ -708,14 +726,22 @@ export default function Inventory() {
                         );
                       };
 
+                      const sectionTotalCost = sectionItems.reduce((sum, i) => sum + (i.face_value || 0), 0);
+                      const sectionPerTicket = sectionItems.length > 0 && sectionTotalCost > 0 ? sectionTotalCost / sectionItems.length : 0;
+
                       return (
                         <div key={sectionName} className="px-5 py-4 space-y-3">
                           {/* Section title */}
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3 flex-wrap">
                             <h3 className="text-sm font-black uppercase tracking-wide">{sectionName}</h3>
                             <Badge className="bg-destructive text-destructive-foreground text-[10px] font-bold uppercase tracking-wider">
                               {sectionItems.length} Ticket{sectionItems.length !== 1 ? "s" : ""}
                             </Badge>
+                            {sectionTotalCost > 0 && (
+                              <Badge variant="outline" className="text-[10px] font-bold bg-muted/60">
+                                Total: ${sectionTotalCost.toFixed(0)} {sectionPerTicket > 0 && `($${sectionPerTicket.toFixed(0)}/ea)`}
+                              </Badge>
+                            )}
                             {(() => {
                               const src = sectionItems[0]?.source;
                               return src && src !== "IJK" && src !== "Manual Entry" ? (
