@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, Smartphone, Copy, Check, Download, Zap, CheckCircle2, CalendarIcon, Trash2, Pencil, ChevronDown } from "lucide-react";
 import { getEventKey } from "@/lib/eventDedup";
+import { formatEventTitle, getMatchBadge } from "@/lib/eventDisplay";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours, addDays, addWeeks, addMonths } from "date-fns";
 import { toast } from "sonner";
@@ -376,7 +377,7 @@ export default function Orders() {
     orders.forEach(o => {
       if (o.events) {
         const key = getEventKey(o.events.home_team, o.events.away_team, o.events.event_date);
-        if (!seen.has(key)) seen.set(key, `${o.events.home_team} vs ${o.events.away_team}`);
+        if (!seen.has(key)) seen.set(key, formatEventTitle(o.events.home_team, o.events.away_team, o.events.match_code));
       }
     });
     return [...seen.entries()].map(([value, label]) => ({ value, label }));
@@ -620,6 +621,7 @@ export default function Orders() {
                       <TeamLogo name={group.event.home_team} size={isMobile ? 36 : 44} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
+                          {getMatchBadge(group.event.match_code) && <span className="text-[10px] md:text-xs font-bold px-1.5 py-0.5 rounded bg-emerald-500/30 text-white">{getMatchBadge(group.event.match_code)}</span>}
                           <h2 className="font-extrabold text-lg md:text-2xl text-white leading-tight">
                             {group.event.home_team} vs {group.event.away_team}
                           </h2>

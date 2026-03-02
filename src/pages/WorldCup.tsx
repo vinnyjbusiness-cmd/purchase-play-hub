@@ -17,6 +17,7 @@ import { format, subHours } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getEventKey, deduplicateEvents } from "@/lib/eventDedup";
+import { formatEventTitle, getMatchBadge } from "@/lib/eventDisplay";
 import FilterSelect from "@/components/FilterSelect";
 import AddOrderDialog from "@/components/AddOrderDialog";
 import OrderDetailSheet from "@/components/OrderDetailSheet";
@@ -414,7 +415,7 @@ export default function WorldCup() {
                   <div key={group.eventIds[0]} className="rounded-xl border bg-card overflow-hidden shadow-sm">
                     <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/40">
                       <div>
-                        <p className="font-bold text-base">{group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown"}{group.event?.venue && <span className="text-muted-foreground font-normal text-sm ml-2">— {group.event.venue}</span>}</p>
+                        <p className="font-bold text-base">{group.event ? formatEventTitle(group.event.home_team, group.event.away_team, group.event.match_code) : "Unknown"}{group.event?.venue && <span className="text-muted-foreground font-normal text-sm ml-2">— {group.event.venue}</span>}</p>
                         <p className="text-sm font-bold text-foreground mt-0.5">{group.event?.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}</p>
                       </div>
                       <div className="flex items-center gap-5">
@@ -545,7 +546,7 @@ export default function WorldCup() {
               ) : eventBreakdown.map(({ ev, evPurchases, evOrders, cost, revenue, profit, ticketsBought, ticketsSold }) => (
                 <div key={ev.id} className="rounded-xl border bg-card overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 bg-muted/40 border-b border-border">
-                    <div><p className="font-bold">{ev.home_team} vs {ev.away_team}</p><p className="text-xs text-muted-foreground">{format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}{ev.venue && ` · ${ev.venue}`}</p></div>
+                    <div><p className="font-bold">{formatEventTitle(ev.home_team, ev.away_team, ev.match_code)}</p><p className="text-xs text-muted-foreground">{format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}{ev.venue && ` · ${ev.venue}`}</p></div>
                     <div className="flex items-center gap-4 text-right">
                       <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Revenue</p><p className="text-sm font-bold text-success">{fmt(revenue)}</p></div>
                       <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Costs</p><p className="text-sm font-bold text-destructive">{fmt(cost)}</p></div>

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { formatEventTitle } from "@/lib/eventDisplay";
 import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -155,7 +156,7 @@ export default function InventoryDetailSheet({ inventoryId, onClose, onUpdated }
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <p className="text-muted-foreground">Event</p>
-              <p className="font-medium">{item.events?.home_team} vs {item.events?.away_team}</p>
+              <p className="font-medium">{item.events ? formatEventTitle(item.events.home_team, item.events.away_team, item.events.match_code) : "—"}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Face Value</p>

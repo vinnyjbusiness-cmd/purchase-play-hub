@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { formatEventTitle, getMatchBadge } from "@/lib/eventDisplay";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { Input } from "@/components/ui/input";
@@ -60,6 +61,7 @@ interface EventRow {
   event_date: string;
   venue: string | null;
   competition: string;
+  match_code?: string;
 }
 
 interface Listing {
@@ -114,7 +116,7 @@ export default function ListingsManager() {
   const load = useCallback(async () => {
     if (!orgId) return;
     const [{ data: evData }, { data: lsData }] = await Promise.all([
-      supabase.from("events").select("id, home_team, away_team, event_date, venue, competition").eq("org_id", orgId).order("event_date", { ascending: true }),
+      supabase.from("events").select("id, home_team, away_team, event_date, venue, competition, match_code").eq("org_id", orgId).order("event_date", { ascending: true }),
       supabase.from("listings").select("*").eq("org_id", orgId),
     ]);
     setEvents((evData as EventRow[]) || []);
@@ -304,7 +306,7 @@ export default function ListingsManager() {
                 <TeamLogo name={event.home_team} size={36} />
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold truncate">
-                    {event.home_team} vs {event.away_team}
+                    {formatEventTitle(event.home_team, event.away_team, event.match_code)}
                   </p>
                   <p className="text-xs text-white/70 truncate">
                     {format(new Date(event.event_date), "dd MMM yyyy, HH:mm")}

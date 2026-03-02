@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { formatEventLabel } from "@/lib/eventDisplay";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -188,7 +189,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
                 <SelectContent>
                   {filteredEvents.map((e) => (
                     <SelectItem key={e.id} value={e.id}>
-                      {format(new Date(e.event_date), "dd/M/yy")} {e.home_team} vs {e.away_team}
+                      {formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code)}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { formatEventTitle } from "@/lib/eventDisplay";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -46,7 +47,7 @@ export default function GlobalSearch() {
     const [contactsRes, ordersRes, eventsRes, balancesRes] = await Promise.all([
       supabase.from("suppliers").select("id, name, display_id, contact_name").ilike("name", term).limit(5),
       supabase.from("orders").select("id, order_ref, buyer_name, sale_price, events(home_team, away_team)").or(`order_ref.ilike.${term},buyer_name.ilike.${term}`).limit(5),
-      supabase.from("events").select("id, home_team, away_team, event_date").or(`home_team.ilike.${term},away_team.ilike.${term},match_code.ilike.${term}`).limit(5),
+      supabase.from("events").select("id, home_team, away_team, event_date, match_code").or(`home_team.ilike.${term},away_team.ilike.${term},match_code.ilike.${term}`).limit(5),
       supabase.from("balance_payments").select("id, party_id, contact_name, amount, type").ilike("contact_name", term).limit(5),
     ]);
 
@@ -76,7 +77,7 @@ export default function GlobalSearch() {
     (eventsRes.data || []).forEach(e => {
       items.push({
         id: e.id,
-        label: `${e.home_team} vs ${e.away_team}`,
+        label: formatEventTitle(e.home_team, e.away_team, e.match_code),
         sublabel: e.event_date ? new Date(e.event_date).toLocaleDateString("en-GB") : undefined,
         category: "Events",
         path: `/events/${e.id}`,

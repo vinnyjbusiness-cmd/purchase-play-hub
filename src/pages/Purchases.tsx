@@ -12,6 +12,7 @@ import EditPurchaseDialog from "@/components/EditPurchaseDialog";
 import PurchaseDetailSheet from "@/components/PurchaseDetailSheet";
 import SplitPurchaseDialog from "@/components/SplitPurchaseDialog";
 import { deduplicateEvents, getEventKey } from "@/lib/eventDedup";
+import { formatEventTitle, getMatchBadge } from "@/lib/eventDisplay";
 
 interface Purchase {
   id: string;
@@ -146,7 +147,7 @@ export default function Purchases() {
       .sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime())
       .map(e => ({
         value: getEventKey(e.home_team, e.away_team, e.event_date),
-        label: `${e.home_team} vs ${e.away_team} (${format(new Date(e.event_date), "dd MMM")})`,
+        label: formatEventTitle(e.home_team, e.away_team, e.match_code) + ` (${format(new Date(e.event_date), "dd MMM")})`,
       }));
   }, [purchases]);
 
@@ -246,7 +247,7 @@ export default function Purchases() {
                   )}
                   <div>
                     <p className="font-bold text-base">
-                      {group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event"}
+                      {group.event ? formatEventTitle(group.event.home_team, group.event.away_team, group.event.match_code) : "Unknown Event"}
                     </p>
                     <span className="text-xs text-muted-foreground">
                       {group.event?.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}

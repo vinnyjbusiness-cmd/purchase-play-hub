@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { formatEventLabel } from "@/lib/eventDisplay";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -433,7 +434,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
                 <SelectContent>
                   {filteredEvents.map(e => (
                     <SelectItem key={e.id} value={e.id}>
-                      {e.home_team} vs {e.away_team} — {new Date(e.event_date).toLocaleDateString()}
+                      {formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code)}
                     </SelectItem>
                   ))}
                   {filteredEvents.length === 0 && venue && (
