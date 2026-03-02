@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Clock, ExternalLink, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,6 +23,14 @@ export interface IJKTicket {
   salePrice: number;
   status: string;
   isBanned: boolean;
+  // Order allocation details
+  orderId?: string | null;
+  orderRef?: string | null;
+  buyerName?: string | null;
+  platformName?: string | null;
+  orderTotal?: number | null;
+  orderFees?: number | null;
+  orderQty?: number | null;
 }
 
 export interface IJKReplacement {
@@ -69,6 +77,7 @@ export default function IJKGameCard({ game, index, orgId, onRefresh }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [bannedOpen, setBannedOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
 
   const gradient = GRADIENTS[index % GRADIENTS.length];
   const pill = statusPill[game.settlementStatus];
@@ -77,11 +86,12 @@ export default function IJKGameCard({ game, index, orgId, onRefresh }: Props) {
   const totalRevenue = game.tickets.filter(t => t.status === "sold").reduce((s, t) => s + t.salePrice, 0);
   const replacementExtra = game.replacements.reduce((s, r) => s + Math.max(0, r.replacementCost - r.originalCost), 0);
   const netProfit = totalRevenue - totalCost - replacementExtra;
-  const ijkShare = netProfit > 0 ? netProfit / 2 : netProfit / 2;
+  const ijkShare = netProfit / 2;
   const vinnyShare = netProfit - ijkShare;
 
   const soldCount = game.tickets.filter(t => t.status === "sold").length;
   const bannedTickets = game.tickets.filter(t => t.isBanned);
+  const selectedTicket = selectedTicketId ? game.tickets.find(t => t.id === selectedTicketId) : null;
 
   const handleSettle = async (status: "balance_added" | "settled") => {
     setSaving(true);
@@ -129,14 +139,13 @@ export default function IJKGameCard({ game, index, orgId, onRefresh }: Props) {
                 </Badge>
               </div>
 
-              {/* Summary stats */}
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-4 text-center">
-                <Stat label="Tickets" value={String(game.tickets.length)} />
-                <Stat label="Sold" value={String(soldCount)} />
-                <Stat label="Cost" value={`£${totalCost.toFixed(0)}`} />
-                <Stat label="Revenue" value={`£${totalRevenue.toFixed(0)}`} />
-                <Stat label="Profit" value={`£${netProfit.toFixed(0)}`} negative={netProfit < 0} />
-                <Stat label="IJK Split" value={`£${ijkShare.toFixed(0)}`} negative={ijkShare < 0} />
+                <StatBlock label="Tickets" value={String(game.tickets.length)} />
+                <StatBlock label="Sold" value={String(soldCount)} />
+                <StatBlock label="Cost" value={`£${totalCost.toFixed(0)}`} />
+                <StatBlock label="Revenue" value={`£${totalRevenue.toFixed(0)}`} />
+                <StatBlock label="Profit" value={`£${netProfit.toFixed(0)}`} negative={netProfit < 0} />
+                <StatBlock label="IJK Split" value={`£${ijkShare.toFixed(0)}`} negative={ijkShare < 0} />
               </div>
             </div>
           </button>
@@ -152,21 +161,28 @@ export default function IJKGameCard({ game, index, orgId, onRefresh }: Props) {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
                       <TableHead>Section</TableHead>
                       <TableHead>Seat</TableHead>
                       <TableHead className="text-right">Face Value</TableHead>
                       <TableHead className="text-right">Sale Price</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Allocated To</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {game.tickets.map(t => (
-                      <TableRow key={t.id} className={cn(t.isBanned && "bg-destructive/5")}>
+                      <TableRow
+                        key={t.id}
+                        className={cn(
+                          "cursor-pointer transition-colors",
+                          t.isBanned && "bg-destructive/5",
+                          selectedTicketId === t.id && "bg-primary/5 ring-1 ring-inset ring-primary/20",
+                        )}
+                        onClick={() => setSelectedTicketId(selectedTicketId === t.id ? null : t.id)}
+                      >
                         <TableCell className="text-sm font-medium">
                           {[t.firstName, t.lastName].filter(Boolean).join(" ") || "—"}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground truncate max-w-[150px]">{t.email || "—"}</TableCell>
                         <TableCell className="text-sm">
                           {[t.section, t.block, t.rowName].filter(Boolean).join(" / ") || "—"}
                         </TableCell>
@@ -188,11 +204,113 @@ export default function IJKGameCard({ game, index, orgId, onRefresh }: Props) {
                             {t.isBanned ? "Banned" : t.status}
                           </Badge>
                         </TableCell>
+                        <TableCell className="text-sm">
+                          {t.orderId ? (
+                            <span className="text-muted-foreground">
+                              {t.platformName || t.buyerName || "Order"}
+                              {t.orderRef && <span className="text-[10px] ml-1 font-mono">#{t.orderRef}</span>}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/50">—</span>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
+
+              {/* Ticket detail panel */}
+              {selectedTicket && (
+                <div className="mt-3 rounded-lg border bg-muted/20 p-4 animate-fade-in">
+                  <div className="flex items-start justify-between mb-3">
+                    <h5 className="font-semibold text-sm">
+                      Ticket: {[selectedTicket.firstName, selectedTicket.lastName].filter(Boolean).join(" ")} — Seat {selectedTicket.seat || "?"}
+                    </h5>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedTicketId(null)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <p className="text-muted-foreground text-xs">Account</p>
+                      <p className="font-medium truncate">{selectedTicket.email || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Section / Block / Row</p>
+                      <p className="font-medium">{[selectedTicket.section, selectedTicket.block, selectedTicket.rowName].filter(Boolean).join(" / ") || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Face Value</p>
+                      <p className="font-mono font-semibold">£{selectedTicket.faceValue.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Status</p>
+                      <Badge variant="outline" className={cn(
+                        "text-[10px]",
+                        selectedTicket.isBanned && "border-destructive text-destructive",
+                        selectedTicket.status === "sold" && "border-success text-success",
+                      )}>
+                        {selectedTicket.isBanned ? "Banned" : selectedTicket.status}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {selectedTicket.orderId && (
+                    <div className="mt-4 pt-3 border-t">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">Order Allocation</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                        <div>
+                          <p className="text-muted-foreground text-xs">Platform / Buyer</p>
+                          <p className="font-medium">{selectedTicket.platformName || selectedTicket.buyerName || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs">Order Ref</p>
+                          <p className="font-mono">{selectedTicket.orderRef || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs">Order Total</p>
+                          <p className="font-mono font-semibold">£{(selectedTicket.orderTotal || 0).toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs">Fees</p>
+                          <p className="font-mono">£{(selectedTicket.orderFees || 0).toFixed(2)}</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 bg-muted/40 rounded-lg p-3 font-mono text-sm space-y-1">
+                        <div className="flex justify-between">
+                          <span>Sale per ticket</span>
+                          <span>£{selectedTicket.salePrice.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>minus Face value</span>
+                          <span>-£{selectedTicket.faceValue.toFixed(2)}</span>
+                        </div>
+                        <div className="border-t border-dashed border-muted-foreground/30 my-1" />
+                        <div className="flex justify-between font-bold">
+                          <span>Ticket profit</span>
+                          <span className={cn(
+                            (selectedTicket.salePrice - selectedTicket.faceValue) >= 0 ? "text-success" : "text-destructive"
+                          )}>
+                            £{(selectedTicket.salePrice - selectedTicket.faceValue).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-muted-foreground text-xs">
+                          <span>IJK 50%</span>
+                          <span>£{((selectedTicket.salePrice - selectedTicket.faceValue) / 2).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {!selectedTicket.orderId && selectedTicket.status !== "cancelled" && (
+                    <div className="mt-3 pt-3 border-t text-sm text-muted-foreground">
+                      This ticket hasn't been allocated to an order yet.
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
 
             {/* Banned & Replacement Tracker */}
@@ -299,11 +417,11 @@ export default function IJKGameCard({ game, index, orgId, onRefresh }: Props) {
   );
 }
 
-function Stat({ label, value, negative }: { label: string; value: string; negative?: boolean }) {
+function StatBlock({ label, value, negative }: { label: string; value: string; negative?: boolean }) {
   return (
     <div>
       <p className="text-[10px] sm:text-xs uppercase tracking-wider text-white/70">{label}</p>
-      <p className={cn("text-sm sm:text-lg font-bold", negative && "text-red-200")}>{value}</p>
+      <p className={cn("text-sm sm:text-lg font-bold", negative && "text-destructive/80")}>{value}</p>
     </div>
   );
 }
