@@ -391,8 +391,6 @@ export default function MembersPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>First Name</TableHead>
-                <TableHead>Last Name</TableHead>
                 <TableHead>FIFA Email</TableHead>
                 <TableHead>FIFA Password</TableHead>
                 <TableHead>Email Password</TableHead>
@@ -402,9 +400,7 @@ export default function MembersPage() {
             <TableBody>
               {membersList.map(m => (
                 <TableRow key={m.id}>
-                  <TableCell className="font-medium">{m.first_name || "—"}</TableCell>
-                  <TableCell>{m.last_name || "—"}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">{m.email || "—"}</TableCell>
+                   <TableCell className="max-w-[200px] truncate font-medium">{m.email || "—"}</TableCell>
                   <TableCell>{m.member_password || "—"}</TableCell>
                   <TableCell>{m.email_password || "—"}</TableCell>
                   <TableCell>
@@ -653,15 +649,7 @@ export default function MembersPage() {
 
               {isWCForm ? (
                 <>
-                  <div className="space-y-1.5">
-                    <Label>First Name</Label>
-                    <Input value={form.first_name} onChange={e => updateField("first_name", e.target.value)} placeholder="Optional" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Last Name</Label>
-                    <Input value={form.last_name} onChange={e => updateField("last_name", e.target.value)} placeholder="Optional" />
-                  </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 sm:col-span-2">
                     <Label>FIFA Email *</Label>
                     <Input type="email" value={form.email} onChange={e => updateField("email", e.target.value)} placeholder="fifa@example.com" />
                   </div>
@@ -669,7 +657,7 @@ export default function MembersPage() {
                     <Label>FIFA Password *</Label>
                     <Input value={form.member_password} onChange={e => updateField("member_password", e.target.value)} />
                   </div>
-                  <div className="space-y-1.5 sm:col-span-2">
+                  <div className="space-y-1.5">
                     <Label>Email Password</Label>
                     <Input value={form.email_password} onChange={e => updateField("email_password", e.target.value)} />
                   </div>
