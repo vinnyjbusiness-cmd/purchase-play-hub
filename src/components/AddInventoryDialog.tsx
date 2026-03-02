@@ -112,7 +112,6 @@ const createWCEventRow = (): WCEventRow => ({
 });
 
 const WC_CATEGORIES = ["Category 1", "Category 2", "Category 3", "Category 4"];
-const WC_ACCOUNTS = Array.from({ length: 10 }, (_, i) => `Account ${i + 1}`);
 
 export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const { orgId } = useOrg();
@@ -137,7 +136,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const [memberPopoverOpen, setMemberPopoverOpen] = useState<string | null>(null);
 
   // World Cup multi-event state
-  const [wcAccount, setWcAccount] = useState("Account 1");
+  const [wcAccount, setWcAccount] = useState("");
   const [wcRows, setWcRows] = useState<WCEventRow[]>([createWCEventRow()]);
   const [wcEventSearchOpen, setWcEventSearchOpen] = useState<string | null>(null);
 
@@ -216,6 +215,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
     if (validRows.length === 0) { toast.error("Select at least one event"); return; }
     setLoading(true);
 
+    const selectedMember = filteredMembers.find(m => m.id === wcAccount);
     const allInserts: any[] = [];
     for (const row of validRows) {
       for (let i = 0; i < row.quantity; i++) {
@@ -228,13 +228,13 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
           row_name: null,
           seat: null,
           face_value: row.priceUsd ? parseFloat(row.priceUsd) : null,
-          ticket_name: wcAccount,
-          first_name: wcAccount,
-          last_name: null,
+          ticket_name: selectedMember ? `${selectedMember.first_name} ${selectedMember.last_name}`.trim() : null,
+          first_name: selectedMember?.first_name || null,
+          last_name: selectedMember?.last_name || null,
           supporter_id: null,
-          email: null,
-          password: null,
-          email_password: null,
+          email: selectedMember?.email || null,
+          password: selectedMember?.member_password || null,
+          email_password: selectedMember?.email_password || null,
           iphone_pass_link: null,
           android_pass_link: null,
           pk_pass_url: null,
@@ -591,11 +591,18 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
             <div className="space-y-4">
               {/* Account Selector */}
               <div className="space-y-1.5">
-                <Label className="text-xs">Account</Label>
+                <Label className="text-xs">Account (Member)</Label>
                 <Select value={wcAccount} onValueChange={setWcAccount}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Select member account" /></SelectTrigger>
                   <SelectContent>
-                    {WC_ACCOUNTS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                    {filteredMembers.map(m => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.first_name} {m.last_name}{m.email ? ` — ${m.email}` : ""}
+                      </SelectItem>
+                    ))}
+                    {filteredMembers.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No World Cup members found</div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
