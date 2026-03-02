@@ -38,6 +38,7 @@ interface BulkRow {
   last_name: string;
   email: string;
   password: string;
+  email_password: string;
   supporter_id: string;
   iphone_pass_link: string;
   android_pass_link: string;
@@ -45,10 +46,10 @@ interface BulkRow {
 
 const EMPTY_ROW: BulkRow = {
   row_name: "", seat: "", face_value: "", first_name: "", last_name: "",
-  email: "", password: "", supporter_id: "", iphone_pass_link: "", android_pass_link: "",
+  email: "", password: "", email_password: "", supporter_id: "", iphone_pass_link: "", android_pass_link: "",
 };
 
-const COLUMNS: { key: keyof BulkRow; label: string; width: string }[] = [
+const CLUB_COLUMNS: { key: keyof BulkRow; label: string; width: string }[] = [
   { key: "row_name", label: "Row", width: "min-w-[70px]" },
   { key: "seat", label: "Seat", width: "min-w-[70px]" },
   { key: "face_value", label: "Face Value", width: "min-w-[90px]" },
@@ -59,6 +60,17 @@ const COLUMNS: { key: keyof BulkRow; label: string; width: string }[] = [
   { key: "supporter_id", label: "Supporter ID", width: "min-w-[100px]" },
   { key: "iphone_pass_link", label: "iPhone Link", width: "min-w-[130px]" },
   { key: "android_pass_link", label: "Android Link", width: "min-w-[130px]" },
+];
+
+const WC_COLUMNS: { key: keyof BulkRow; label: string; width: string }[] = [
+  { key: "row_name", label: "Row", width: "min-w-[70px]" },
+  { key: "seat", label: "Seat", width: "min-w-[70px]" },
+  { key: "face_value", label: "Face Value", width: "min-w-[90px]" },
+  { key: "first_name", label: "First Name", width: "min-w-[110px]" },
+  { key: "last_name", label: "Last Name", width: "min-w-[110px]" },
+  { key: "email", label: "FIFA Email", width: "min-w-[160px]" },
+  { key: "password", label: "FIFA Password", width: "min-w-[120px]" },
+  { key: "email_password", label: "Email Password", width: "min-w-[120px]" },
 ];
 
 function createRows(count: number): BulkRow[] {
@@ -82,6 +94,8 @@ export default function BulkAddInventoryDialog({ open, onOpenChange, onComplete 
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
 
+  const isWorldCup = venue === "world-cup";
+  const COLUMNS = isWorldCup ? WC_COLUMNS : CLUB_COLUMNS;
   useEffect(() => {
     if (open) {
       supabase.from("events")
@@ -177,6 +191,7 @@ export default function BulkAddInventoryDialog({ open, onOpenChange, onComplete 
         email: r.email.trim() || null,
         password: r.password.trim() || null,
         supporter_id: r.supporter_id.trim() || null,
+        email_password: r.email_password.trim() || null,
         iphone_pass_link: r.iphone_pass_link.trim() || null,
         android_pass_link: r.android_pass_link.trim() || null,
         source: source || "IJK",

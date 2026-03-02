@@ -365,6 +365,7 @@ export type Database = {
           category: string
           created_at: string
           email: string | null
+          email_password: string | null
           event_id: string
           face_value: number | null
           first_name: string | null
@@ -390,6 +391,7 @@ export type Database = {
           category?: string
           created_at?: string
           email?: string | null
+          email_password?: string | null
           event_id: string
           face_value?: number | null
           first_name?: string | null
@@ -415,6 +417,7 @@ export type Database = {
           category?: string
           created_at?: string
           email?: string | null
+          email_password?: string | null
           event_id?: string
           face_value?: number | null
           first_name?: string | null
