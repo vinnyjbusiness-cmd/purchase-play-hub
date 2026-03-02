@@ -13,7 +13,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { toast } from "sonner";
 import { useOrg } from "@/hooks/useOrg";
 import { VENUES, getVenue } from "@/lib/seatingSections";
-import { ChevronDown, ChevronRight, LayoutGrid, Table2, Upload, X, Plus, FileSpreadsheet, UserSearch, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutGrid, Table2, Upload, X, Plus, FileSpreadsheet, UserSearch, ExternalLink, Trash2, Search } from "lucide-react";
 
 interface Props {
   onClose: () => void;
@@ -27,6 +27,7 @@ interface EventRow {
   away_team: string;
   event_date: string;
   venue: string | null;
+  city: string | null;
   competition: string;
 }
 
@@ -93,6 +94,26 @@ const SPLIT_QTY_MAP: Record<string, number> = {
   quads: 4,
 };
 
+/* ── World Cup multi-event row ── */
+interface WCEventRow {
+  id: string;
+  eventId: string;
+  category: string;
+  priceUsd: string;
+  quantity: number;
+}
+
+const createWCEventRow = (): WCEventRow => ({
+  id: crypto.randomUUID(),
+  eventId: "",
+  category: "Category 1",
+  priceUsd: "",
+  quantity: 4,
+});
+
+const WC_CATEGORIES = ["Category 1", "Category 2", "Category 3", "Category 4"];
+const WC_ACCOUNTS = Array.from({ length: 10 }, (_, i) => `Account ${i + 1}`);
+
 export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const { orgId } = useOrg();
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -115,10 +136,15 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [memberPopoverOpen, setMemberPopoverOpen] = useState<string | null>(null);
 
+  // World Cup multi-event state
+  const [wcAccount, setWcAccount] = useState("Account 1");
+  const [wcRows, setWcRows] = useState<WCEventRow[]>([createWCEventRow()]);
+  const [wcEventSearchOpen, setWcEventSearchOpen] = useState<string | null>(null);
+
   useEffect(() => {
     supabase
       .from("events")
-      .select("id, match_code, home_team, away_team, event_date, venue, competition")
+      .select("id, match_code, home_team, away_team, event_date, venue, city, competition")
       .order("event_date", { ascending: false })
       .then(({ data }) => setEvents(data || []));
   }, []);
@@ -154,12 +180,80 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
     );
   }, [venue, events]);
 
+  const wcFilteredEvents = useMemo(() => {
+    return events.filter(e => e.competition?.toLowerCase().includes("world cup"));
+  }, [events]);
+
   const venueConfig = getVenue(venue);
   const gaSections = venueConfig?.sections.GA || [];
   const hospoOptions = venueConfig?.sections.HOSPO || [];
   const selectedGaSection = gaSections.find(s => s.label === section);
   const blocks = selectedGaSection?.blocks || [];
 
+  // ── WC multi-event handlers ──
+  const addWcRow = useCallback(() => {
+    setWcRows(prev => {
+      if (prev.length >= 10) { toast.error("Maximum 10 events"); return prev; }
+      return [...prev, createWCEventRow()];
+    });
+  }, []);
+
+  const removeWcRow = useCallback((id: string) => {
+    setWcRows(prev => {
+      if (prev.length <= 1) return prev;
+      return prev.filter(r => r.id !== id);
+    });
+  }, []);
+
+  const updateWcRow = useCallback((id: string, field: keyof WCEventRow, value: string | number) => {
+    setWcRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+  }, []);
+
+  const wcTotalTickets = wcRows.reduce((sum, r) => sum + (r.eventId ? r.quantity : 0), 0);
+
+  const handleWcSubmit = async () => {
+    const validRows = wcRows.filter(r => r.eventId);
+    if (validRows.length === 0) { toast.error("Select at least one event"); return; }
+    setLoading(true);
+
+    const allInserts: any[] = [];
+    for (const row of validRows) {
+      for (let i = 0; i < row.quantity; i++) {
+        allInserts.push({
+          event_id: row.eventId,
+          purchase_id: null,
+          category: row.category,
+          section: null,
+          block: null,
+          row_name: null,
+          seat: null,
+          face_value: row.priceUsd ? parseFloat(row.priceUsd) : null,
+          ticket_name: wcAccount,
+          first_name: wcAccount,
+          last_name: null,
+          supporter_id: null,
+          email: null,
+          password: null,
+          email_password: null,
+          iphone_pass_link: null,
+          android_pass_link: null,
+          pk_pass_url: null,
+          org_id: orgId,
+          status: "available" as const,
+          source: "IJK",
+          split_type: null,
+        });
+      }
+    }
+
+    const { error } = await supabase.from("inventory").insert(allInserts);
+    if (error) { toast.error(error.message); setLoading(false); return; }
+    toast.success(`${allInserts.length} ticket${allInserts.length !== 1 ? "s" : ""} added across ${validRows.length} event${validRows.length !== 1 ? "s" : ""}`);
+    setLoading(false);
+    onCreated();
+  };
+
+  // ── Regular (non-WC) handlers ──
   const handleQuantityChange = useCallback((newQty: number) => {
     const clamped = Math.max(1, Math.min(newQty, 200));
     setQuantity(clamped);
@@ -199,7 +293,6 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
         const num = parseInt(value);
         if (!isNaN(num)) {
           for (let i = 1; i < next.length; i++) {
-            // Always auto-increment from ticket 1's seat
             const prevExpected = next[i].seat;
             const wasAutoFilled = !prevExpected || /^\d+$/.test(prevExpected);
             if (wasAutoFilled) {
@@ -210,7 +303,6 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
       }
       if (field === "row" && index === 0) {
         for (let i = 1; i < next.length; i++) {
-          // Always propagate row from ticket 1
           next[i] = { ...next[i], row: value };
         }
       }
@@ -374,27 +466,72 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
     return name || null;
   };
 
+  /* ── Searchable WC match selector component ── */
+  const WCMatchSelector = ({ rowId, selectedEventId, onSelect }: { rowId: string; selectedEventId: string; onSelect: (eventId: string) => void }) => {
+    const selectedEvent = wcFilteredEvents.find(e => e.id === selectedEventId);
+    const isOpen = wcEventSearchOpen === rowId;
+
+    return (
+      <Popover open={isOpen} onOpenChange={(open) => setWcEventSearchOpen(open ? rowId : null)}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="w-full justify-start h-9 text-xs gap-1.5 font-normal">
+            <Search className="h-3 w-3 text-muted-foreground shrink-0" />
+            {selectedEvent
+              ? <span className="truncate">{formatEventLabel(selectedEvent.home_team, selectedEvent.away_team, selectedEvent.event_date, selectedEvent.match_code)}</span>
+              : <span className="text-muted-foreground">Search match…</span>
+            }
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="p-0 w-[340px]" align="start">
+          <Command>
+            <CommandInput placeholder="Type team name or match number…" />
+            <CommandList>
+              <CommandEmpty>No matches found</CommandEmpty>
+              <CommandGroup>
+                {wcFilteredEvents.map(e => (
+                  <CommandItem
+                    key={e.id}
+                    value={`${e.match_code} ${e.home_team} ${e.away_team}`}
+                    onSelect={() => { onSelect(e.id); setWcEventSearchOpen(null); }}
+                    className="flex flex-col items-start py-2"
+                  >
+                    <span className="font-medium text-xs">
+                      {formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code)}
+                    </span>
+                    {e.venue && <span className="text-[10px] text-muted-foreground">{e.venue}{e.city ? `, ${e.city}` : ""}</span>}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    );
+  };
+
   return (
     <Dialog open onOpenChange={() => onClose()}>
       <DialogContent className="max-w-2xl max-h-[92vh] flex flex-col p-0 gap-0 md:max-w-[680px]">
         <DialogHeader className="px-4 sm:px-6 pt-5 pb-3">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-lg">Add Inventory</DialogTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowImport(!showImport)}
-              className="gap-1.5 text-xs"
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              Import CSV
-            </Button>
+            {!isWorldCup && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowImport(!showImport)}
+                className="gap-1.5 text-xs"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Import CSV
+              </Button>
+            )}
           </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-4 space-y-4">
-          {/* CSV Import Panel */}
-          {showImport && (
+          {/* CSV Import Panel — non-WC only */}
+          {!isWorldCup && showImport && (
             <div className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Import from CSV</p>
@@ -438,373 +575,475 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
             </div>
           )}
 
-          {/* Shared Fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Club / Venue</Label>
-              <Select value={venue} onValueChange={(v) => { setVenue(v); setEventId(""); setSection(""); setBlock(""); }}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Select venue" /></SelectTrigger>
-                <SelectContent>
-                  {VENUES.map(v => <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Event</Label>
-              <Select value={eventId} onValueChange={setEventId} disabled={!venue}>
-                <SelectTrigger className="h-9"><SelectValue placeholder={venue ? "Select event" : "Select venue first"} /></SelectTrigger>
-                <SelectContent>
-                  {filteredEvents.map(e => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code)}
-                    </SelectItem>
-                  ))}
-                  {filteredEvents.length === 0 && venue && (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No events found</div>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Venue Selector — always shown */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Club / Venue</Label>
+            <Select value={venue} onValueChange={(v) => { setVenue(v); setEventId(""); setSection(""); setBlock(""); }}>
+              <SelectTrigger className="h-9"><SelectValue placeholder="Select venue" /></SelectTrigger>
+              <SelectContent>
+                {VENUES.map(v => <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Category</Label>
-              <Select value={category} onValueChange={(v) => { setCategory(v as "GA" | "HOSPO"); setSection(""); setBlock(""); }}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="GA">General Admission</SelectItem>
-                  <SelectItem value="HOSPO">Hospitality</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Section</Label>
-              {category === "GA" ? (
-                <Select value={section} onValueChange={(v) => { setSection(v); setBlock(""); }} disabled={!venue}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Section" /></SelectTrigger>
-                  <SelectContent>
-                    {gaSections.map(s => <SelectItem key={s.label} value={s.label}>{s.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Select value={section} onValueChange={setSection} disabled={!venue}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Package" /></SelectTrigger>
-                  <SelectContent>
-                    {hospoOptions.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-            {category === "GA" && (
+          {/* ═══════════════ WORLD CUP FLOW ═══════════════ */}
+          {isWorldCup && (
+            <div className="space-y-4">
+              {/* Account Selector */}
               <div className="space-y-1.5">
-                <Label className="text-xs">Block</Label>
-                <Select value={block} onValueChange={setBlock} disabled={!section}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Block" /></SelectTrigger>
+                <Label className="text-xs">Account</Label>
+                <Select value={wcAccount} onValueChange={setWcAccount}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {blocks.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                    {WC_ACCOUNTS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-            )}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Split Type</Label>
-              <Select value={splitType} onValueChange={handleSplitTypeChange}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="singles">Singles</SelectItem>
-                  <SelectItem value="pairs">Pairs</SelectItem>
-                  <SelectItem value="trios">Trios</SelectItem>
-                  <SelectItem value="quads">Quads</SelectItem>
-                  <SelectItem value="all_together">All Together</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Source</Label>
-              <Select value={source} onValueChange={setSource}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="IJK">IJK</SelectItem>
-                  <SelectItem value="Own">Own</SelectItem>
-                  <SelectItem value="__custom__">Other…</SelectItem>
-                </SelectContent>
-              </Select>
-              {source === "__custom__" && (
-                <Input value={customSource} onChange={e => setCustomSource(e.target.value)} placeholder="Enter source name" className="h-8 mt-1 text-xs" />
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Quantity</Label>
-              <Input
-                type="number"
-                min={1}
-                max={200}
-                value={quantity}
-                onChange={e => handleQuantityChange(Number(e.target.value))}
-                className="h-9"
-              />
-            </div>
-          </div>
+              {/* Event Rows */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Events</Label>
+                <div className="space-y-2">
+                  {wcRows.map((row, idx) => (
+                    <div key={row.id} className="rounded-lg border bg-card p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground">Event {idx + 1}</span>
+                        <button
+                          onClick={() => removeWcRow(row.id)}
+                          className="text-muted-foreground hover:text-destructive p-1"
+                          title="Remove event"
+                          disabled={wcRows.length <= 1}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
 
-          {/* View Toggle */}
-          <div className="flex items-center justify-between border-t pt-3">
-            <p className="text-sm font-medium">Tickets ({validTickets.length})</p>
-            <div className="flex items-center gap-1 rounded-md border p-0.5">
-              <button
-                onClick={() => setViewMode("cards")}
-                className={`p-1.5 rounded text-xs ${viewMode === "cards" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => setViewMode("grid")}
-                className={`p-1.5 rounded text-xs ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <Table2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Card View */}
-          {viewMode === "cards" && (
-            <div className="space-y-2">
-              {tickets.map((ticket, idx) => {
-                if (removedIds.has(ticket.id)) return null;
-                const isExpanded = expandedTickets.has(ticket.id);
-                const memberName = getMemberName(ticket);
-                return (
-                  <div key={ticket.id} className="rounded-lg border bg-card p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-muted-foreground">
-                        Ticket {idx + 1}
-                        {memberName && <span className="text-foreground ml-1">— {memberName}</span>}
-                      </span>
-                      <button
-                        onClick={() => removeTicket(idx)}
-                        className="text-muted-foreground hover:text-destructive p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 sm:p-0.5 flex items-center justify-center"
-                        title="Remove"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    {/* Row / Seat / Face Value — stacks on mobile */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {/* Match search */}
                       <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground">Row</Label>
-                        <Input
-                          value={ticket.row}
-                          onChange={e => handleTicketChange(idx, "row", e.target.value)}
-                          className="h-8 text-xs"
-                          placeholder="A"
+                        <Label className="text-[10px] text-muted-foreground">Match</Label>
+                        <WCMatchSelector
+                          rowId={row.id}
+                          selectedEventId={row.eventId}
+                          onSelect={(eid) => updateWcRow(row.id, "eventId", eid)}
                         />
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground">Seat</Label>
-                        <Input
-                          value={ticket.seat}
-                          onChange={e => handleTicketChange(idx, "seat", e.target.value)}
-                          className="h-8 text-xs"
-                          placeholder={idx === 0 ? "50" : ""}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground">Face Value (£)</Label>
-                        <Input
-                          type="number"
-                          value={ticket.faceValue}
-                          onChange={e => handleTicketChange(idx, "faceValue", e.target.value)}
-                          className="h-8 text-xs"
-                          placeholder="0.00"
-                        />
-                      </div>
-                    </div>
 
-                    {/* Login Details Collapsible */}
-                    <Collapsible open={isExpanded} onOpenChange={() => {
-                      setExpandedTickets(prev => {
-                        const next = new Set(prev);
-                        next.has(ticket.id) ? next.delete(ticket.id) : next.add(ticket.id);
-                        return next;
-                      });
-                    }}>
-                      <CollapsibleTrigger className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1">
-                        {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                        Login Details
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pt-2 space-y-2">
-                        {/* Assign Member dropdown */}
+                      {/* Category / Price / Qty */}
+                      <div className="grid grid-cols-3 gap-2">
                         <div className="space-y-1">
-                          <Label className="text-[10px] text-muted-foreground">Assign Member</Label>
-                          <Popover open={memberPopoverOpen === ticket.id} onOpenChange={(open) => setMemberPopoverOpen(open ? ticket.id : null)}>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" size="sm" className="w-full justify-start h-8 text-xs gap-1.5">
-                                <UserSearch className="h-3 w-3 text-muted-foreground shrink-0" />
-                                {ticket.memberId
-                                  ? `${ticket.firstName} ${ticket.lastName}`
-                                  : "Search members…"
-                                }
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)] sm:w-72" align="start">
-                              <Command>
-                                <CommandInput placeholder="Search by name or email…" />
-                                <CommandList>
-                                  <CommandEmpty>No members found</CommandEmpty>
-                                  <CommandGroup>
-                                    {filteredMembers.map(m => (
-                                      <CommandItem
-                                        key={m.id}
-                                        value={`${m.first_name} ${m.last_name} ${m.email || ""}`}
-                                        onSelect={() => assignMember(idx, m)}
-                                        className="flex flex-col items-start py-2"
-                                      >
-                                        <span className="font-medium text-xs">{m.first_name} {m.last_name}</span>
-                                        {m.email && <span className="text-[10px] text-muted-foreground">{m.email}</span>}
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
-                          {filteredMembers.length === 0 && venue && (
-                            <p className="text-[10px] text-muted-foreground mt-1">No members tagged with this club/tournament</p>
-                          )}
+                          <Label className="text-[10px] text-muted-foreground">Category</Label>
+                          <Select value={row.category} onValueChange={(v) => updateWcRow(row.id, "category", v)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {WC_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
                         </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground">First Name</Label>
-                            <Input value={ticket.firstName} onChange={e => handleTicketChange(idx, "firstName", e.target.value)} className="h-8 text-xs" placeholder="John" />
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Price (USD)</Label>
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                            <Input
+                              type="number"
+                              value={row.priceUsd}
+                              onChange={e => updateWcRow(row.id, "priceUsd", e.target.value)}
+                              className="h-8 text-xs pl-5"
+                              placeholder="0.00"
+                            />
                           </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground">Last Name</Label>
-                            <Input value={ticket.lastName} onChange={e => handleTicketChange(idx, "lastName", e.target.value)} className="h-8 text-xs" placeholder="Smith" />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground">{isWorldCup ? "FIFA Email" : "Email"}</Label>
-                            <Input value={ticket.email} onChange={e => handleTicketChange(idx, "email", e.target.value)} className="h-8 text-xs" placeholder={isWorldCup ? "fifa@example.com" : "john@example.com"} />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground">{isWorldCup ? "FIFA Password" : "Password"}</Label>
-                            <Input value={ticket.password} onChange={e => handleTicketChange(idx, "password", e.target.value)} className="h-8 text-xs" placeholder="••••••" />
-                          </div>
-                          {isWorldCup && (
-                            <div className="space-y-1 sm:col-span-2">
-                              <Label className="text-[10px] text-muted-foreground">Email Password</Label>
-                              <Input value={ticket.emailPassword} onChange={e => handleTicketChange(idx, "emailPassword", e.target.value)} className="h-8 text-xs" placeholder="Email account password" />
-                            </div>
-                          )}
                         </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Qty</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={20}
+                            value={row.quantity}
+                            onChange={e => updateWcRow(row.id, "quantity", Math.max(1, Math.min(20, Number(e.target.value))))}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
 
-                        {/* Pass Links — hidden for World Cup */}
-                        {!isWorldCup && (
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground">Pass Link</Label>
-                            <div className="flex items-center gap-1">
-                              <Input value={ticket.passLink} onChange={e => handleTicketChange(idx, "passLink", e.target.value)} className="h-8 text-xs" placeholder="https://..." />
-                              {ticket.passLink && (
-                                <a href={ticket.passLink} target="_blank" rel="noopener" className="p-1.5 rounded hover:bg-muted/60 shrink-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center">
-                                  <ExternalLink className="h-3.5 w-3.5 text-primary" />
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  </div>
-                );
-              })}
-              <Button variant="ghost" size="sm" onClick={addTicketRow} className="w-full text-xs gap-1 border border-dashed min-h-[44px]">
-                <Plus className="h-3.5 w-3.5" /> Add Ticket
-              </Button>
+                  {wcRows.length < 10 && (
+                    <Button variant="ghost" size="sm" onClick={addWcRow} className="w-full text-xs gap-1 border border-dashed min-h-[44px]">
+                      <Plus className="h-3.5 w-3.5" /> Add Event
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
-          {/* Grid View */}
-          {viewMode === "grid" && (
-            <div className="rounded-lg border overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b bg-muted/40">
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground w-8">#</th>
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Row</th>
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Seat</th>
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Face Val</th>
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">First Name</th>
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Last Name</th>
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Email</th>
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Password</th>
-                    <th className="px-2 py-1.5 w-8"></th>
-                  </tr>
-                </thead>
-                <tbody>
+          {/* ═══════════════ REGULAR (non-WC) FLOW ═══════════════ */}
+          {!isWorldCup && (
+            <>
+              {/* Event selector */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Event</Label>
+                <Select value={eventId} onValueChange={setEventId} disabled={!venue}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder={venue ? "Select event" : "Select venue first"} /></SelectTrigger>
+                  <SelectContent>
+                    {filteredEvents.map(e => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code)}
+                      </SelectItem>
+                    ))}
+                    {filteredEvents.length === 0 && venue && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No events found</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Category</Label>
+                  <Select value={category} onValueChange={(v) => { setCategory(v as "GA" | "HOSPO"); setSection(""); setBlock(""); }}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GA">General Admission</SelectItem>
+                      <SelectItem value="HOSPO">Hospitality</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Section</Label>
+                  {category === "GA" ? (
+                    <Select value={section} onValueChange={(v) => { setSection(v); setBlock(""); }} disabled={!venue}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="Section" /></SelectTrigger>
+                      <SelectContent>
+                        {gaSections.map(s => <SelectItem key={s.label} value={s.label}>{s.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select value={section} onValueChange={setSection} disabled={!venue}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="Package" /></SelectTrigger>
+                      <SelectContent>
+                        {hospoOptions.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                {category === "GA" && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Block</Label>
+                    <Select value={block} onValueChange={setBlock} disabled={!section}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="Block" /></SelectTrigger>
+                      <SelectContent>
+                        {blocks.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Split Type</Label>
+                  <Select value={splitType} onValueChange={handleSplitTypeChange}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="singles">Singles</SelectItem>
+                      <SelectItem value="pairs">Pairs</SelectItem>
+                      <SelectItem value="trios">Trios</SelectItem>
+                      <SelectItem value="quads">Quads</SelectItem>
+                      <SelectItem value="all_together">All Together</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Source</Label>
+                  <Select value={source} onValueChange={setSource}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="IJK">IJK</SelectItem>
+                      <SelectItem value="Own">Own</SelectItem>
+                      <SelectItem value="__custom__">Other…</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {source === "__custom__" && (
+                    <Input value={customSource} onChange={e => setCustomSource(e.target.value)} placeholder="Enter source name" className="h-8 mt-1 text-xs" />
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Quantity</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={quantity}
+                    onChange={e => handleQuantityChange(Number(e.target.value))}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+
+              {/* View Toggle */}
+              <div className="flex items-center justify-between border-t pt-3">
+                <p className="text-sm font-medium">Tickets ({validTickets.length})</p>
+                <div className="flex items-center gap-1 rounded-md border p-0.5">
+                  <button
+                    onClick={() => setViewMode("cards")}
+                    className={`p-1.5 rounded text-xs ${viewMode === "cards" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    <LayoutGrid className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode("grid")}
+                    className={`p-1.5 rounded text-xs ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    <Table2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Card View */}
+              {viewMode === "cards" && (
+                <div className="space-y-2">
                   {tickets.map((ticket, idx) => {
                     if (removedIds.has(ticket.id)) return null;
+                    const isExpanded = expandedTickets.has(ticket.id);
+                    const memberName = getMemberName(ticket);
                     return (
-                      <tr key={ticket.id} className="border-b last:border-0 hover:bg-muted/20">
-                        <td className="px-2 py-1 text-muted-foreground font-mono">{idx + 1}</td>
-                        <td className="px-1 py-1">
-                          <input value={ticket.row} onChange={e => handleTicketChange(idx, "row", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="A" />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input value={ticket.seat} onChange={e => handleTicketChange(idx, "seat", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="50" />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input type="number" value={ticket.faceValue} onChange={e => handleTicketChange(idx, "faceValue", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="0.00" />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input value={ticket.firstName} onChange={e => handleTicketChange(idx, "firstName", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="John" />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input value={ticket.lastName} onChange={e => handleTicketChange(idx, "lastName", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="Smith" />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input value={ticket.email} onChange={e => handleTicketChange(idx, "email", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="email" />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input value={ticket.password} onChange={e => handleTicketChange(idx, "password", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="pass" />
-                        </td>
-                        <td className="px-1 py-1">
-                          <button onClick={() => removeTicket(idx)} className="text-muted-foreground hover:text-destructive p-0.5">
-                            <X className="h-3 w-3" />
+                      <div key={ticket.id} className="rounded-lg border bg-card p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            Ticket {idx + 1}
+                            {memberName && <span className="text-foreground ml-1">— {memberName}</span>}
+                          </span>
+                          <button
+                            onClick={() => removeTicket(idx)}
+                            className="text-muted-foreground hover:text-destructive p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 sm:p-0.5 flex items-center justify-center"
+                            title="Remove"
+                          >
+                            <X className="h-3.5 w-3.5" />
                           </button>
-                        </td>
-                      </tr>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Row</Label>
+                            <Input
+                              value={ticket.row}
+                              onChange={e => handleTicketChange(idx, "row", e.target.value)}
+                              className="h-8 text-xs"
+                              placeholder="A"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Seat</Label>
+                            <Input
+                              value={ticket.seat}
+                              onChange={e => handleTicketChange(idx, "seat", e.target.value)}
+                              className="h-8 text-xs"
+                              placeholder={idx === 0 ? "50" : ""}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Face Value (£)</Label>
+                            <Input
+                              type="number"
+                              value={ticket.faceValue}
+                              onChange={e => handleTicketChange(idx, "faceValue", e.target.value)}
+                              className="h-8 text-xs"
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Login Details Collapsible */}
+                        <Collapsible open={isExpanded} onOpenChange={() => {
+                          setExpandedTickets(prev => {
+                            const next = new Set(prev);
+                            next.has(ticket.id) ? next.delete(ticket.id) : next.add(ticket.id);
+                            return next;
+                          });
+                        }}>
+                          <CollapsibleTrigger className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1">
+                            {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                            Login Details
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="pt-2 space-y-2">
+                            {/* Assign Member dropdown */}
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">Assign Member</Label>
+                              <Popover open={memberPopoverOpen === ticket.id} onOpenChange={(open) => setMemberPopoverOpen(open ? ticket.id : null)}>
+                                <PopoverTrigger asChild>
+                                  <Button variant="outline" size="sm" className="w-full justify-start h-8 text-xs gap-1.5">
+                                    <UserSearch className="h-3 w-3 text-muted-foreground shrink-0" />
+                                    {ticket.memberId
+                                      ? `${ticket.firstName} ${ticket.lastName}`
+                                      : "Search members…"
+                                    }
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)] sm:w-72" align="start">
+                                  <Command>
+                                    <CommandInput placeholder="Search by name or email…" />
+                                    <CommandList>
+                                      <CommandEmpty>No members found</CommandEmpty>
+                                      <CommandGroup>
+                                        {filteredMembers.map(m => (
+                                          <CommandItem
+                                            key={m.id}
+                                            value={`${m.first_name} ${m.last_name} ${m.email || ""}`}
+                                            onSelect={() => assignMember(idx, m)}
+                                            className="flex flex-col items-start py-2"
+                                          >
+                                            <span className="font-medium text-xs">{m.first_name} {m.last_name}</span>
+                                            {m.email && <span className="text-[10px] text-muted-foreground">{m.email}</span>}
+                                          </CommandItem>
+                                        ))}
+                                      </CommandGroup>
+                                    </CommandList>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
+                              {filteredMembers.length === 0 && venue && (
+                                <p className="text-[10px] text-muted-foreground mt-1">No members tagged with this club/tournament</p>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">First Name</Label>
+                                <Input value={ticket.firstName} onChange={e => handleTicketChange(idx, "firstName", e.target.value)} className="h-8 text-xs" placeholder="John" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">Last Name</Label>
+                                <Input value={ticket.lastName} onChange={e => handleTicketChange(idx, "lastName", e.target.value)} className="h-8 text-xs" placeholder="Smith" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">Email</Label>
+                                <Input value={ticket.email} onChange={e => handleTicketChange(idx, "email", e.target.value)} className="h-8 text-xs" placeholder="john@example.com" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">Password</Label>
+                                <Input value={ticket.password} onChange={e => handleTicketChange(idx, "password", e.target.value)} className="h-8 text-xs" placeholder="••••••" />
+                              </div>
+                            </div>
+
+                            {/* Pass Links */}
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">Pass Link</Label>
+                              <div className="flex items-center gap-1">
+                                <Input value={ticket.passLink} onChange={e => handleTicketChange(idx, "passLink", e.target.value)} className="h-8 text-xs" placeholder="https://..." />
+                                {ticket.passLink && (
+                                  <a href={ticket.passLink} target="_blank" rel="noopener" className="p-1.5 rounded hover:bg-muted/60 shrink-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center">
+                                    <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
-              <button
-                onClick={addTicketRow}
-                className="w-full text-xs text-muted-foreground hover:text-foreground py-2 flex items-center justify-center gap-1 border-t hover:bg-muted/30 transition-colors min-h-[44px]"
-              >
-                <Plus className="h-3 w-3" /> Add Row
-              </button>
-            </div>
+                  <Button variant="ghost" size="sm" onClick={addTicketRow} className="w-full text-xs gap-1 border border-dashed min-h-[44px]">
+                    <Plus className="h-3.5 w-3.5" /> Add Ticket
+                  </Button>
+                </div>
+              )}
+
+              {/* Grid View */}
+              {viewMode === "grid" && (
+                <div className="rounded-lg border overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b bg-muted/40">
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground w-8">#</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Row</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Seat</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Face Val</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">First Name</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Last Name</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Email</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Password</th>
+                        <th className="px-2 py-1.5 w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tickets.map((ticket, idx) => {
+                        if (removedIds.has(ticket.id)) return null;
+                        return (
+                          <tr key={ticket.id} className="border-b last:border-0 hover:bg-muted/20">
+                            <td className="px-2 py-1 text-muted-foreground font-mono">{idx + 1}</td>
+                            <td className="px-1 py-1">
+                              <input value={ticket.row} onChange={e => handleTicketChange(idx, "row", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="A" />
+                            </td>
+                            <td className="px-1 py-1">
+                              <input value={ticket.seat} onChange={e => handleTicketChange(idx, "seat", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="50" />
+                            </td>
+                            <td className="px-1 py-1">
+                              <input type="number" value={ticket.faceValue} onChange={e => handleTicketChange(idx, "faceValue", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="0.00" />
+                            </td>
+                            <td className="px-1 py-1">
+                              <input value={ticket.firstName} onChange={e => handleTicketChange(idx, "firstName", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="John" />
+                            </td>
+                            <td className="px-1 py-1">
+                              <input value={ticket.lastName} onChange={e => handleTicketChange(idx, "lastName", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="Smith" />
+                            </td>
+                            <td className="px-1 py-1">
+                              <input value={ticket.email} onChange={e => handleTicketChange(idx, "email", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="email" />
+                            </td>
+                            <td className="px-1 py-1">
+                              <input value={ticket.password} onChange={e => handleTicketChange(idx, "password", e.target.value)} className="w-full bg-transparent border-0 outline-none px-1 py-0.5 rounded focus:ring-1 focus:ring-ring text-xs" placeholder="pass" />
+                            </td>
+                            <td className="px-1 py-1">
+                              <button onClick={() => removeTicket(idx)} className="text-muted-foreground hover:text-destructive p-0.5">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <button
+                    onClick={addTicketRow}
+                    className="w-full text-xs text-muted-foreground hover:text-foreground py-2 flex items-center justify-center gap-1 border-t hover:bg-muted/30 transition-colors min-h-[44px]"
+                  >
+                    <Plus className="h-3 w-3" /> Add Row
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* Footer */}
         <div className="border-t px-4 sm:px-6 py-3 flex items-center justify-between bg-muted/30 sticky bottom-0">
-          <div className="flex items-center gap-3">
-            <Badge variant="secondary" className="text-xs font-mono">
-              {validTickets.length} ticket{validTickets.length !== 1 ? "s" : ""} ready
-            </Badge>
-            {totalFaceValue > 0 && (
-              <span className="text-xs text-muted-foreground">
-                Total FV: <span className="font-semibold text-foreground">£{totalFaceValue.toFixed(2)}</span>
-              </span>
-            )}
-          </div>
-          <Button onClick={handleSubmit} disabled={loading || hasErrors} size="sm" className="min-w-[120px] sm:min-w-[140px] min-h-[44px] sm:min-h-0">
-            {loading ? "Adding..." : `Add ${validTickets.length > 1 ? "All " : ""}${validTickets.length} Ticket${validTickets.length !== 1 ? "s" : ""}`}
-          </Button>
+          {isWorldCup ? (
+            <>
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="text-xs font-mono">
+                  {wcTotalTickets} ticket{wcTotalTickets !== 1 ? "s" : ""} across {wcRows.filter(r => r.eventId).length} event{wcRows.filter(r => r.eventId).length !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+              <Button onClick={handleWcSubmit} disabled={loading || wcTotalTickets === 0} size="sm" className="min-w-[140px] min-h-[44px] sm:min-h-0">
+                {loading ? "Adding..." : `Add All to Inventory`}
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="text-xs font-mono">
+                  {validTickets.length} ticket{validTickets.length !== 1 ? "s" : ""} ready
+                </Badge>
+                {totalFaceValue > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    Total FV: <span className="font-semibold text-foreground">£{totalFaceValue.toFixed(2)}</span>
+                  </span>
+                )}
+              </div>
+              <Button onClick={handleSubmit} disabled={loading || hasErrors} size="sm" className="min-w-[120px] sm:min-w-[140px] min-h-[44px] sm:min-h-0">
+                {loading ? "Adding..." : `Add ${validTickets.length > 1 ? "All " : ""}${validTickets.length} Ticket${validTickets.length !== 1 ? "s" : ""}`}
+              </Button>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>
