@@ -93,8 +93,7 @@ export default function AppSidebar() {
   const secondaryNavItems = [
     { to: "/suppliers", icon: Truck, label: "Contacts" },
     { to: "/members", icon: Contact, label: "Members" },
-    { to: "/purchases", icon: Package, label: "Purchases" },
-    { to: "/inventory", icon: Boxes, label: "Inventory" },
+    { to: "/stock", icon: Boxes, label: "Stock" },
     { to: "/timeline", icon: CalendarClock, label: "Event Timeline" },
     { to: "/analytics", icon: BarChart3, label: "Analytics" },
     { to: "/templates", icon: FileText, label: "Templates" },
@@ -216,8 +215,7 @@ export default function AppSidebar() {
   ];
   const viewerBottomItems = [
     { to: "/orders", icon: ShoppingCart, label: "Orders" },
-    { to: "/purchases", icon: Package, label: "Purchases" },
-    { to: "/inventory", icon: Boxes, label: "Inventory" },
+    { to: "/stock", icon: Boxes, label: "Stock" },
     { to: "/todos", icon: ListTodo, label: "To-Do List" },
   ];
 

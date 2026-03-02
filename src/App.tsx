@@ -12,14 +12,11 @@ import { FinancePinGate } from "./components/FinancePinGate";
 import AppLayout from "./components/AppLayout";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
-import Events from "./pages/Events";
 import Orders from "./pages/Orders";
-import Purchases from "./pages/Purchases";
 import Finance from "./pages/Finance";
 import Balance from "./pages/Balance";
 import Analytics from "./pages/Analytics";
 import Reconciliation from "./pages/Reconciliation";
-import Platforms from "./pages/Platforms";
 import EventDetail from "./pages/EventDetail";
 import Team from "./pages/Team";
 import Cashflow from "./pages/Cashflow";
@@ -29,15 +26,14 @@ import Wallet from "./pages/Wallet";
 import TodoList from "./pages/TodoList";
 import EventTimeline from "./pages/EventTimeline";
 import InvoiceGenerator from "./pages/InvoiceGenerator";
-import InventoryPage from "./pages/Inventory";
-import Communications from "./pages/Communications";
+import Stock from "./pages/Stock";
+
 import WarRoom from "./pages/WarRoom";
 import WorldCup from "./pages/WorldCup";
 import SuppliersPage from "./pages/Suppliers";
 import MembersPage from "./pages/Members";
 import TemplatesPage from "./pages/Templates";
 import IJKAccountPage from "./pages/IJKAccount";
-import SpreadsheetTemplatesPage from "./pages/SpreadsheetTemplates";
 import PasswordVault from "./pages/PasswordVault";
 import ListingsManager from "./pages/ListingsManager";
 import NotFound from "./pages/NotFound";
@@ -126,8 +122,10 @@ const App = () => (
               <Route path="/events" element={<Navigate to="/analytics?tab=events" replace />} />
               <Route path="/events/:id" element={<AdminOnly><EventDetail /></AdminOnly>} />
               <Route path="/orders" element={<Orders />} />
-              <Route path="/purchases" element={<Purchases />} />
-              <Route path="/inventory" element={<InventoryPage />} />
+              {/* Stock page: merged Inventory + Purchases */}
+              <Route path="/stock" element={<Stock />} />
+              <Route path="/inventory" element={<Navigate to="/stock?tab=inventory" replace />} />
+              <Route path="/purchases" element={<Navigate to="/stock?tab=purchases" replace />} />
               <Route path="/platforms" element={<Navigate to="/analytics?tab=platforms" replace />} />
               <Route path="/finance" element={<PinProtected><Finance /></PinProtected>} />
               <Route path="/analytics" element={<PinProtected><Analytics /></PinProtected>} />
@@ -135,7 +133,7 @@ const App = () => (
               <Route path="/cashflow" element={<PinProtected><Cashflow /></PinProtected>} />
               <Route path="/health" element={<AdminOnly><Reconciliation /></AdminOnly>} />
               <Route path="/team" element={<AdminOnly><Team /></AdminOnly>} />
-              <Route path="/team/communications" element={<AdminOnly><Communications /></AdminOnly>} />
+              <Route path="/team/communications" element={<Navigate to="/team" replace />} />
               <Route path="/activity" element={<AdminOnly><ActivityLog /></AdminOnly>} />
               <Route path="/wallet" element={<PinProtected><Wallet /></PinProtected>} />
               <Route path="/todos" element={<TodoList />} />
@@ -145,7 +143,6 @@ const App = () => (
               <Route path="/members" element={<AdminOnly><MembersPage /></AdminOnly>} />
               <Route path="/templates" element={<AdminOnly><TemplatesPage /></AdminOnly>} />
               <Route path="/ijk-account" element={<AdminOnly><IJKAccountPage /></AdminOnly>} />
-              <Route path="/spreadsheet-templates" element={<AdminOnly><SpreadsheetTemplatesPage /></AdminOnly>} />
               <Route path="/warroom" element={<AdminOnly><WarRoom /></AdminOnly>} />
               <Route path="/world-cup" element={<AdminOnly><WorldCup /></AdminOnly>} />
               <Route path="/vault-passwords" element={<AdminOnly><PasswordVault /></AdminOnly>} />

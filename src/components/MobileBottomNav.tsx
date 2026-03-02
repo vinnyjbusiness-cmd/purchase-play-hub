@@ -33,8 +33,7 @@ export default function MobileBottomNav() {
         { to: "/events", icon: CalendarDays, label: "Events" },
         { to: "/suppliers", icon: Truck, label: "Contacts" },
         { to: "/members", icon: Contact, label: "Members" },
-        { to: "/purchases", icon: Package, label: "Purchases" },
-        { to: "/inventory", icon: Boxes, label: "Inventory" },
+        { to: "/stock", icon: Boxes, label: "Stock" },
         { to: "/timeline", icon: CalendarClock, label: "Timeline" },
         { to: "/analytics", icon: BarChart3, label: "Analytics" },
         { to: "/cashflow", icon: Banknote, label: "Cashflow" },
@@ -48,8 +47,7 @@ export default function MobileBottomNav() {
         { to: "/vault-passwords", icon: KeyRound, label: "Vault" },
       ]
     : [
-        { to: "/purchases", icon: Package, label: "Purchases" },
-        { to: "/inventory", icon: Boxes, label: "Inventory" },
+        { to: "/stock", icon: Boxes, label: "Stock" },
         { to: "/todos", icon: ListTodo, label: "To-Do" },
       ];
 
