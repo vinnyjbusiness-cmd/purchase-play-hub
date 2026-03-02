@@ -4,6 +4,8 @@ import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
@@ -81,12 +83,15 @@ function createRows(count: number): BulkRow[] {
   return Array.from({ length: count }, () => ({ ...EMPTY_ROW }));
 }
 
+const CLUB_OPTIONS = ["Liverpool", "Arsenal", "Manchester United", "World Cup 2026"];
+
 export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComplete }: BulkAddMembersDialogProps) {
   const [rowCount, setRowCount] = useState(10);
   const [rows, setRows] = useState<BulkRow[]>([]);
   const [started, setStarted] = useState(false);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, skipped: 0, failed: 0 });
+  const [club, setClub] = useState("");
 
   const handleGenerate = () => {
     setRows(createRows(rowCount));
@@ -192,6 +197,7 @@ export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComp
         address: r.address.trim() || null,
         iphone_pass_link: r.iphone_pass_link.trim() || null,
         android_pass_link: r.android_pass_link.trim() || null,
+        club: club || null,
       }));
 
       const { error } = await supabase.from("members").insert(inserts as any);
@@ -233,6 +239,17 @@ export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComp
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-4 space-y-4">
+          {/* Club selector */}
+          <div className="max-w-xs space-y-1.5">
+            <Label className="text-xs">Club / Tournament (applied to all rows)</Label>
+            <Select value={club} onValueChange={setClub}>
+              <SelectTrigger className="h-9"><SelectValue placeholder="Select club" /></SelectTrigger>
+              <SelectContent>
+                {CLUB_OPTIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
           {!started ? (
             <div className="flex flex-col items-center gap-4 py-8">
               <p className="text-sm text-muted-foreground">How many member rows do you want to add?</p>
@@ -241,10 +258,7 @@ export default function BulkAddMembersDialog({ open, onOpenChange, orgId, onComp
                   <Minus className="h-4 w-4" />
                 </Button>
                 <Input
-                  type="number"
-                  min={1}
-                  max={500}
-                  value={rowCount}
+                  type="number" min={1} max={500} value={rowCount}
                   onChange={e => setRowCount(Math.max(1, Math.min(500, parseInt(e.target.value) || 1)))}
                   className="w-20 text-center"
                 />

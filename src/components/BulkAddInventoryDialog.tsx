@@ -1,0 +1,422 @@
+import { useState, useMemo, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
+import { Plus, Minus, Trash2 } from "lucide-react";
+import { useOrg } from "@/hooks/useOrg";
+import { formatEventLabel } from "@/lib/eventDisplay";
+import { VENUES, getVenue } from "@/lib/seatingSections";
+
+interface BulkAddInventoryDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onComplete: () => void;
+}
+
+interface EventRow {
+  id: string;
+  match_code: string;
+  home_team: string;
+  away_team: string;
+  event_date: string;
+  venue: string | null;
+  competition: string;
+}
+
+interface BulkRow {
+  row_name: string;
+  seat: string;
+  face_value: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  password: string;
+  supporter_id: string;
+  iphone_pass_link: string;
+  android_pass_link: string;
+}
+
+const EMPTY_ROW: BulkRow = {
+  row_name: "", seat: "", face_value: "", first_name: "", last_name: "",
+  email: "", password: "", supporter_id: "", iphone_pass_link: "", android_pass_link: "",
+};
+
+const COLUMNS: { key: keyof BulkRow; label: string; width: string }[] = [
+  { key: "row_name", label: "Row", width: "min-w-[70px]" },
+  { key: "seat", label: "Seat", width: "min-w-[70px]" },
+  { key: "face_value", label: "Face Value", width: "min-w-[90px]" },
+  { key: "first_name", label: "First Name", width: "min-w-[110px]" },
+  { key: "last_name", label: "Last Name", width: "min-w-[110px]" },
+  { key: "email", label: "Email", width: "min-w-[160px]" },
+  { key: "password", label: "Password", width: "min-w-[100px]" },
+  { key: "supporter_id", label: "Supporter ID", width: "min-w-[100px]" },
+  { key: "iphone_pass_link", label: "iPhone Link", width: "min-w-[130px]" },
+  { key: "android_pass_link", label: "Android Link", width: "min-w-[130px]" },
+];
+
+function createRows(count: number): BulkRow[] {
+  return Array.from({ length: count }, () => ({ ...EMPTY_ROW }));
+}
+
+export default function BulkAddInventoryDialog({ open, onOpenChange, onComplete }: BulkAddInventoryDialogProps) {
+  const { orgId } = useOrg();
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [venue, setVenue] = useState("");
+  const [eventId, setEventId] = useState("");
+  const [category, setCategory] = useState("GA");
+  const [section, setSection] = useState("");
+  const [block, setBlock] = useState("");
+  const [source, setSource] = useState("IJK");
+  const [splitType, setSplitType] = useState("");
+
+  const [rowCount, setRowCount] = useState(10);
+  const [rows, setRows] = useState<BulkRow[]>([]);
+  const [started, setStarted] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
+
+  useEffect(() => {
+    if (open) {
+      supabase.from("events")
+        .select("id, match_code, home_team, away_team, event_date, venue, competition")
+        .order("event_date", { ascending: false })
+        .then(({ data }) => setEvents(data || []));
+    }
+  }, [open]);
+
+  const filteredEvents = useMemo(() => {
+    if (!venue) return [];
+    const venueConfig = getVenue(venue);
+    if (!venueConfig) return events;
+    if (venue === "world-cup") {
+      return events.filter(e => e.competition?.toLowerCase().includes("world cup"));
+    }
+    const clubName = venueConfig.label.split(" (")[0].toLowerCase();
+    return events.filter(e =>
+      e.home_team?.toLowerCase().includes(clubName) ||
+      e.venue?.toLowerCase().includes(clubName)
+    );
+  }, [venue, events]);
+
+  const venueConfig = getVenue(venue);
+  const gaSections = venueConfig?.sections.GA || [];
+  const hospoOptions = venueConfig?.sections.HOSPO || [];
+  const selectedGaSection = gaSections.find(s => s.label === section);
+  const blocks = selectedGaSection?.blocks || [];
+
+  const handleGenerate = () => {
+    setRows(createRows(rowCount));
+    setStarted(true);
+  };
+
+  const handleCellChange = (rowIdx: number, key: keyof BulkRow, value: string) => {
+    setRows(prev => {
+      const next = [...prev];
+      next[rowIdx] = { ...next[rowIdx], [key]: value };
+      return next;
+    });
+  };
+
+  const handlePaste = (e: React.ClipboardEvent, rowIdx: number, colIdx: number) => {
+    const text = e.clipboardData.getData("text");
+    if (!text.includes("\t") && !text.includes("\n")) return;
+    e.preventDefault();
+    const pastedLines = text.split(/\r?\n/).filter(l => l.length > 0);
+    setRows(prev => {
+      const next = [...prev];
+      while (next.length < rowIdx + pastedLines.length) next.push({ ...EMPTY_ROW });
+      pastedLines.forEach((line, li) => {
+        const cells = line.split("\t");
+        cells.forEach((cell, ci) => {
+          const targetCol = colIdx + ci;
+          if (targetCol < COLUMNS.length) {
+            const ri = rowIdx + li;
+            next[ri] = { ...next[ri], [COLUMNS[targetCol].key]: cell.trim() };
+          }
+        });
+      });
+      return next;
+    });
+  };
+
+  const addRows = (count: number) => setRows(prev => [...prev, ...createRows(count)]);
+  const removeRow = (idx: number) => setRows(prev => prev.filter((_, i) => i !== idx));
+  const clearAll = () => setRows(prev => prev.map(() => ({ ...EMPTY_ROW })));
+
+  const validRows = rows.filter(r => r.seat.trim() || r.first_name.trim() || r.last_name.trim());
+
+  const handleImport = async () => {
+    if (!orgId || !eventId || !validRows.length) return;
+    setImporting(true);
+    setProgress({ done: 0, total: validRows.length, failed: 0 });
+
+    let done = 0, failed = 0;
+    const BATCH_SIZE = 5;
+
+    for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
+      const batch = validRows.slice(i, i + BATCH_SIZE);
+      const inserts = batch.map(r => ({
+        event_id: eventId,
+        org_id: orgId,
+        category: category === "HOSPO" ? `HOSPO — ${section}` : "GA",
+        section: category === "GA" ? section || null : null,
+        block: category === "GA" ? block || null : null,
+        row_name: r.row_name.trim() || null,
+        seat: r.seat.trim() || null,
+        face_value: r.face_value.trim() ? parseFloat(r.face_value) : null,
+        first_name: r.first_name.trim() || null,
+        last_name: r.last_name.trim() || null,
+        ticket_name: [r.first_name.trim(), r.last_name.trim()].filter(Boolean).join(" ") || null,
+        email: r.email.trim() || null,
+        password: r.password.trim() || null,
+        supporter_id: r.supporter_id.trim() || null,
+        iphone_pass_link: r.iphone_pass_link.trim() || null,
+        android_pass_link: r.android_pass_link.trim() || null,
+        source: source || "IJK",
+        split_type: splitType || null,
+        status: "available" as const,
+      }));
+
+      const { error } = await supabase.from("inventory").insert(inserts as any);
+      if (error) failed += batch.length;
+      else done += batch.length;
+      setProgress({ done, total: validRows.length, failed });
+      onComplete();
+    }
+
+    const parts: string[] = [`✅ ${done} tickets added`];
+    if (failed) parts.push(`❌ ${failed} failed`);
+    toast.success(parts.join(" · "));
+
+    setStarted(false);
+    setRows([]);
+    setImporting(false);
+    setProgress({ done: 0, total: 0, failed: 0 });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-6xl w-full h-full sm:h-auto max-h-[100dvh] sm:max-h-[90vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-4 sm:px-6 pt-5 pb-3 shrink-0">
+          <DialogTitle>Bulk Add Inventory</DialogTitle>
+          <DialogDescription className="text-xs">
+            Enter ticket data directly or paste from a spreadsheet (multi-cell paste supported)
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-4 space-y-4">
+          {/* Shared event/section fields */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Club / Venue</Label>
+              <Select value={venue} onValueChange={(v) => { setVenue(v); setEventId(""); setSection(""); setBlock(""); }}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select venue" /></SelectTrigger>
+                <SelectContent>
+                  {VENUES.map(v => <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Event</Label>
+              <Select value={eventId} onValueChange={setEventId} disabled={!venue}>
+                <SelectTrigger className="h-9"><SelectValue placeholder={venue ? "Select event" : "Select venue first"} /></SelectTrigger>
+                <SelectContent>
+                  {filteredEvents.map(e => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Category</Label>
+              <Select value={category} onValueChange={(v) => { setCategory(v); setSection(""); setBlock(""); }}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="GA">General Admission</SelectItem>
+                  <SelectItem value="HOSPO">Hospitality</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Section</Label>
+              <Select value={section} onValueChange={(v) => { setSection(v); setBlock(""); }}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select section" /></SelectTrigger>
+                <SelectContent>
+                  {category === "GA" ? gaSections.map(s => (
+                    <SelectItem key={s.label} value={s.label}>{s.label}</SelectItem>
+                  )) : hospoOptions.map(h => (
+                    <SelectItem key={h} value={h}>{h}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {category === "GA" && blocks.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Block</Label>
+                <Select value={block} onValueChange={setBlock}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Select block" /></SelectTrigger>
+                  <SelectContent>
+                    {blocks.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Source</Label>
+              <Select value={source} onValueChange={setSource}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="IJK">IJK</SelectItem>
+                  <SelectItem value="Own">Own</SelectItem>
+                  <SelectItem value="Manual Entry">Manual Entry</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Split Type</Label>
+              <Select value={splitType} onValueChange={setSplitType}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Any" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="singles">Singles</SelectItem>
+                  <SelectItem value="pairs">Pairs</SelectItem>
+                  <SelectItem value="trios">Trios</SelectItem>
+                  <SelectItem value="quads">Quads</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {!started ? (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <p className="text-sm text-muted-foreground">How many ticket rows do you want to add?</p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setRowCount(c => Math.max(1, c - 5))}>
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Input
+                  type="number" min={1} max={500} value={rowCount}
+                  onChange={e => setRowCount(Math.max(1, Math.min(500, parseInt(e.target.value) || 1)))}
+                  className="w-20 text-center"
+                />
+                <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setRowCount(c => Math.min(500, c + 5))}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <Button onClick={handleGenerate} disabled={!eventId}>
+                {eventId ? `Generate ${rowCount} Rows` : "Select an event first"}
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">{rows.length} rows</Badge>
+                  <Badge variant="outline" className="text-xs">
+                    {validRows.length} valid (have seat or name)
+                  </Badge>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" className="text-xs" onClick={clearAll}>Clear All</Button>
+                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => addRows(10)}>
+                    <Plus className="h-3 w-3 mr-1" /> Add 10 Rows
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setStarted(false); setRows([]); }}>← Back</Button>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-card overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="px-1 py-2 text-left font-medium text-muted-foreground w-8">#</th>
+                      {COLUMNS.map(col => (
+                        <th key={col.key} className={`px-1 py-2 text-left font-medium text-muted-foreground ${col.width}`}>
+                          {col.label}
+                        </th>
+                      ))}
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, ri) => (
+                      <tr key={ri} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="px-1 py-0.5 text-muted-foreground">{ri + 1}</td>
+                        {COLUMNS.map((col, ci) => (
+                          <td key={col.key} className="px-0.5 py-0.5">
+                            <input
+                              type="text"
+                              value={row[col.key]}
+                              onChange={e => handleCellChange(ri, col.key, e.target.value)}
+                              onPaste={e => handlePaste(e, ri, ci)}
+                              className="w-full bg-muted/30 border border-border/50 focus:border-primary focus:bg-background rounded px-1.5 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground/40"
+                              placeholder="—"
+                            />
+                          </td>
+                        ))}
+                        <td className="px-0.5 py-0.5">
+                          <button type="button" onClick={() => removeRow(ri)} className="p-1 text-muted-foreground hover:text-destructive transition-colors">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+
+        <DialogFooter className="px-4 sm:px-6 py-3 border-t shrink-0 sticky bottom-0 bg-background">
+          <div className="flex items-center justify-between w-full gap-2">
+            {importing ? (
+              <div className="flex items-center gap-3 w-full">
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium">Adding tickets… {progress.done}/{progress.total}</span>
+                    <span className="text-xs text-muted-foreground">{progress.total - progress.done} remaining</span>
+                  </div>
+                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
+                  </div>
+                  <div className="flex gap-3 mt-1">
+                    {progress.done > 0 && <span className="text-[10px] text-green-500">✅ {progress.done} added</span>}
+                    {progress.failed > 0 && <span className="text-[10px] text-destructive">❌ {progress.failed} failed</span>}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Badge variant="outline" className="text-xs">
+                  {validRows.length} ticket{validRows.length !== 1 ? "s" : ""} ready
+                </Badge>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                  {started && (
+                    <Button onClick={handleImport} disabled={!validRows.length || !eventId}>
+                      Add {validRows.length} Ticket{validRows.length !== 1 ? "s" : ""}
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

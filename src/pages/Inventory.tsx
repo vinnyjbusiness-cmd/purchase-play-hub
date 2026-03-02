@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import FilterSelect from "@/components/FilterSelect";
 import AddInventoryDialog from "@/components/AddInventoryDialog";
 import InventoryDetailSheet from "@/components/InventoryDetailSheet";
+import BulkAddInventoryDialog from "@/components/BulkAddInventoryDialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
@@ -146,6 +147,7 @@ export default function Inventory() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -301,6 +303,9 @@ export default function Inventory() {
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => exportToCSV(filtered)}>
             <Download className="h-4 w-4 mr-1" /> Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => setShowBulkAdd(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Bulk Add
           </Button>
           <Button onClick={() => setShowAdd(true)}>
             <Plus className="h-4 w-4 mr-1" /> Add Inventory
@@ -749,6 +754,7 @@ export default function Inventory() {
       </div>
 
       {showAdd && <AddInventoryDialog onClose={() => setShowAdd(false)} onCreated={() => { setShowAdd(false); load(); }} />}
+      <BulkAddInventoryDialog open={showBulkAdd} onOpenChange={setShowBulkAdd} onComplete={load} />
 
       <InventoryDetailSheet
         inventoryId={selectedId}

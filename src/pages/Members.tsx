@@ -21,11 +21,15 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Plus, Upload, Download, Search, Pencil, Trash2, Users, Apple, Smartphone,
-  Ticket, Copy, ExternalLink, X, FileDown, TableProperties,
+  Ticket, Copy, ExternalLink, X, FileDown, TableProperties, ChevronDown, ChevronRight,
 } from "lucide-react";
 import ImportMembersDialog from "@/components/ImportMembersDialog";
 import BulkAddMembersDialog from "@/components/BulkAddMembersDialog";
+import { cn } from "@/lib/utils";
 
 interface Member {
   id: string;
@@ -43,6 +47,7 @@ interface Member {
   iphone_pass_link: string | null;
   android_pass_link: string | null;
   pk_pass_url: string | null;
+  club: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -61,6 +66,21 @@ const EMPTY_FORM = {
   iphone_pass_link: "",
   android_pass_link: "",
   pk_pass_url: "",
+  club: "",
+};
+
+const CLUB_OPTIONS = [
+  "Liverpool",
+  "Arsenal",
+  "Manchester United",
+  "World Cup 2026",
+];
+
+const CLUB_GRADIENTS: Record<string, string> = {
+  liverpool: "from-red-600/90 to-red-800/90",
+  arsenal: "from-red-500/90 to-rose-700/90",
+  "manchester united": "from-red-700/90 to-amber-800/90",
+  "world cup 2026": "from-emerald-600/90 to-teal-800/90",
 };
 
 const CSV_HEADERS = [
@@ -99,34 +119,23 @@ function copyToClipboard(text: string, label: string) {
   toast({ title: `${label} copied!` });
 }
 
-/* ─── Pass Badge Icon ─── */
 function PassBadge({
-  active,
-  icon: Icon,
-  label,
-  onClick,
+  active, icon: Icon, label, onClick,
 }: {
-  active: boolean;
-  icon: React.ElementType;
-  label: string;
-  onClick?: () => void;
+  active: boolean; icon: React.ElementType; label: string; onClick?: () => void;
 }) {
   const btn = (
     <button
       type="button"
       onClick={active ? onClick : undefined}
       className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 sm:w-7 sm:h-7 rounded-md transition-colors ${
-        active
-          ? "text-primary hover:bg-primary/10 cursor-pointer"
-          : "text-muted-foreground/30 cursor-default"
+        active ? "text-primary hover:bg-primary/10 cursor-pointer" : "text-muted-foreground/30 cursor-default"
       }`}
     >
       <Icon className="h-4 w-4" />
     </button>
   );
-
   if (!active) return btn;
-
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
@@ -152,6 +161,8 @@ export default function MembersPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [collapsedClubs, setCollapsedClubs] = useState<Set<string>>(new Set());
+
   const fetchMembers = async () => {
     if (!orgId) return;
     setLoading(true);
@@ -171,10 +182,34 @@ export default function MembersPage() {
     if (!search.trim()) return members;
     const q = search.toLowerCase();
     return members.filter(m =>
-      [m.first_name, m.last_name, m.supporter_id, m.email, m.phone_number, m.postcode, m.address]
+      [m.first_name, m.last_name, m.supporter_id, m.email, m.phone_number, m.postcode, m.address, m.club]
         .some(v => v && v.toLowerCase().includes(q))
     );
   }, [members, search]);
+
+  // Group members by club
+  const clubGroups = useMemo(() => {
+    const map: Record<string, Member[]> = {};
+    filtered.forEach(m => {
+      const club = m.club?.trim() || "Uncategorised";
+      if (!map[club]) map[club] = [];
+      map[club].push(m);
+    });
+    // Sort: named clubs first alphabetically, "Uncategorised" last
+    return Object.entries(map).sort(([a], [b]) => {
+      if (a === "Uncategorised") return 1;
+      if (b === "Uncategorised") return -1;
+      return a.localeCompare(b);
+    });
+  }, [filtered]);
+
+  const toggleClubCollapsed = (club: string) => {
+    setCollapsedClubs(prev => {
+      const next = new Set(prev);
+      next.has(club) ? next.delete(club) : next.add(club);
+      return next;
+    });
+  };
 
   const openAdd = () => {
     setEditingId(null);
@@ -200,6 +235,7 @@ export default function MembersPage() {
       iphone_pass_link: m.iphone_pass_link || "",
       android_pass_link: m.android_pass_link || "",
       pk_pass_url: m.pk_pass_url || "",
+      club: m.club || "",
     });
     setPkPassFile(null);
     setPkPassFileName(m.pk_pass_url ? m.pk_pass_url.split("/").pop() || "pass.pkpass" : null);
@@ -226,66 +262,40 @@ export default function MembersPage() {
 
     let pkPassUrl = form.pk_pass_url || null;
 
-    // For new members, we need to insert first to get ID for file path
     if (!editingId && pkPassFile) {
-      // Insert member first without pk_pass_url
       const payload = {
-        first_name: form.first_name,
-        last_name: form.last_name,
-        supporter_id: form.supporter_id || null,
-        email: form.email || null,
-        member_password: form.member_password || null,
-        email_password: form.email_password || null,
-        phone_number: form.phone_number || null,
-        date_of_birth: form.date_of_birth || null,
-        postcode: form.postcode || null,
-        address: form.address || null,
-        iphone_pass_link: form.iphone_pass_link || null,
-        android_pass_link: form.android_pass_link || null,
-        pk_pass_url: null,
-        org_id: orgId,
+        first_name: form.first_name, last_name: form.last_name,
+        supporter_id: form.supporter_id || null, email: form.email || null,
+        member_password: form.member_password || null, email_password: form.email_password || null,
+        phone_number: form.phone_number || null, date_of_birth: form.date_of_birth || null,
+        postcode: form.postcode || null, address: form.address || null,
+        iphone_pass_link: form.iphone_pass_link || null, android_pass_link: form.android_pass_link || null,
+        pk_pass_url: null, org_id: orgId, club: form.club || null,
       };
-
       const { data: inserted, error: insertErr } = await supabase.from("members").insert(payload).select("id").single();
       if (insertErr) {
         toast({ title: "Error adding member", description: insertErr.message, variant: "destructive" });
-        setSaving(false);
-        return;
+        setSaving(false); return;
       }
-
-      // Now upload file with member ID
       const url = await uploadPkPass(inserted.id, pkPassFile);
-      if (url) {
-        await supabase.from("members").update({ pk_pass_url: url }).eq("id", inserted.id);
-      }
+      if (url) await supabase.from("members").update({ pk_pass_url: url }).eq("id", inserted.id);
       toast({ title: "Member added" });
-      setSaving(false);
-      setFormOpen(false);
-      fetchMembers();
-      return;
+      setSaving(false); setFormOpen(false); fetchMembers(); return;
     }
 
-    // Handle pk pass upload for edits
     if (editingId && pkPassFile) {
       const url = await uploadPkPass(editingId, pkPassFile);
       if (url) pkPassUrl = url;
     }
 
     const payload = {
-      first_name: form.first_name,
-      last_name: form.last_name,
-      supporter_id: form.supporter_id || null,
-      email: form.email || null,
-      member_password: form.member_password || null,
-      email_password: form.email_password || null,
-      phone_number: form.phone_number || null,
-      date_of_birth: form.date_of_birth || null,
-      postcode: form.postcode || null,
-      address: form.address || null,
-      iphone_pass_link: form.iphone_pass_link || null,
-      android_pass_link: form.android_pass_link || null,
-      pk_pass_url: pkPassUrl,
-      org_id: orgId,
+      first_name: form.first_name, last_name: form.last_name,
+      supporter_id: form.supporter_id || null, email: form.email || null,
+      member_password: form.member_password || null, email_password: form.email_password || null,
+      phone_number: form.phone_number || null, date_of_birth: form.date_of_birth || null,
+      postcode: form.postcode || null, address: form.address || null,
+      iphone_pass_link: form.iphone_pass_link || null, android_pass_link: form.android_pass_link || null,
+      pk_pass_url: pkPassUrl, org_id: orgId, club: form.club || null,
     };
 
     if (editingId) {
@@ -297,9 +307,7 @@ export default function MembersPage() {
       if (error) toast({ title: "Error adding member", description: error.message, variant: "destructive" });
       else toast({ title: "Member added" });
     }
-    setSaving(false);
-    setFormOpen(false);
-    fetchMembers();
+    setSaving(false); setFormOpen(false); fetchMembers();
   };
 
   const handleDelete = async (id: string) => {
@@ -352,7 +360,6 @@ export default function MembersPage() {
     const text = await file.text();
     const rows = parseCSV(text);
     if (!rows.length) { toast({ title: "No valid rows found in CSV", variant: "destructive" }); return; }
-
     const inserts = rows.map(row => {
       const entry: Record<string, any> = { org_id: orgId };
       Object.entries(CSV_FIELD_MAP).forEach(([header, field]) => {
@@ -361,9 +368,7 @@ export default function MembersPage() {
       if (!entry.first_name || !entry.last_name) return null;
       return entry;
     }).filter((x): x is { org_id: string | null; first_name: string; last_name: string; [k: string]: any } => x !== null && !!x.first_name && !!x.last_name);
-
     if (!inserts.length) { toast({ title: "No valid members in CSV (first & last name required)", variant: "destructive" }); return; }
-
     const { error } = await supabase.from("members").insert(inserts as any);
     if (error) toast({ title: "Import failed", description: error.message, variant: "destructive" });
     else { toast({ title: `${inserts.length} members imported` }); fetchMembers(); }
@@ -371,6 +376,81 @@ export default function MembersPage() {
   };
 
   const updateField = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
+
+  const renderMemberTable = (membersList: Member[]) => (
+    <div className="rounded-lg border bg-card overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>First Name</TableHead>
+            <TableHead>Last Name</TableHead>
+            <TableHead>Supporter ID</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Member Password</TableHead>
+            <TableHead>Email Password</TableHead>
+            <TableHead>Phone</TableHead>
+            <TableHead>DOB</TableHead>
+            <TableHead>Postcode</TableHead>
+            <TableHead>Address</TableHead>
+            <TableHead>Passes</TableHead>
+            <TableHead className="w-[80px]">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {membersList.map(m => (
+            <TableRow key={m.id}>
+              <TableCell className="font-medium">{m.first_name}</TableCell>
+              <TableCell>{m.last_name}</TableCell>
+              <TableCell>{m.supporter_id || "—"}</TableCell>
+              <TableCell className="max-w-[160px] truncate">{m.email || "—"}</TableCell>
+              <TableCell>{m.member_password || "—"}</TableCell>
+              <TableCell>{m.email_password || "—"}</TableCell>
+              <TableCell>{m.phone_number || "—"}</TableCell>
+              <TableCell>{m.date_of_birth || "—"}</TableCell>
+              <TableCell>{m.postcode || "—"}</TableCell>
+              <TableCell className="max-w-[140px] truncate">{m.address || "—"}</TableCell>
+              <TableCell>
+                <div className="flex gap-0.5">
+                  <PassBadge active={!!m.iphone_pass_link} icon={Apple} label="iPhone Pass Link"
+                    onClick={() => m.iphone_pass_link && copyToClipboard(m.iphone_pass_link, "iPhone pass link")} />
+                  <PassBadge active={!!m.android_pass_link} icon={Smartphone} label="Android Pass Link"
+                    onClick={() => m.android_pass_link && copyToClipboard(m.android_pass_link, "Android pass link")} />
+                  <PassBadge active={!!m.pk_pass_url} icon={Ticket} label="PK Pass File"
+                    onClick={() => { if (m.pk_pass_url) { window.open(m.pk_pass_url, "_blank"); toast({ title: "Downloading PK Pass…" }); } }} />
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(m)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete member?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently remove {m.first_name} {m.last_name} from your members list.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDelete(m.id)}>Delete</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -433,109 +513,59 @@ export default function MembersPage() {
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search members..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-9"
-        />
+        <Input placeholder="Search members..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
       </div>
 
       <Badge variant="secondary" className="text-xs">{filtered.length} member{filtered.length !== 1 ? "s" : ""}</Badge>
 
-      <div className="rounded-lg border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>First Name</TableHead>
-              <TableHead>Last Name</TableHead>
-              <TableHead>Supporter ID</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Member Password</TableHead>
-              <TableHead>Email Password</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>DOB</TableHead>
-              <TableHead>Postcode</TableHead>
-              <TableHead>Address</TableHead>
-              <TableHead>Passes</TableHead>
-              <TableHead className="w-[80px]">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={12} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
-            ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={12} className="text-center py-8 text-muted-foreground">No members found</TableCell></TableRow>
-            ) : filtered.map(m => (
-              <TableRow key={m.id}>
-                <TableCell className="font-medium">{m.first_name}</TableCell>
-                <TableCell>{m.last_name}</TableCell>
-                <TableCell>{m.supporter_id || "—"}</TableCell>
-                <TableCell className="max-w-[160px] truncate">{m.email || "—"}</TableCell>
-                <TableCell>{m.member_password || "—"}</TableCell>
-                <TableCell>{m.email_password || "—"}</TableCell>
-                <TableCell>{m.phone_number || "—"}</TableCell>
-                <TableCell>{m.date_of_birth || "—"}</TableCell>
-                <TableCell>{m.postcode || "—"}</TableCell>
-                <TableCell className="max-w-[140px] truncate">{m.address || "—"}</TableCell>
-                <TableCell>
-                  <div className="flex gap-0.5">
-                    <PassBadge
-                      active={!!m.iphone_pass_link}
-                      icon={Apple}
-                      label="iPhone Pass Link"
-                      onClick={() => m.iphone_pass_link && copyToClipboard(m.iphone_pass_link, "iPhone pass link")}
-                    />
-                    <PassBadge
-                      active={!!m.android_pass_link}
-                      icon={Smartphone}
-                      label="Android Pass Link"
-                      onClick={() => m.android_pass_link && copyToClipboard(m.android_pass_link, "Android pass link")}
-                    />
-                    <PassBadge
-                      active={!!m.pk_pass_url}
-                      icon={Ticket}
-                      label="PK Pass File"
-                      onClick={() => {
-                        if (m.pk_pass_url) {
-                          window.open(m.pk_pass_url, "_blank");
-                          toast({ title: "Downloading PK Pass…" });
-                        }
-                      }}
-                    />
+      {/* Collapsible club groups */}
+      {loading ? (
+        <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">Loading…</div>
+      ) : clubGroups.length === 0 ? (
+        <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No members found</div>
+      ) : (
+        <div className="space-y-3">
+          {clubGroups.map(([clubName, clubMembers]) => {
+            const isCollapsed = collapsedClubs.has(clubName);
+            const gradient = CLUB_GRADIENTS[clubName.toLowerCase()] || "from-slate-600/90 to-slate-800/90";
+
+            return (
+              <div key={clubName} className="rounded-xl overflow-hidden shadow-sm border">
+                {/* Credit-card style header */}
+                <button
+                  onClick={() => toggleClubCollapsed(clubName)}
+                  className={cn(
+                    "w-full bg-gradient-to-br text-white px-5 py-4 text-left transition-all hover:brightness-110",
+                    gradient
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest font-medium text-white/60">Members Directory</p>
+                      <p className="text-lg font-bold mt-0.5">{clubName} Members</p>
+                      <p className="text-sm text-white/80 font-mono mt-1">{clubMembers.length} member{clubMembers.length !== 1 ? "s" : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-3xl font-black font-mono leading-none">{clubMembers.length}</p>
+                        <p className="text-[9px] uppercase tracking-widest text-white/60 mt-0.5">Total</p>
+                      </div>
+                      {isCollapsed ? <ChevronRight className="h-5 w-5 text-white/60" /> : <ChevronDown className="h-5 w-5 text-white/60" />}
+                    </div>
                   </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(m)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete member?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will permanently remove {m.first_name} {m.last_name} from your members list.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(m.id)}>Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                </button>
+
+                {/* Collapsible content */}
+                {!isCollapsed && (
+                  <div className="bg-card">
+                    {renderMemberTable(clubMembers)}
                   </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Add / Edit Dialog */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
@@ -553,6 +583,15 @@ export default function MembersPage() {
               <div className="space-y-1.5">
                 <Label>Last Name *</Label>
                 <Input value={form.last_name} onChange={e => updateField("last_name", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Club / Tournament</Label>
+                <Select value={form.club} onValueChange={v => updateField("club", v)}>
+                  <SelectTrigger><SelectValue placeholder="Select club" /></SelectTrigger>
+                  <SelectContent>
+                    {CLUB_OPTIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Supporter ID</Label>
@@ -591,56 +630,34 @@ export default function MembersPage() {
             {/* Pass Links Section */}
             <div className="mt-6 space-y-4">
               <h3 className="text-sm font-semibold text-foreground border-b pb-2">Pass Links</h3>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* iPhone Pass Link */}
                 <div className="space-y-1.5">
                   <Label className="flex items-center gap-1.5 text-xs">
                     <Apple className="h-3.5 w-3.5" /> iPhone Pass Link
                   </Label>
                   <div className="flex gap-1">
-                    <Input
-                      type="url"
-                      placeholder="https://..."
-                      value={form.iphone_pass_link}
-                      onChange={e => updateField("iphone_pass_link", e.target.value)}
-                      className="flex-1"
-                    />
+                    <Input type="url" placeholder="https://..." value={form.iphone_pass_link}
+                      onChange={e => updateField("iphone_pass_link", e.target.value)} className="flex-1" />
                     {form.iphone_pass_link && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
+                      <Button type="button" variant="ghost" size="icon"
                         className="shrink-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 sm:h-10 sm:w-10"
-                        onClick={() => copyToClipboard(form.iphone_pass_link, "iPhone pass link")}
-                      >
+                        onClick={() => copyToClipboard(form.iphone_pass_link, "iPhone pass link")}>
                         <Copy className="h-4 w-4" />
                       </Button>
                     )}
                   </div>
                 </div>
-
-                {/* Android Pass Link */}
                 <div className="space-y-1.5">
                   <Label className="flex items-center gap-1.5 text-xs">
                     <Smartphone className="h-3.5 w-3.5" /> Android Pass Link
                   </Label>
                   <div className="flex gap-1">
-                    <Input
-                      type="url"
-                      placeholder="https://..."
-                      value={form.android_pass_link}
-                      onChange={e => updateField("android_pass_link", e.target.value)}
-                      className="flex-1"
-                    />
+                    <Input type="url" placeholder="https://..." value={form.android_pass_link}
+                      onChange={e => updateField("android_pass_link", e.target.value)} className="flex-1" />
                     {form.android_pass_link && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
+                      <Button type="button" variant="ghost" size="icon"
                         className="shrink-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 sm:h-10 sm:w-10"
-                        onClick={() => copyToClipboard(form.android_pass_link, "Android pass link")}
-                      >
+                        onClick={() => copyToClipboard(form.android_pass_link, "Android pass link")}>
                         <Copy className="h-4 w-4" />
                       </Button>
                     )}
@@ -648,35 +665,25 @@ export default function MembersPage() {
                 </div>
               </div>
 
-              {/* PK Pass Upload */}
               <div className="space-y-1.5">
                 <Label className="flex items-center gap-1.5 text-xs">
                   <Ticket className="h-3.5 w-3.5" /> PK Pass (.pkpass)
                 </Label>
-
                 {pkPassFileName ? (
                   <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-3">
                     <Ticket className="h-4 w-4 text-primary shrink-0" />
                     <span className="text-sm truncate flex-1">{pkPassFileName}</span>
                     <div className="flex gap-1 shrink-0">
                       {form.pk_pass_url && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
+                        <Button type="button" variant="ghost" size="icon"
                           className="h-8 w-8 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0"
-                          onClick={() => window.open(form.pk_pass_url, "_blank")}
-                        >
+                          onClick={() => window.open(form.pk_pass_url, "_blank")}>
                           <FileDown className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
+                      <Button type="button" variant="ghost" size="icon"
                         className="h-8 w-8 text-destructive min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0"
-                        onClick={removePkPass}
-                      >
+                        onClick={removePkPass}>
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
@@ -686,60 +693,32 @@ export default function MembersPage() {
                     onDrop={(e) => {
                       e.preventDefault();
                       const file = e.dataTransfer.files[0];
-                      if (file && file.name.endsWith(".pkpass")) {
-                        setPkPassFile(file);
-                        setPkPassFileName(file.name);
-                      } else {
-                        toast({ title: "Only .pkpass files are accepted", variant: "destructive" });
-                      }
+                      if (file && file.name.endsWith(".pkpass")) { setPkPassFile(file); setPkPassFileName(file.name); }
+                      else toast({ title: "Only .pkpass files are accepted", variant: "destructive" });
                     }}
                     onDragOver={(e) => e.preventDefault()}
                     onClick={() => fileInputRef.current?.click()}
                     className="border-2 border-dashed border-muted-foreground/30 rounded-md p-6 text-center cursor-pointer hover:border-primary/40 hover:bg-muted/20 transition-colors"
                   >
                     <Upload className="h-5 w-5 mx-auto mb-1.5 text-muted-foreground" />
-                    <p className="text-xs text-muted-foreground">
-                      Drag & drop .pkpass file or click to browse
-                    </p>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pkpass"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setPkPassFile(file);
-                          setPkPassFileName(file.name);
-                        }
-                      }}
-                    />
+                    <p className="text-xs text-muted-foreground">Drag & drop .pkpass file or click to browse</p>
+                    <input ref={fileInputRef} type="file" accept=".pkpass" className="hidden"
+                      onChange={(e) => { const file = e.target.files?.[0]; if (file) { setPkPassFile(file); setPkPassFileName(file.name); } }} />
                   </div>
                 )}
               </div>
 
-              {/* Edit mode: show external links for existing pass links */}
               {editingId && (form.iphone_pass_link || form.android_pass_link) && (
                 <div className="flex flex-wrap gap-2">
                   {form.iphone_pass_link && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-xs gap-1"
-                      onClick={() => window.open(form.iphone_pass_link, "_blank")}
-                    >
+                    <Button type="button" variant="outline" size="sm" className="text-xs gap-1"
+                      onClick={() => window.open(form.iphone_pass_link, "_blank")}>
                       <ExternalLink className="h-3 w-3" /> Open iPhone Pass
                     </Button>
                   )}
                   {form.android_pass_link && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-xs gap-1"
-                      onClick={() => window.open(form.android_pass_link, "_blank")}
-                    >
+                    <Button type="button" variant="outline" size="sm" className="text-xs gap-1"
+                      onClick={() => window.open(form.android_pass_link, "_blank")}>
                       <ExternalLink className="h-3 w-3" /> Open Android Pass
                     </Button>
                   )}
@@ -754,18 +733,8 @@ export default function MembersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <ImportMembersDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        orgId={orgId}
-        onComplete={fetchMembers}
-      />
-      <BulkAddMembersDialog
-        open={bulkAddOpen}
-        onOpenChange={setBulkAddOpen}
-        orgId={orgId}
-        onComplete={fetchMembers}
-      />
+      <ImportMembersDialog open={importOpen} onOpenChange={setImportOpen} orgId={orgId} onComplete={fetchMembers} />
+      <BulkAddMembersDialog open={bulkAddOpen} onOpenChange={setBulkAddOpen} orgId={orgId} onComplete={fetchMembers} />
     </div>
   );
 }

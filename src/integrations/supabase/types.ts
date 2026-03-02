@@ -744,6 +744,7 @@ export type Database = {
         Row: {
           address: string | null
           android_pass_link: string | null
+          club: string | null
           created_at: string
           date_of_birth: string | null
           email: string | null
@@ -765,6 +766,7 @@ export type Database = {
         Insert: {
           address?: string | null
           android_pass_link?: string | null
+          club?: string | null
           created_at?: string
           date_of_birth?: string | null
           email?: string | null
@@ -786,6 +788,7 @@ export type Database = {
         Update: {
           address?: string | null
           android_pass_link?: string | null
+          club?: string | null
           created_at?: string
           date_of_birth?: string | null
           email?: string | null
