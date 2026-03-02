@@ -100,7 +100,43 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-/** Group items by matching seating info into quantity groups */
+/** Map WC2026 match number to tournament round */
+function getWCRound(matchCode: string | null | undefined): string {
+  if (!matchCode) return "Other";
+  const m = matchCode.match(/^WC2026-M(\d+)$/);
+  if (!m) return "Other";
+  const n = parseInt(m[1], 10);
+  if (n <= 72) {
+    // Group stage: 12 groups of 6 matches each
+    const groupIdx = Math.floor((n - 1) / 6);
+    const letter = String.fromCharCode(65 + groupIdx); // A-L
+    return `Group ${letter}`;
+  }
+  if (n <= 88) return "Round of 32";
+  if (n <= 96) return "Round of 16";
+  if (n <= 100) return "Quarter-Finals";
+  if (n <= 102) return "Semi-Finals";
+  if (n === 103) return "Third Place Play-off";
+  if (n === 104) return "Final";
+  return "Other";
+}
+
+const WC_ROUND_ORDER = [
+  "Group A", "Group B", "Group C", "Group D", "Group E", "Group F",
+  "Group G", "Group H", "Group I", "Group J", "Group K", "Group L",
+  "Round of 32", "Round of 16", "Quarter-Finals", "Semi-Finals", "Third Place Play-off", "Final",
+];
+
+const WC_ROUND_GRADIENTS: Record<string, string> = {
+  "Round of 32": "from-blue-500/80 to-blue-700/80",
+  "Round of 16": "from-indigo-500/80 to-indigo-700/80",
+  "Quarter-Finals": "from-purple-500/80 to-purple-700/80",
+  "Semi-Finals": "from-amber-500/80 to-amber-700/80",
+  "Third Place Play-off": "from-orange-500/80 to-orange-700/80",
+  "Final": "from-yellow-500/80 to-red-600/80",
+};
+
+
 function groupByQuantity(items: InventoryItem[]): { key: string; items: InventoryItem[]; qty: number }[] {
   // Group by purchase_id if exists, otherwise by seating signature (section+block+row)
   const groups: Map<string, InventoryItem[]> = new Map();
@@ -152,6 +188,7 @@ export default function Inventory() {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [collapsedCompetitions, setCollapsedCompetitions] = useState<Set<string>>(new Set());
+  const [collapsedRounds, setCollapsedRounds] = useState<Set<string>>(new Set());
   const [manualAssigned, setManualAssigned] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
@@ -410,9 +447,33 @@ export default function Inventory() {
               </button>
 
               {/* Collapsible events */}
-              {!isCompCollapsed && (
-                <div className="bg-card space-y-3 p-3">
-        {compEvents.map(group => {
+              {!isCompCollapsed && (() => {
+                const isWC = compName === "World Cup 2026";
+
+                // Sub-group WC events by round
+                const roundGroups = isWC ? (() => {
+                  const roundMap: Record<string, typeof compEvents> = {};
+                  compEvents.forEach(g => {
+                    const round = getWCRound(g.event?.match_code);
+                    if (!roundMap[round]) roundMap[round] = [];
+                    roundMap[round].push(g);
+                  });
+                  return Object.entries(roundMap).sort(([a], [b]) => {
+                    const ia = WC_ROUND_ORDER.indexOf(a);
+                    const ib = WC_ROUND_ORDER.indexOf(b);
+                    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+                  });
+                })() : null;
+
+                const toggleRoundCollapsed = (roundKey: string) => {
+                  setCollapsedRounds(prev => {
+                    const next = new Set(prev);
+                    next.has(roundKey) ? next.delete(roundKey) : next.add(roundKey);
+                    return next;
+                  });
+                };
+
+                const renderEventCard = (group: typeof compEvents[number]) => {
           const total = group.items.length;
           const available = group.items.filter(i => i.status === "available").length;
           const sold = group.items.filter(i => i.status === "sold").length;
@@ -854,9 +915,62 @@ export default function Inventory() {
               })()}
             </div>
           );
-        })}
-                </div>
-              )}
+        };
+
+                // Render: WC with round sub-groups, or flat list
+                if (isWC && roundGroups) {
+                  return (
+                    <div className="bg-card p-3 space-y-4">
+                      {roundGroups.map(([roundName, roundEvents]) => {
+                        const roundKey = `${compName}__${roundName}`;
+                        const isRoundCollapsed = collapsedRounds.has(roundKey);
+                        const roundTickets = roundEvents.reduce((s, g) => s + g.items.length, 0);
+                        const isGroupStage = roundName.startsWith("Group ");
+                        const roundGradient = isGroupStage
+                          ? "from-emerald-500/60 to-emerald-700/60"
+                          : (WC_ROUND_GRADIENTS[roundName] || "from-slate-500/60 to-slate-700/60");
+
+                        return (
+                          <div key={roundKey} className="rounded-lg border border-border/50 overflow-hidden">
+                            <button
+                              onClick={() => toggleRoundCollapsed(roundKey)}
+                              className={cn(
+                                "w-full bg-gradient-to-r text-white px-4 py-2.5 text-left transition-all hover:brightness-110",
+                                roundGradient
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <p className="text-sm font-bold">{roundName}</p>
+                                  <Badge variant="outline" className="text-[10px] font-bold bg-white/10 text-white border-white/20">
+                                    {roundTickets} ticket{roundTickets !== 1 ? "s" : ""}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-[10px] bg-white/10 text-white border-white/20">
+                                    {roundEvents.length} match{roundEvents.length !== 1 ? "es" : ""}
+                                  </Badge>
+                                </div>
+                                {isRoundCollapsed ? <ChevronRight className="h-4 w-4 text-white/60" /> : <ChevronDown className="h-4 w-4 text-white/60" />}
+                              </div>
+                            </button>
+                            {!isRoundCollapsed && (
+                              <div className="space-y-3 p-3">
+                                {roundEvents.map(g => renderEventCard(g))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+
+                // Non-WC: flat list
+                return (
+                  <div className="bg-card space-y-3 p-3">
+                    {compEvents.map(g => renderEventCard(g))}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
