@@ -123,12 +123,12 @@ const App = () => (
               }
             >
               <Route path="/" element={<Dashboard />} />
-              <Route path="/events" element={<AdminOnly><Events /></AdminOnly>} />
+              <Route path="/events" element={<Navigate to="/analytics?tab=events" replace />} />
               <Route path="/events/:id" element={<AdminOnly><EventDetail /></AdminOnly>} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/purchases" element={<Purchases />} />
               <Route path="/inventory" element={<InventoryPage />} />
-              <Route path="/platforms" element={<AdminOnly><Platforms /></AdminOnly>} />
+              <Route path="/platforms" element={<Navigate to="/analytics?tab=platforms" replace />} />
               <Route path="/finance" element={<PinProtected><Finance /></PinProtected>} />
               <Route path="/analytics" element={<PinProtected><Analytics /></PinProtected>} />
               <Route path="/balance" element={<PinProtected><Balance /></PinProtected>} />
