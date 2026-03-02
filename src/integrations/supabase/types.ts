@@ -197,6 +197,167 @@ export type Database = {
           },
         ]
       }
+      ijk_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          direction: string
+          event_id: string | null
+          id: string
+          notes: string | null
+          org_id: string | null
+          payment_date: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          direction?: string
+          event_id?: string | null
+          id?: string
+          notes?: string | null
+          org_id?: string | null
+          payment_date?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          direction?: string
+          event_id?: string | null
+          id?: string
+          notes?: string | null
+          org_id?: string | null
+          payment_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ijk_payments_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ijk_payments_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ijk_replacements: {
+        Row: {
+          banned_inventory_id: string
+          created_at: string
+          event_id: string
+          id: string
+          org_id: string | null
+          original_cost: number
+          replacement_cost: number
+          replacement_inventory_id: string | null
+        }
+        Insert: {
+          banned_inventory_id: string
+          created_at?: string
+          event_id: string
+          id?: string
+          org_id?: string | null
+          original_cost?: number
+          replacement_cost?: number
+          replacement_inventory_id?: string | null
+        }
+        Update: {
+          banned_inventory_id?: string
+          created_at?: string
+          event_id?: string
+          id?: string
+          org_id?: string | null
+          original_cost?: number
+          replacement_cost?: number
+          replacement_inventory_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ijk_replacements_banned_inventory_id_fkey"
+            columns: ["banned_inventory_id"]
+            isOneToOne: false
+            referencedRelation: "inventory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ijk_replacements_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ijk_replacements_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ijk_replacements_replacement_inventory_id_fkey"
+            columns: ["replacement_inventory_id"]
+            isOneToOne: false
+            referencedRelation: "inventory"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ijk_settlements: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          ijk_share: number
+          org_id: string | null
+          settled_at: string | null
+          status: string
+          updated_at: string
+          vinny_share: number
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          ijk_share?: number
+          org_id?: string | null
+          settled_at?: string | null
+          status?: string
+          updated_at?: string
+          vinny_share?: number
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          ijk_share?: number
+          org_id?: string | null
+          settled_at?: string | null
+          status?: string
+          updated_at?: string
+          vinny_share?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ijk_settlements_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ijk_settlements_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory: {
         Row: {
           android_pass_link: string | null
