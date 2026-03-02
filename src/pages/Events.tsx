@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Search, CalendarDays, TrendingUp, TrendingDown, Package, ShoppingCart } from "lucide-react";
 import { format } from "date-fns";
 import { CLUBS } from "@/lib/seatingSections";
+import { getMatchBadge } from "@/lib/eventDisplay";
 import { getEventKey } from "@/lib/eventDedup";
 
 interface EventWithPL {
@@ -142,7 +143,7 @@ function EventCard({ event, onClick }: { event: EventWithPL; onClick: () => void
             </Badge>
           ) : isWC ? (
             <Badge variant="outline" className="text-[10px] font-bold bg-emerald-600/20 text-emerald-400 border-emerald-600/30">
-              🏆 WC 2026
+              🏆 {getMatchBadge(event.match_code) || "WC 2026"}
             </Badge>
           ) : (
             <span />

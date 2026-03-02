@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { formatEventTitle } from "@/lib/eventDisplay";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sheet,
@@ -216,7 +217,7 @@ export default function OrderDetailSheet({ orderId, onClose, onUpdated }: OrderD
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <p className="text-muted-foreground">Event</p>
-                <p className="font-medium">{order.events?.match_code} — {order.events?.home_team} vs {order.events?.away_team}</p>
+                <p className="font-medium">{order.events ? formatEventTitle(order.events.home_team, order.events.away_team, order.events.match_code) : "—"}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Platform</p>

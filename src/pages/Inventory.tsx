@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { formatEventTitle, getMatchBadge } from "@/lib/eventDisplay";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -169,7 +170,7 @@ export default function Inventory() {
   const eventOptions = useMemo(() => {
     const seen = new Map<string, string>();
     items.forEach(i => {
-      if (i.events) seen.set(i.events.match_code, `${i.events.home_team} vs ${i.events.away_team}`);
+      if (i.events) seen.set(i.events.match_code, formatEventTitle(i.events.home_team, i.events.away_team, i.events.match_code));
     });
     return [...seen.entries()].map(([value, label]) => ({ value, label }));
   }, [items]);
@@ -362,7 +363,7 @@ export default function Inventory() {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-bold text-base">
-                        {group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event"}
+                        {group.event ? formatEventTitle(group.event.home_team, group.event.away_team, group.event.match_code) : "Unknown Event"}
                       </p>
                       {group.event?.venue && (
                         <span className="text-xs text-muted-foreground">• {group.event.venue}</span>
@@ -431,7 +432,7 @@ export default function Inventory() {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    onClick={(e) => handleDeleteEvent(e, group.eventId, group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown Event")}
+                    onClick={(e) => handleDeleteEvent(e, group.eventId, group.event ? formatEventTitle(group.event.home_team, group.event.away_team, group.event.match_code) : "Unknown Event")}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
