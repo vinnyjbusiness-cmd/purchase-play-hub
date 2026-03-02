@@ -30,7 +30,6 @@ export default function MobileBottomNav() {
     ? [
         { to: "/warroom", icon: Siren, label: "War Room" },
         { to: "/world-cup", icon: Globe, label: "World Cup" },
-        { to: "/events", icon: CalendarDays, label: "Events" },
         { to: "/suppliers", icon: Truck, label: "Contacts" },
         { to: "/members", icon: Contact, label: "Members" },
         { to: "/stock", icon: Boxes, label: "Stock" },
