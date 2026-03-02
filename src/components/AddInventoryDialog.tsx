@@ -106,7 +106,7 @@ interface WCEventRow {
 const createWCEventRow = (): WCEventRow => ({
   id: crypto.randomUUID(),
   eventId: "",
-  category: "Category 1",
+  category: "Category 3",
   priceUsd: "",
   quantity: 4,
 });
