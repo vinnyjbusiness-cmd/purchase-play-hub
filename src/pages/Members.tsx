@@ -253,18 +253,23 @@ export default function MembersPage() {
     return data.publicUrl;
   };
 
+  const isWCForm = form.club?.toLowerCase().includes("world cup");
+
   const handleSave = async () => {
-    if (!form.first_name.trim() || !form.last_name.trim()) {
+    if (!isWCForm && (!form.first_name.trim() || !form.last_name.trim())) {
       toast({ title: "First and last name are required", variant: "destructive" });
       return;
     }
+    // For WC members, default first/last name if not provided (DB requires them)
+    const firstName = form.first_name.trim() || (isWCForm ? (form.email?.split("@")[0] || "WC") : "");
+    const lastName = form.last_name.trim() || (isWCForm ? "Member" : "");
     setSaving(true);
 
     let pkPassUrl = form.pk_pass_url || null;
 
     if (!editingId && pkPassFile) {
       const payload = {
-        first_name: form.first_name, last_name: form.last_name,
+        first_name: firstName, last_name: lastName,
         supporter_id: form.supporter_id || null, email: form.email || null,
         member_password: form.member_password || null, email_password: form.email_password || null,
         phone_number: form.phone_number || null, date_of_birth: form.date_of_birth || null,
@@ -289,7 +294,7 @@ export default function MembersPage() {
     }
 
     const payload = {
-      first_name: form.first_name, last_name: form.last_name,
+      first_name: firstName, last_name: lastName,
       supporter_id: form.supporter_id || null, email: form.email || null,
       member_password: form.member_password || null, email_password: form.email_password || null,
       phone_number: form.phone_number || null, date_of_birth: form.date_of_birth || null,
@@ -377,80 +382,140 @@ export default function MembersPage() {
 
   const updateField = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
 
-  const renderMemberTable = (membersList: Member[]) => (
-    <div className="rounded-lg border bg-card overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>First Name</TableHead>
-            <TableHead>Last Name</TableHead>
-            <TableHead>Supporter ID</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Member Password</TableHead>
-            <TableHead>Email Password</TableHead>
-            <TableHead>Phone</TableHead>
-            <TableHead>DOB</TableHead>
-            <TableHead>Postcode</TableHead>
-            <TableHead>Address</TableHead>
-            <TableHead>Passes</TableHead>
-            <TableHead className="w-[80px]">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {membersList.map(m => (
-            <TableRow key={m.id}>
-              <TableCell className="font-medium">{m.first_name}</TableCell>
-              <TableCell>{m.last_name}</TableCell>
-              <TableCell>{m.supporter_id || "—"}</TableCell>
-              <TableCell className="max-w-[160px] truncate">{m.email || "—"}</TableCell>
-              <TableCell>{m.member_password || "—"}</TableCell>
-              <TableCell>{m.email_password || "—"}</TableCell>
-              <TableCell>{m.phone_number || "—"}</TableCell>
-              <TableCell>{m.date_of_birth || "—"}</TableCell>
-              <TableCell>{m.postcode || "—"}</TableCell>
-              <TableCell className="max-w-[140px] truncate">{m.address || "—"}</TableCell>
-              <TableCell>
-                <div className="flex gap-0.5">
-                  <PassBadge active={!!m.iphone_pass_link} icon={Apple} label="iPhone Pass Link"
-                    onClick={() => m.iphone_pass_link && copyToClipboard(m.iphone_pass_link, "iPhone pass link")} />
-                  <PassBadge active={!!m.android_pass_link} icon={Smartphone} label="Android Pass Link"
-                    onClick={() => m.android_pass_link && copyToClipboard(m.android_pass_link, "Android pass link")} />
-                  <PassBadge active={!!m.pk_pass_url} icon={Ticket} label="PK Pass File"
-                    onClick={() => { if (m.pk_pass_url) { window.open(m.pk_pass_url, "_blank"); toast({ title: "Downloading PK Pass…" }); } }} />
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(m)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
+  const renderMemberTable = (membersList: Member[], clubName: string) => {
+    const isWCGroup = clubName.toLowerCase().includes("world cup");
+
+    if (isWCGroup) {
+      return (
+        <div className="rounded-lg border bg-card overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>First Name</TableHead>
+                <TableHead>Last Name</TableHead>
+                <TableHead>FIFA Email</TableHead>
+                <TableHead>FIFA Password</TableHead>
+                <TableHead>Email Password</TableHead>
+                <TableHead className="w-[80px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {membersList.map(m => (
+                <TableRow key={m.id}>
+                  <TableCell className="font-medium">{m.first_name || "—"}</TableCell>
+                  <TableCell>{m.last_name || "—"}</TableCell>
+                  <TableCell className="max-w-[200px] truncate">{m.email || "—"}</TableCell>
+                  <TableCell>{m.member_password || "—"}</TableCell>
+                  <TableCell>{m.email_password || "—"}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(m)}>
+                        <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete member?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will permanently remove {m.first_name} {m.last_name} from your members list.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDelete(m.id)}>Delete</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </TableCell>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete member?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently remove this member from your list.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(m.id)}>Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-lg border bg-card overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>First Name</TableHead>
+              <TableHead>Last Name</TableHead>
+              <TableHead>Supporter ID</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Member Password</TableHead>
+              <TableHead>Email Password</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>DOB</TableHead>
+              <TableHead>Postcode</TableHead>
+              <TableHead>Address</TableHead>
+              <TableHead>Passes</TableHead>
+              <TableHead className="w-[80px]">Actions</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
+          </TableHeader>
+          <TableBody>
+            {membersList.map(m => (
+              <TableRow key={m.id}>
+                <TableCell className="font-medium">{m.first_name}</TableCell>
+                <TableCell>{m.last_name}</TableCell>
+                <TableCell>{m.supporter_id || "—"}</TableCell>
+                <TableCell className="max-w-[160px] truncate">{m.email || "—"}</TableCell>
+                <TableCell>{m.member_password || "—"}</TableCell>
+                <TableCell>{m.email_password || "—"}</TableCell>
+                <TableCell>{m.phone_number || "—"}</TableCell>
+                <TableCell>{m.date_of_birth || "—"}</TableCell>
+                <TableCell>{m.postcode || "—"}</TableCell>
+                <TableCell className="max-w-[140px] truncate">{m.address || "—"}</TableCell>
+                <TableCell>
+                  <div className="flex gap-0.5">
+                    <PassBadge active={!!m.iphone_pass_link} icon={Apple} label="iPhone Pass Link"
+                      onClick={() => m.iphone_pass_link && copyToClipboard(m.iphone_pass_link, "iPhone pass link")} />
+                    <PassBadge active={!!m.android_pass_link} icon={Smartphone} label="Android Pass Link"
+                      onClick={() => m.android_pass_link && copyToClipboard(m.android_pass_link, "Android pass link")} />
+                    <PassBadge active={!!m.pk_pass_url} icon={Ticket} label="PK Pass File"
+                      onClick={() => { if (m.pk_pass_url) { window.open(m.pk_pass_url, "_blank"); toast({ title: "Downloading PK Pass…" }); } }} />
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(m)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete member?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently remove {m.first_name} {m.last_name} from your members list.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDelete(m.id)}>Delete</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -558,7 +623,7 @@ export default function MembersPage() {
                 {/* Collapsible content */}
                 {!isCollapsed && (
                   <div className="bg-card">
-                    {renderMemberTable(clubMembers)}
+                    {renderMemberTable(clubMembers, clubName)}
                   </div>
                 )}
               </div>
@@ -577,15 +642,7 @@ export default function MembersPage() {
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
               <div className="space-y-1.5">
-                <Label>First Name *</Label>
-                <Input value={form.first_name} onChange={e => updateField("first_name", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Last Name *</Label>
-                <Input value={form.last_name} onChange={e => updateField("last_name", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Club / Tournament</Label>
+                <Label>Club / Tournament *</Label>
                 <Select value={form.club} onValueChange={v => updateField("club", v)}>
                   <SelectTrigger><SelectValue placeholder="Select club" /></SelectTrigger>
                   <SelectContent>
@@ -593,41 +650,78 @@ export default function MembersPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label>Supporter ID</Label>
-                <Input value={form.supporter_id} onChange={e => updateField("supporter_id", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Email</Label>
-                <Input type="email" value={form.email} onChange={e => updateField("email", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Member Password</Label>
-                <Input value={form.member_password} onChange={e => updateField("member_password", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Email Password</Label>
-                <Input value={form.email_password} onChange={e => updateField("email_password", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Phone Number</Label>
-                <Input value={form.phone_number} onChange={e => updateField("phone_number", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Date of Birth</Label>
-                <Input type="date" value={form.date_of_birth} onChange={e => updateField("date_of_birth", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Postcode</Label>
-                <Input value={form.postcode} onChange={e => updateField("postcode", e.target.value)} />
-              </div>
-              <div className="col-span-1 sm:col-span-2 space-y-1.5">
-                <Label>Address</Label>
-                <Input value={form.address} onChange={e => updateField("address", e.target.value)} />
-              </div>
+
+              {isWCForm ? (
+                <>
+                  <div className="space-y-1.5">
+                    <Label>First Name</Label>
+                    <Input value={form.first_name} onChange={e => updateField("first_name", e.target.value)} placeholder="Optional" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Last Name</Label>
+                    <Input value={form.last_name} onChange={e => updateField("last_name", e.target.value)} placeholder="Optional" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>FIFA Email *</Label>
+                    <Input type="email" value={form.email} onChange={e => updateField("email", e.target.value)} placeholder="fifa@example.com" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>FIFA Password *</Label>
+                    <Input value={form.member_password} onChange={e => updateField("member_password", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label>Email Password</Label>
+                    <Input value={form.email_password} onChange={e => updateField("email_password", e.target.value)} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label>First Name *</Label>
+                    <Input value={form.first_name} onChange={e => updateField("first_name", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Last Name *</Label>
+                    <Input value={form.last_name} onChange={e => updateField("last_name", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Supporter ID</Label>
+                    <Input value={form.supporter_id} onChange={e => updateField("supporter_id", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Email</Label>
+                    <Input type="email" value={form.email} onChange={e => updateField("email", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Member Password</Label>
+                    <Input value={form.member_password} onChange={e => updateField("member_password", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Email Password</Label>
+                    <Input value={form.email_password} onChange={e => updateField("email_password", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Phone Number</Label>
+                    <Input value={form.phone_number} onChange={e => updateField("phone_number", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Date of Birth</Label>
+                    <Input type="date" value={form.date_of_birth} onChange={e => updateField("date_of_birth", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Postcode</Label>
+                    <Input value={form.postcode} onChange={e => updateField("postcode", e.target.value)} />
+                  </div>
+                  <div className="col-span-1 sm:col-span-2 space-y-1.5">
+                    <Label>Address</Label>
+                    <Input value={form.address} onChange={e => updateField("address", e.target.value)} />
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Pass Links Section */}
+            {/* Pass Links Section — hidden for World Cup */}
+            {!isWCForm && (
             <div className="mt-6 space-y-4">
               <h3 className="text-sm font-semibold text-foreground border-b pb-2">Pass Links</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -725,6 +819,7 @@ export default function MembersPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           <DialogFooter className="px-4 sm:px-6 py-3 border-t shrink-0 sticky bottom-0 bg-background">
