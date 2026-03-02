@@ -36,7 +36,7 @@ interface InventoryItem {
   created_at: string;
   event_id: string;
   purchase_id: string | null;
-  events: { match_code: string; home_team: string; away_team: string; event_date: string; venue: string | null } | null;
+  events: { match_code: string; home_team: string; away_team: string; event_date: string; venue: string | null; competition: string } | null;
 }
 
 interface OrderLine {
@@ -151,13 +151,14 @@ export default function Inventory() {
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedCompetitions, setCollapsedCompetitions] = useState<Set<string>>(new Set());
   const [manualAssigned, setManualAssigned] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [invRes, olRes] = await Promise.all([
       supabase
         .from("inventory")
-        .select("*, events(match_code, home_team, away_team, event_date, venue)")
+        .select("*, events(match_code, home_team, away_team, event_date, venue, competition)")
         .order("created_at", { ascending: false }),
       supabase.from("order_lines").select("inventory_id, order_id"),
     ]);
@@ -215,6 +216,38 @@ export default function Inventory() {
       return da.localeCompare(db);
     });
   }, [filtered]);
+
+  // Group events by competition/club
+  const competitionGroups = useMemo(() => {
+    const map: Record<string, typeof grouped> = {};
+    grouped.forEach(g => {
+      const isWC = g.event?.match_code?.startsWith("WC2026-");
+      const comp = isWC ? "World Cup 2026" : (g.event?.competition || "Other");
+      if (!map[comp]) map[comp] = [];
+      map[comp].push(g);
+    });
+    // Sort: named competitions alphabetically, "Other" last
+    return Object.entries(map).sort(([a], [b]) => {
+      if (a === "Other") return 1;
+      if (b === "Other") return -1;
+      return a.localeCompare(b);
+    });
+  }, [grouped]);
+
+  const COMP_GRADIENTS: Record<string, string> = {
+    "World Cup 2026": "from-emerald-600/90 to-teal-800/90",
+    "Premier League": "from-purple-600/90 to-indigo-800/90",
+    "Champions League": "from-blue-600/90 to-blue-900/90",
+    "FA Cup": "from-red-600/90 to-red-800/90",
+  };
+
+  const toggleCompetitionCollapsed = (comp: string) => {
+    setCollapsedCompetitions(prev => {
+      const next = new Set(prev);
+      next.has(comp) ? next.delete(comp) : next.add(comp);
+      return next;
+    });
+  };
 
   const handleDelete = async (e: React.MouseEvent, item: InventoryItem) => {
     e.stopPropagation();
@@ -330,11 +363,56 @@ export default function Inventory() {
         ]} />
       </div>
 
-      <div className="space-y-3">
-        {grouped.length === 0 && (
+      <div className="space-y-6">
+        {competitionGroups.length === 0 && (
           <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No inventory items found</div>
         )}
-        {grouped.map(group => {
+        {competitionGroups.map(([compName, compEvents]) => {
+          const compTotalTickets = compEvents.reduce((sum, g) => sum + g.items.length, 0);
+          const compAvailable = compEvents.reduce((sum, g) => sum + g.items.filter(i => i.status === "available").length, 0);
+          const gradient = COMP_GRADIENTS[compName] || "from-slate-600/90 to-slate-800/90";
+          const isCompCollapsed = collapsedCompetitions.has(compName);
+
+          return (
+            <div key={compName} className="rounded-xl border-2 border-border/60 overflow-hidden">
+              {/* Competition header */}
+              <button
+                onClick={() => toggleCompetitionCollapsed(compName)}
+                className={cn(
+                  "w-full bg-gradient-to-br text-white px-5 py-3.5 text-left transition-all hover:brightness-110",
+                  gradient
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest font-medium text-white/60">Inventory</p>
+                    <p className="text-lg font-bold mt-0.5">{compName}</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="text-center px-3 py-1 rounded-md bg-white/10">
+                        <p className="text-sm font-bold font-mono">{compTotalTickets}</p>
+                        <p className="text-[9px] uppercase tracking-widest text-white/60">Tickets</p>
+                      </div>
+                      <div className="text-center px-3 py-1 rounded-md bg-white/10">
+                        <p className="text-sm font-bold font-mono">{compEvents.length}</p>
+                        <p className="text-[9px] uppercase tracking-widest text-white/60">Events</p>
+                      </div>
+                      {compAvailable > 0 && (
+                        <Badge variant="outline" className="text-[10px] font-bold uppercase bg-white/10 text-white border-white/20">
+                          {compAvailable} avail
+                        </Badge>
+                      )}
+                    </div>
+                    {isCompCollapsed ? <ChevronRight className="h-5 w-5 text-white/60" /> : <ChevronDown className="h-5 w-5 text-white/60" />}
+                  </div>
+                </div>
+              </button>
+
+              {/* Collapsible events */}
+              {!isCompCollapsed && (
+                <div className="bg-card space-y-3 p-3">
+        {compEvents.map(group => {
           const total = group.items.length;
           const available = group.items.filter(i => i.status === "available").length;
           const sold = group.items.filter(i => i.status === "sold").length;
@@ -774,6 +852,11 @@ export default function Inventory() {
                   </div>
                 );
               })()}
+            </div>
+          );
+        })}
+                </div>
+              )}
             </div>
           );
         })}
