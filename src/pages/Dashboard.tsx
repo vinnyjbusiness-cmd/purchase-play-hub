@@ -422,46 +422,25 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-5">
 
         {/* ══ HEADER ══ */}
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-          <div className="space-y-1">
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
-              {greeting}, {displayName}
-            </h1>
-            <p className="text-lg font-medium" style={{ color: C.muted, fontFamily: "Inter, system-ui, sans-serif" }}>
-              {format(now, "EEEE, d MMMM yyyy")} · {format(now, "HH:mm")}
+        <div className="space-y-1">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+            {greeting}, Vinny
+          </h1>
+          <p className="text-3xl md:text-4xl font-bold tracking-tight" style={{ color: C.muted, fontFamily: "Inter, system-ui, sans-serif" }}>
+            {format(now, "EEEE, d MMMM yyyy")} · {format(now, "HH:mm")}
+          </p>
+          {nextEvent && (
+            <p className="text-lg font-medium" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+              <span style={{ color: C.muted }}>{nextEvent.home_team} vs {nextEvent.away_team} · </span>
+              {typeof countdown === "object" ? (
+                <span style={{ color: C.emerald, fontWeight: 700 }}>
+                  {countdown.d}d {countdown.h}h {countdown.m}m
+                </span>
+              ) : (
+                <span style={{ color: C.emerald, fontWeight: 700 }}>{countdown}</span>
+              )}
             </p>
-            {nextEvent && (
-              <p className="text-lg font-medium" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
-                <span style={{ color: C.muted }}>{nextEvent.home_team} vs {nextEvent.away_team} · </span>
-                {typeof countdown === "object" ? (
-                  <span style={{ color: C.emerald, fontWeight: 700 }}>
-                    {countdown.d}d {countdown.h}h {countdown.m}m
-                  </span>
-                ) : (
-                  <span style={{ color: C.emerald, fontWeight: 700 }}>{countdown}</span>
-                )}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <LottieWidget />
-            {nextEvent && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-                {isEventToday && (
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: C.emerald }} />
-                    <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: C.emerald }} />
-                  </span>
-                )}
-                <span style={{ color: C.muted }}>{nextEvent.home_team} vs {nextEvent.away_team}</span>
-                {typeof countdown === "object" && (
-                  <span style={{ color: C.emerald }}>
-                    {countdown.d}d {countdown.h}h {countdown.m}m {countdown.s}s
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
         {/* ══ ROW 1 — KPI Cards ══ */}
