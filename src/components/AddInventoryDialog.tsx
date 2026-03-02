@@ -483,7 +483,20 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
           </Button>
         </PopoverTrigger>
         <PopoverContent className="p-0 w-[340px]" align="start">
-          <Command>
+          <Command filter={(value, search) => {
+            const s = search.toLowerCase().trim();
+            const v = value.toLowerCase();
+            // If search looks like a match number (m + digits), require exact prefix match on the match code part
+            const mMatch = s.match(/^m(\d+)$/);
+            if (mMatch) {
+              // Extract match code from value (first token like "wc2026-m42")
+              const mcPart = v.split(" ")[0]; // e.g. "wc2026-m42"
+              const numPart = mcPart.replace(/^wc2026-m/, "");
+              return numPart === mMatch[1] ? 1 : 0;
+            }
+            // Default: check if all search terms appear in value
+            return s.split(" ").every(term => v.includes(term)) ? 1 : 0;
+          }}>
             <CommandInput placeholder="Type team name or match number…" />
             <CommandList>
               <CommandEmpty>No matches found</CommandEmpty>
