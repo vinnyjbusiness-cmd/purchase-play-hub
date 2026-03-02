@@ -149,6 +149,7 @@ function PassBadge({
 export default function MembersPage() {
   const { orgId } = useOrg();
   const [members, setMembers] = useState<Member[]>([]);
+  const [ticketCounts, setTicketCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -166,13 +167,21 @@ export default function MembersPage() {
   const fetchMembers = async () => {
     if (!orgId) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from("members")
-      .select("*")
-      .eq("org_id", orgId)
-      .order("created_at", { ascending: false });
-    if (error) toast({ title: "Error loading members", description: error.message, variant: "destructive" });
-    else setMembers((data as Member[]) || []);
+    const [membersRes, inventoryRes] = await Promise.all([
+      supabase.from("members").select("*").eq("org_id", orgId).order("created_at", { ascending: false }),
+      supabase.from("inventory").select("email").eq("org_id", orgId),
+    ]);
+    if (membersRes.error) toast({ title: "Error loading members", description: membersRes.error.message, variant: "destructive" });
+    else setMembers((membersRes.data as Member[]) || []);
+    // Build ticket count map by email
+    const counts: Record<string, number> = {};
+    (inventoryRes.data || []).forEach((inv: any) => {
+      if (inv.email) {
+        const key = inv.email.toLowerCase();
+        counts[key] = (counts[key] || 0) + 1;
+      }
+    });
+    setTicketCounts(counts);
     setLoading(false);
   };
 
@@ -394,15 +403,23 @@ export default function MembersPage() {
                 <TableHead>FIFA Email</TableHead>
                 <TableHead>FIFA Password</TableHead>
                 <TableHead>Email Password</TableHead>
+                <TableHead className="text-center">Tickets</TableHead>
                 <TableHead className="w-[80px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {membersList.map(m => (
+              {membersList.map(m => {
+                const count = m.email ? (ticketCounts[m.email.toLowerCase()] || 0) : 0;
+                return (
                 <TableRow key={m.id}>
                    <TableCell className="max-w-[200px] truncate font-medium">{m.email || "—"}</TableCell>
                   <TableCell>{m.member_password || "—"}</TableCell>
                   <TableCell>{m.email_password || "—"}</TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant={count > 0 ? "default" : "outline"} className={cn("font-mono font-bold", count > 0 ? "bg-primary" : "")}>
+                      {count}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(m)}>
@@ -430,7 +447,8 @@ export default function MembersPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </div>
