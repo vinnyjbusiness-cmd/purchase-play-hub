@@ -1,0 +1,1 @@
+ALTER TABLE public.inventory ADD COLUMN email_password text DEFAULT null;

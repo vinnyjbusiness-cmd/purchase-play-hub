@@ -42,7 +42,15 @@ interface MemberRow {
   iphone_pass_link: string | null;
   android_pass_link: string | null;
   pk_pass_url: string | null;
+  club: string | null;
 }
+
+const VENUE_CLUB_MAP: Record<string, string> = {
+  liverpool: "liverpool",
+  arsenal: "arsenal",
+  "manchester-united": "manchester united",
+  "world-cup": "world cup",
+};
 
 export interface TicketEntry {
   id: string;
@@ -53,6 +61,7 @@ export interface TicketEntry {
   lastName: string;
   email: string;
   password: string;
+  emailPassword: string;
   memberId: string;
   passLink: string;
   iphonePassLink: string;
@@ -69,6 +78,7 @@ const createTicket = (): TicketEntry => ({
   lastName: "",
   email: "",
   password: "",
+  emailPassword: "",
   memberId: "",
   passLink: "",
   iphonePassLink: "",
@@ -116,10 +126,19 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
   useEffect(() => {
     supabase
       .from("members")
-      .select("id, first_name, last_name, email, member_password, email_password, pass_link, supporter_id, iphone_pass_link, android_pass_link, pk_pass_url")
+      .select("id, first_name, last_name, email, member_password, email_password, pass_link, supporter_id, iphone_pass_link, android_pass_link, pk_pass_url, club")
       .order("first_name")
       .then(({ data }) => setMembers((data as any) || []));
   }, []);
+
+  const isWorldCup = venue === "world-cup";
+
+  const filteredMembers = useMemo(() => {
+    if (!venue) return members;
+    const clubKey = VENUE_CLUB_MAP[venue];
+    if (!clubKey) return members;
+    return members.filter(m => m.club?.toLowerCase().includes(clubKey));
+  }, [venue, members]);
 
   const filteredEvents = useMemo(() => {
     if (!venue) return [];
@@ -215,7 +234,8 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
         firstName: member.first_name,
         lastName: member.last_name,
         email: member.email || "",
-        password: member.email_password || member.member_password || "",
+        password: member.member_password || "",
+        emailPassword: member.email_password || "",
         passLink: member.pass_link || "",
         iphonePassLink: member.iphone_pass_link || "",
         androidPassLink: member.android_pass_link || "",
@@ -276,6 +296,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
         lastName: cols[colMap.lastName] || "",
         email: cols[colMap.email] || "",
         password: cols[colMap.password] || "",
+        emailPassword: "",
         memberId: "",
         passLink: "",
         iphonePassLink: "",
@@ -331,6 +352,7 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
       supporter_id: null,
       email: t.email || null,
       password: t.password || null,
+      email_password: t.emailPassword || null,
       iphone_pass_link: t.iphonePassLink || t.passLink || null,
       android_pass_link: t.androidPassLink || null,
       pk_pass_url: t.pkPassUrl || null,
@@ -633,10 +655,10 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
                                 <CommandList>
                                   <CommandEmpty>No members found</CommandEmpty>
                                   <CommandGroup>
-                                    {members.map(m => (
+                                    {filteredMembers.map(m => (
                                       <CommandItem
                                         key={m.id}
-                                        value={`${m.first_name} ${m.last_name}`}
+                                        value={`${m.first_name} ${m.last_name} ${m.email || ""}`}
                                         onSelect={() => assignMember(idx, m)}
                                         className="flex flex-col items-start py-2"
                                       >
@@ -649,6 +671,9 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
                               </Command>
                             </PopoverContent>
                           </Popover>
+                          {filteredMembers.length === 0 && venue && (
+                            <p className="text-[10px] text-muted-foreground mt-1">No members tagged with this club/tournament</p>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -661,27 +686,35 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
                             <Input value={ticket.lastName} onChange={e => handleTicketChange(idx, "lastName", e.target.value)} className="h-8 text-xs" placeholder="Smith" />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground">Email</Label>
-                            <Input value={ticket.email} onChange={e => handleTicketChange(idx, "email", e.target.value)} className="h-8 text-xs" placeholder="john@example.com" />
+                            <Label className="text-[10px] text-muted-foreground">{isWorldCup ? "FIFA Email" : "Email"}</Label>
+                            <Input value={ticket.email} onChange={e => handleTicketChange(idx, "email", e.target.value)} className="h-8 text-xs" placeholder={isWorldCup ? "fifa@example.com" : "john@example.com"} />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground">Password</Label>
+                            <Label className="text-[10px] text-muted-foreground">{isWorldCup ? "FIFA Password" : "Password"}</Label>
                             <Input value={ticket.password} onChange={e => handleTicketChange(idx, "password", e.target.value)} className="h-8 text-xs" placeholder="••••••" />
                           </div>
+                          {isWorldCup && (
+                            <div className="space-y-1 sm:col-span-2">
+                              <Label className="text-[10px] text-muted-foreground">Email Password</Label>
+                              <Input value={ticket.emailPassword} onChange={e => handleTicketChange(idx, "emailPassword", e.target.value)} className="h-8 text-xs" placeholder="Email account password" />
+                            </div>
+                          )}
                         </div>
 
-                        {/* Pass Link */}
-                        <div className="space-y-1">
-                          <Label className="text-[10px] text-muted-foreground">Pass Link</Label>
-                          <div className="flex items-center gap-1">
-                            <Input value={ticket.passLink} onChange={e => handleTicketChange(idx, "passLink", e.target.value)} className="h-8 text-xs" placeholder="https://..." />
-                            {ticket.passLink && (
-                              <a href={ticket.passLink} target="_blank" rel="noopener" className="p-1.5 rounded hover:bg-muted/60 shrink-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center">
-                                <ExternalLink className="h-3.5 w-3.5 text-primary" />
-                              </a>
-                            )}
+                        {/* Pass Links — hidden for World Cup */}
+                        {!isWorldCup && (
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Pass Link</Label>
+                            <div className="flex items-center gap-1">
+                              <Input value={ticket.passLink} onChange={e => handleTicketChange(idx, "passLink", e.target.value)} className="h-8 text-xs" placeholder="https://..." />
+                              {ticket.passLink && (
+                                <a href={ticket.passLink} target="_blank" rel="noopener" className="p-1.5 rounded hover:bg-muted/60 shrink-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center">
+                                  <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                                </a>
+                              )}
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </CollapsibleContent>
                     </Collapsible>
                   </div>
