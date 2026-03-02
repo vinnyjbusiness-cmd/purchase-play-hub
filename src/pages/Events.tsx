@@ -51,6 +51,9 @@ const COUNTRY_FLAGS: Record<string, string> = {
   "greece": "🇬🇷", "hungary": "🇭🇺", "romania": "🇷🇴", "slovakia": "🇸🇰",
   "slovenia": "🇸🇮", "bosnia": "🇧🇦", "iceland": "🇮🇸", "albania": "🇦🇱",
   "new zealand": "🇳🇿", "china": "🇨🇳", "tbc": "🏳️",
+  "ivory coast": "🇨🇮", "curacao": "🇨🇼", "cape verde": "🇨🇻",
+  "haiti": "🇭🇹", "uzbekistan": "🇺🇿", "jordan": "🇯🇴",
+  "algeria": "🇩🇿", "south africa": "🇿🇦",
 };
 
 function getFlag(teamName: string): string {
