@@ -5,6 +5,7 @@ import { Download, FileSpreadsheet } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useOrg } from "@/hooks/useOrg";
+import { deduplicateEvents } from "@/lib/eventDedup";
 import IJKBalanceCard, { GameBalance } from "@/components/ijk/IJKBalanceCard";
 import IJKGameCard, { IJKGameData, IJKTicket, IJKReplacement } from "@/components/ijk/IJKGameCard";
 import IJKRecordPaymentDialog from "@/components/ijk/IJKRecordPaymentDialog";
@@ -16,6 +17,7 @@ export default function IJKAccount() {
   const [inventory, setInventory] = useState<any[]>([]);
   const [orderLines, setOrderLines] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [purchases, setPurchases] = useState<any[]>([]);
   const [settlements, setSettlements] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [replacements, setReplacements] = useState<any[]>([]);
@@ -28,7 +30,7 @@ export default function IJKAccount() {
     const [invRes, olRes, settRes, payRes, repRes] = await Promise.all([
       supabase
         .from("inventory")
-        .select("id, first_name, last_name, email, section, block, row_name, seat, face_value, status, source, event_id, purchase_id, events(home_team, away_team, event_date, match_code)")
+        .select("id, first_name, last_name, email, section, block, row_name, seat, face_value, status, source, event_id, purchase_id, events(id, home_team, away_team, event_date, match_code, venue)")
         .eq("source", "IJK"),
       supabase.from("order_lines").select("inventory_id, order_id"),
       supabase.from("ijk_settlements" as any).select("*"),
@@ -49,66 +51,120 @@ export default function IJKAccount() {
     const relevantOL = ol.filter(l => invIds.includes(l.inventory_id));
     const orderIds = [...new Set(relevantOL.map(l => l.order_id))];
 
-    if (orderIds.length > 0) {
-      const { data: ordersData } = await supabase
-        .from("orders")
-        .select("id, sale_price, fees, quantity")
-        .in("id", orderIds);
-      setOrders(ordersData || []);
-    } else {
-      setOrders([]);
-    }
+    // Fetch purchase costs for face value fallback
+    const purchaseIds = [...new Set(inv.map(i => i.purchase_id).filter(Boolean))];
 
+    const [ordersRes, purchasesRes] = await Promise.all([
+      orderIds.length > 0
+        ? supabase.from("orders").select("id, sale_price, fees, quantity, buyer_name, category, order_ref, platform_id, platforms(name)").in("id", orderIds)
+        : Promise.resolve({ data: [] }),
+      purchaseIds.length > 0
+        ? supabase.from("purchases").select("id, unit_cost").in("id", purchaseIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    setOrders((ordersRes as any).data || []);
+    setPurchases((purchasesRes as any).data || []);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  // Build order lookup: inventory_id -> per-ticket sale price
-  const invSaleMap = useMemo(() => {
-    const orderMap = new Map(orders.map(o => [o.id, o]));
-    const m = new Map<string, number>();
+  // Purchase cost map: purchase_id -> unit_cost
+  const purchaseCostMap = useMemo(() =>
+    new Map(purchases.map((p: any) => [p.id, p.unit_cost])),
+    [purchases]);
+
+  // Order map: order_id -> order details
+  const orderMap = useMemo(() =>
+    new Map(orders.map(o => [o.id, o])),
+    [orders]);
+
+  // Build order lookup: inventory_id -> { orderId, perTicketSale, orderDetails }
+  const invOrderMap = useMemo(() => {
+    const m = new Map<string, { orderId: string; perTicketSale: number; order: any }>();
     for (const ol of orderLines) {
       const order = orderMap.get(ol.order_id);
       if (order) {
-        m.set(ol.inventory_id, (order.sale_price - order.fees) / order.quantity);
+        m.set(ol.inventory_id, {
+          orderId: order.id,
+          perTicketSale: (order.sale_price - order.fees) / order.quantity,
+          order,
+        });
       }
     }
     return m;
-  }, [orders, orderLines]);
+  }, [orderMap, orderLines]);
 
-  // Group inventory by event
-  const games: IJKGameData[] = useMemo(() => {
-    const eventMap = new Map<string, any[]>();
+  // Deduplicate events across inventory
+  const eventDedup = useMemo(() => {
+    const allEvents: any[] = [];
+    const seen = new Set<string>();
     for (const item of inventory) {
-      const list = eventMap.get(item.event_id) || [];
+      const evt = item.events;
+      if (evt && !seen.has(evt.id)) {
+        seen.add(evt.id);
+        allEvents.push(evt);
+      }
+    }
+    return deduplicateEvents(allEvents);
+  }, [inventory]);
+
+  // Group inventory by canonical event
+  const games: IJKGameData[] = useMemo(() => {
+    const { unique, idMap } = eventDedup;
+    const canonicalMap = new Map<string, any[]>();
+
+    for (const item of inventory) {
+      const canonId = idMap[item.event_id] || item.event_id;
+      const list = canonicalMap.get(canonId) || [];
       list.push(item);
-      eventMap.set(item.event_id, list);
+      canonicalMap.set(canonId, list);
     }
 
     const settlementMap = new Map(settlements.map((s: any) => [s.event_id, s]));
 
-    return Array.from(eventMap.entries()).map(([eventId, items]) => {
-      const evt = items[0]?.events as any;
-      const settlement = settlementMap.get(eventId);
+    return Array.from(canonicalMap.entries()).map(([canonId, items]) => {
+      const evt = unique.find(e => e.id === canonId) || (items[0]?.events as any);
+      // Also check settlements under any alias event_id
+      const allEventIds = eventDedup.groupedIds[canonId] || [canonId];
+      const settlement = allEventIds.map(eid => settlementMap.get(eid)).find(Boolean);
 
-      const tickets: IJKTicket[] = items.map(item => ({
-        id: item.id,
-        firstName: item.first_name,
-        lastName: item.last_name,
-        email: item.email,
-        section: item.section,
-        block: item.block,
-        rowName: item.row_name,
-        seat: item.seat,
-        faceValue: item.face_value || 0,
-        salePrice: invSaleMap.get(item.id) || 0,
-        status: invSaleMap.has(item.id) ? "sold" : item.status,
-        isBanned: item.status === "cancelled",
-      }));
+      // Deduplicate tickets by inventory id
+      const seenIds = new Set<string>();
+      const tickets: IJKTicket[] = [];
+      for (const item of items) {
+        if (seenIds.has(item.id)) continue;
+        seenIds.add(item.id);
+
+        const orderInfo = invOrderMap.get(item.id);
+        const faceValue = item.face_value || (item.purchase_id ? purchaseCostMap.get(item.purchase_id) : 0) || 0;
+
+        tickets.push({
+          id: item.id,
+          firstName: item.first_name,
+          lastName: item.last_name,
+          email: item.email,
+          section: item.section,
+          block: item.block,
+          rowName: item.row_name,
+          seat: item.seat,
+          faceValue,
+          salePrice: orderInfo?.perTicketSale || 0,
+          status: orderInfo ? "sold" : item.status,
+          isBanned: item.status === "cancelled",
+          orderId: orderInfo?.orderId || null,
+          orderRef: orderInfo?.order.order_ref || null,
+          buyerName: orderInfo?.order.buyer_name || null,
+          platformName: orderInfo?.order.platforms?.name || null,
+          orderTotal: orderInfo?.order.sale_price || null,
+          orderFees: orderInfo?.order.fees || null,
+          orderQty: orderInfo?.order.quantity || null,
+        });
+      }
 
       const gameReplacements: IJKReplacement[] = (replacements as any[])
-        .filter((r: any) => r.event_id === eventId)
+        .filter((r: any) => allEventIds.includes(r.event_id))
         .map((r: any) => ({
           id: r.id,
           bannedInventoryId: r.banned_inventory_id,
@@ -118,7 +174,7 @@ export default function IJKAccount() {
         }));
 
       return {
-        eventId,
+        eventId: canonId,
         matchName: evt ? `${evt.home_team} vs ${evt.away_team}` : "Unknown",
         eventDate: evt?.event_date || "",
         tickets,
@@ -127,7 +183,7 @@ export default function IJKAccount() {
         settlementId: settlement?.id || null,
       };
     }).sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime());
-  }, [inventory, invSaleMap, settlements, replacements]);
+  }, [inventory, invOrderMap, purchaseCostMap, settlements, replacements, eventDedup]);
 
   // Balance calculations
   const gameBalances: GameBalance[] = useMemo(() =>
@@ -156,7 +212,7 @@ export default function IJKAccount() {
     [games]);
 
   const exportFullCSV = () => {
-    const headers = ["Event", "Date", "Name", "Email", "Section", "Block", "Row", "Seat", "Face Value", "Sale Price", "Status", "IJK Share"];
+    const headers = ["Event", "Date", "Name", "Email", "Section", "Block", "Row", "Seat", "Face Value", "Sale Price", "Status", "Order Ref", "Buyer", "IJK Share"];
     const rows = games.flatMap(g => {
       const totalCost = g.tickets.reduce((s, t) => s + t.faceValue, 0);
       const totalRevenue = g.tickets.filter(t => t.status === "sold").reduce((s, t) => s + t.salePrice, 0);
@@ -175,6 +231,8 @@ export default function IJKAccount() {
         t.faceValue.toFixed(2),
         t.status === "sold" ? t.salePrice.toFixed(2) : "",
         t.isBanned ? "Banned" : t.status,
+        (t as any).orderRef || "",
+        (t as any).buyerName || "",
         i === 0 ? ijkShare.toFixed(2) : "",
       ]);
     });
@@ -199,7 +257,6 @@ export default function IJKAccount() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 animate-fade-in max-w-5xl mx-auto">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">IJK Account</h1>
@@ -215,14 +272,12 @@ export default function IJKAccount() {
         </div>
       </div>
 
-      {/* Running Balance */}
       <IJKBalanceCard
         gameBalances={gameBalances}
         totalPayments={totalPayments}
         onRecordPayment={() => setPaymentDialogOpen(true)}
       />
 
-      {/* Game Cards */}
       {games.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <p className="text-lg font-medium">No IJK-sourced inventory found</p>
@@ -237,7 +292,6 @@ export default function IJKAccount() {
         </div>
       )}
 
-      {/* Dialogs */}
       <IJKRecordPaymentDialog
         open={paymentDialogOpen}
         onOpenChange={setPaymentDialogOpen}
