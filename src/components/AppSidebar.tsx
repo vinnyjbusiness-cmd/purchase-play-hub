@@ -19,6 +19,7 @@ import { useState, useMemo } from "react";
 
 // Items that go into collapsible "Finance" dropdown
 const FINANCE_ITEMS = [
+  { to: "/finance", icon: Wallet, label: "Finance" },
   { to: "/balance", icon: Scale, label: "Balances" },
   { to: "/wallet", icon: WalletIcon, label: "Wallet" },
   { to: "/cashflow", icon: Banknote, label: "Cashflow" },
@@ -84,10 +85,8 @@ export default function AppSidebar() {
     { to: "/", icon: LayoutDashboard, label: "Dashboard" },
     { to: "/warroom", icon: Siren, label: "War Room" },
     { to: "/world-cup", icon: Globe, label: "World Cup 2026" },
-    { to: "/events", icon: CalendarDays, label: "Events" },
     { to: "/orders", icon: ShoppingCart, label: "Orders" },
     { to: "/listings", icon: Globe, label: "Listings" },
-    { to: "/finance", icon: Wallet, label: "Finance" },
   ];
 
   const secondaryNavItems = [
