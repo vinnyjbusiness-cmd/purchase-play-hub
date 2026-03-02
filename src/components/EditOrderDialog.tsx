@@ -235,9 +235,9 @@ export default function EditOrderDialog({ order, onClose, onUpdated }: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Category</Label>
+              <Label>Section</Label>
               <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select section" /></SelectTrigger>
                 <SelectContent>
                   {["Cat 1", "Cat 2", "Cat 3", "Cat 4"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   {STANDARD_SECTIONS.map((s) => <SelectItem key={s.label} value={s.label}>{s.label}</SelectItem>)}

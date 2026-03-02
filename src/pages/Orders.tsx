@@ -737,6 +737,30 @@ export default function Orders() {
                                   <span className="font-bold text-base text-foreground">{o.quantity}× £{Number(o.sale_price).toFixed(0)} = £{orderTotal.toLocaleString()}</span>
                                   <div className="flex items-center gap-2">
                                     <span className="text-sm text-muted-foreground font-medium">{o.category}</span>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0 text-muted-foreground"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const ev = o.events;
+                                        const lines = [
+                                          o.buyer_name && `Name: ${o.buyer_name}`,
+                                          o.buyer_phone && `Phone: ${o.buyer_phone}`,
+                                          o.buyer_email && `Email: ${o.buyer_email}`,
+                                          ev && `Event: ${ev.home_team} vs ${ev.away_team}`,
+                                          ev?.event_date && `Date: ${format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}`,
+                                          o.category && `Section: ${o.category}`,
+                                          (o as any).block && `Block: ${(o as any).block}`,
+                                          `Qty: ${o.quantity}`,
+                                          `Price: £${Number(o.sale_price).toFixed(0)} per ticket`,
+                                        ].filter(Boolean).join("\n");
+                                        navigator.clipboard.writeText(lines);
+                                        toast.success("Copied!");
+                                      }}
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
                                     {flag && <span className="text-lg">{flag}</span>}
                                   </div>
                                 </div>
@@ -759,13 +783,14 @@ export default function Orders() {
                           <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">🏳️</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider">Customer</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider">Phone</TableHead>
-                          <TableHead className="text-[10px] uppercase tracking-wider w-[50px]">Cat</TableHead>
+                          <TableHead className="text-[10px] uppercase tracking-wider w-[50px]">Section</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">Qty</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider text-right w-[100px]">Price</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider text-center w-[90px]">Device</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider w-[90px]">Status</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider w-[100px]">Assigned From</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider w-[60px]">Assign</TableHead>
+                          <TableHead className="text-[10px] uppercase tracking-wider w-[40px]">Copy</TableHead>
                           <TableHead className="text-[10px] uppercase tracking-wider w-[40px]"></TableHead>
                         </TableRow>
                       </TableHeader>
@@ -778,7 +803,7 @@ export default function Orders() {
                           if (sourceGroupList.length > 1) {
                             rows.push(
                               <TableRow key={`src-${sg.sourceName}`} className="border-0 hover:bg-transparent">
-                                <TableCell colSpan={13} className="py-2 px-4">
+                                <TableCell colSpan={14} className="py-2 px-4">
                                   <div className="flex items-center gap-3">
                                     <span className={cn("font-extrabold text-base", SOURCE_TEXT_COLORS[sg.sourceIdx])}>{sg.sourceName}</span>
                                     <span className="text-sm text-white/70 font-semibold">({sg.orders.length} orders · {sgQty} tickets · £{sgTotal.toLocaleString()})</span>
@@ -821,7 +846,7 @@ export default function Orders() {
                                   <CopyText text={o.buyer_phone} className="text-muted-foreground text-xs" />
                                 ) : <span className="text-muted-foreground/40 text-xs">NA</span>}
                               </TableCell>
-                              <TableCell className="py-2 text-muted-foreground">{o.category || "NA"}</TableCell>
+                              <TableCell className="py-2 text-muted-foreground">{o.category || "—"}</TableCell>
                               <TableCell className="text-center font-mono font-extrabold text-sm py-2">{o.quantity}</TableCell>
                               <TableCell className="text-right font-mono py-2">
                                 <div>
@@ -899,13 +924,41 @@ export default function Orders() {
                                 </Button>
                               </TableCell>
                               <TableCell className="py-2">
-                                <div className="flex items-center gap-0.5">
                                 <Button
                                   size="sm"
                                   variant="ghost"
                                   className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                                  title="Edit order"
-                                  onClick={(e) => { e.stopPropagation(); setEditOrder(o); }}
+                                  title="Copy details"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const ev = o.events;
+                                    const lines = [
+                                      o.buyer_name && `Name: ${o.buyer_name}`,
+                                      o.buyer_phone && `Phone: ${o.buyer_phone}`,
+                                      o.buyer_email && `Email: ${o.buyer_email}`,
+                                      ev && `Event: ${ev.home_team} vs ${ev.away_team}`,
+                                      ev?.event_date && `Date: ${format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}`,
+                                      o.category && `Section: ${o.category}`,
+                                      (o as any).block && `Block: ${(o as any).block}`,
+                                      `Qty: ${o.quantity}`,
+                                      `Price: £${Number(o.sale_price).toFixed(0)} per ticket`,
+                                      o.delivery_type && `Delivery: ${o.delivery_type === "mobile_transfer" ? "Phone Transfer" : "Link/Email"}`,
+                                    ].filter(Boolean).join("\n");
+                                    navigator.clipboard.writeText(lines);
+                                    toast.success("Copied!");
+                                  }}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              </TableCell>
+                              <TableCell className="py-2">
+                                <div className="flex items-center gap-0.5">
+                                <Button
+                                   size="sm"
+                                   variant="ghost"
+                                   className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                   title="Edit order"
+                                   onClick={(e) => { e.stopPropagation(); setEditOrder(o); }}
                                 >
                                   <Pencil className="h-3.5 w-3.5" />
                                 </Button>

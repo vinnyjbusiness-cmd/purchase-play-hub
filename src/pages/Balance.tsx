@@ -467,7 +467,7 @@ export default function Balance() {
     const supplier = selectedData.type === "supplier" ? suppliers.find(s => s.id === selectedData.supplierId || s.id === selectedParty.id) : null;
     const platform = selectedData.type === "platform" ? platforms.find(p => p.id === (selectedData as any).platformId || p.id === selectedParty.id) : null;
 
-    const balanceLabel = isSettled ? "Settled" : theyOweMe ? `They owe me ${fmt(netPosition)}` : `I owe them ${fmt(Math.abs(netPosition))}`;
+    const balanceLabel = isSettled ? "Settled" : theyOweMe ? `${selectedData.displayName} owes you ${fmt(netPosition)}` : `You owe ${selectedData.displayName} ${fmt(Math.abs(netPosition))}`;
     const balanceColor = isSettled ? "text-muted-foreground" : theyOweMe ? "text-success" : "text-destructive";
 
     return (
@@ -483,13 +483,13 @@ export default function Balance() {
               <p className="text-sm text-muted-foreground capitalize">{selectedData.type}</p>
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
             <div className="rounded-lg border bg-muted/30 p-3">
-              <span className="text-xs text-muted-foreground">{selectedData.type === "supplier" ? "I Owe (Total)" : "They Owe (Total)"}</span>
+              <span className="text-xs text-muted-foreground">{selectedData.type === "supplier" ? "Total Owed to Them" : "Total They Owe"}</span>
               <p className="text-lg font-bold">{fmt(selectedData.totalOwed)}</p>
             </div>
             <div className="rounded-lg border bg-muted/30 p-3">
-              <span className="text-xs text-muted-foreground">{selectedData.type === "supplier" ? "They Owe Me" : "Paid to Me"}</span>
+              <span className="text-xs text-muted-foreground">{selectedData.type === "supplier" ? "Total Paid" : "Received from Them"}</span>
               <p className="text-lg font-bold text-success">{fmt(selectedData.totalPaid)}</p>
             </div>
             <div className={cn("rounded-lg border p-3", theyOweMe ? "border-success/30 bg-success/5" : iOweThem ? "border-destructive/30 bg-destructive/5" : "bg-muted/30")}>
@@ -896,10 +896,13 @@ export default function Balance() {
                     <LogoAvatar name={b.name} logoUrl={b.logoUrl} entityType={b.entityType} entityId={b.id} size="md" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{b.name}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{b.entityType} · {b.itemCount} item{b.itemCount !== 1 ? "s" : ""}</p>
+                      <p className="text-xs text-muted-foreground">You owe {b.name}</p>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-base font-bold text-destructive">{fmt(Math.abs(b.netPosition))}</p>
+                      {b.entityType === "supplier" && b.itemCount > 0 && (
+                        <p className="text-[10px] text-muted-foreground">{b.itemCount} purchase{b.itemCount !== 1 ? "s" : ""}</p>
+                      )}
                       {age.isOverdue && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] text-warning">
                           <AlertTriangle className="h-3 w-3" /> {age.days}d
@@ -941,7 +944,7 @@ export default function Balance() {
                     <LogoAvatar name={b.name} logoUrl={b.logoUrl} entityType={b.entityType} entityId={b.id} size="md" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{b.name}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{b.entityType} · {b.itemCount} item{b.itemCount !== 1 ? "s" : ""}</p>
+                      <p className="text-xs text-muted-foreground">{b.name} owes you</p>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-base font-bold text-success">{fmt(b.netPosition)}</p>
