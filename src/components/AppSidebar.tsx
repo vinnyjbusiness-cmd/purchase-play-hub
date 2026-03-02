@@ -9,6 +9,8 @@ import { useTheme } from "./ThemeProvider";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
+import { useTeamMember } from "@/hooks/useTeamMember";
+import { PERMISSION_PAGES } from "@/lib/permissions";
 import ChangePasswordDialog from "./ChangePasswordDialog";
 import { ChangePinDialog } from "./FinancePinGate";
 import { useState } from "react";
@@ -17,8 +19,17 @@ export default function AppSidebar() {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
   const { userRole } = useOrg();
+  const { isTeamMember, teamMember } = useTeamMember();
   const isAdmin = userRole === "admin";
   const [collapsed, setCollapsed] = useState(false);
+
+  // For team members, filter nav items based on permissions
+  const hasPageAccess = (path: string): boolean => {
+    if (!isTeamMember || !teamMember) return true; // admins/non-team-members see everything
+    const page = PERMISSION_PAGES.find((p) => p.path === path);
+    if (!page) return true;
+    return !!teamMember.permissions[page.key];
+  };
 
   const handleLogout = async () => {
     sessionStorage.removeItem("vjx_finance_unlocked");
@@ -105,9 +116,9 @@ export default function AppSidebar() {
       </div>
 
       <nav className="flex-1 px-2 lg:px-3 py-4 space-y-1 overflow-y-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-        {(isAdmin ? adminNavItems : viewerNavItems).map(renderNavLink)}
-        {!isAdmin && renderNavLink({ to: "/orders", icon: ShoppingCart, label: "Orders" })}
-        {(isAdmin ? adminBottomItems : viewerBottomItems).map(renderNavLink)}
+        {(isAdmin ? adminNavItems : viewerNavItems).filter((i) => hasPageAccess(i.to)).map(renderNavLink)}
+        {!isAdmin && hasPageAccess("/orders") && renderNavLink({ to: "/orders", icon: ShoppingCart, label: "Orders" })}
+        {(isAdmin ? adminBottomItems : viewerBottomItems).filter((i) => hasPageAccess(i.to)).map(renderNavLink)}
       </nav>
 
       <div className="border-t border-sidebar-border px-2 lg:px-3 py-3 space-y-1">

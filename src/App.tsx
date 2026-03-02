@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { OrgProvider, useOrg } from "./hooks/useOrg";
+import { TeamMemberProvider, useTeamMember } from "./hooks/useTeamMember";
 import { FinancePinGate } from "./components/FinancePinGate";
 import AppLayout from "./components/AppLayout";
 import Auth from "./pages/Auth";
@@ -40,6 +41,8 @@ import SpreadsheetTemplatesPage from "./pages/SpreadsheetTemplates";
 import PasswordVault from "./pages/PasswordVault";
 import ListingsManager from "./pages/ListingsManager";
 import NotFound from "./pages/NotFound";
+import JoinTeam from "./pages/JoinTeam";
+import TrainingDashboard from "./pages/TrainingDashboard";
 
 const queryClient = new QueryClient();
 
@@ -85,6 +88,16 @@ function PinProtected({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Locks team members into training if not completed */
+function TrainingGate({ children }: { children: React.ReactNode }) {
+  const { isTeamMember, teamMember, loading } = useTeamMember();
+  if (loading) return null;
+  if (isTeamMember && teamMember && !teamMember.training_completed) {
+    return <TrainingDashboard />;
+  }
+  return <>{children}</>;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
@@ -95,11 +108,16 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/join" element={<JoinTeam />} />
             <Route
               element={
                 <AuthGate>
                   <OrgProvider>
-                    <AppLayout />
+                    <TeamMemberProvider>
+                      <TrainingGate>
+                        <AppLayout />
+                      </TrainingGate>
+                    </TeamMemberProvider>
                   </OrgProvider>
                 </AuthGate>
               }

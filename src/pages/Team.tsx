@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Users, UserPlus, Mail, Shield, Eye, Clock, Check, X, Play, ChevronDown, BookOpen, Briefcase } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Users, UserPlus, Mail, Shield, Eye, Clock, Check, X, Play, ChevronDown, BookOpen, Briefcase, Copy, Settings, Trash2, RefreshCw, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import PermissionsEditor from "@/components/PermissionsEditor";
+import { defaultPermissions, type Permissions } from "@/lib/permissions";
 
 interface Member {
   id: string;
@@ -19,6 +22,29 @@ interface Member {
   role: "admin" | "viewer";
   created_at: string;
   profiles: { display_name: string | null } | null;
+}
+
+interface TeamMember {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  role_label: string;
+  permissions: Permissions;
+  training_completed: boolean;
+  training_progress: Record<string, boolean>;
+  joined_at: string;
+}
+
+interface TeamInvite {
+  id: string;
+  email: string;
+  name: string;
+  role_label: string;
+  token: string;
+  status: string;
+  permissions: Permissions;
+  created_at: string;
 }
 
 interface Invitation {
@@ -52,47 +78,113 @@ const FEATURE_GUIDE = [
 export default function Team() {
   const { orgId, orgName, userRole } = useOrg();
   const [members, setMembers] = useState<Member[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamInvites, setTeamInvites] = useState<TeamInvite[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"admin" | "viewer">("viewer");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
 
+  // Invite form state
+  const [inviteName, setInviteName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRoleLabel, setInviteRoleLabel] = useState("");
+  const [invitePermsOpen, setInvitePermsOpen] = useState(false);
+  const [invitePerms, setInvitePerms] = useState<Permissions>(defaultPermissions());
+
+  // Permissions editor
+  const [permEditorOpen, setPermEditorOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+
+  // Remove dialog
+  const [removeDialog, setRemoveDialog] = useState<TeamMember | null>(null);
+
+  const isAdmin = userRole === "admin";
+
   const load = useCallback(async () => {
     if (!orgId) return;
-    const [membersRes, invitesRes] = await Promise.all([
+    const [membersRes, invitesRes, tmRes, tiRes] = await Promise.all([
       supabase.from("org_members").select("id, user_id, role, created_at, profiles(display_name)").eq("org_id", orgId),
       supabase.from("invitations").select("*").eq("org_id", orgId).order("created_at", { ascending: false }),
+      supabase.from("team_members").select("*").eq("org_id", orgId).order("joined_at", { ascending: false }),
+      supabase.from("team_invites").select("*").eq("org_id", orgId).order("created_at", { ascending: false }),
     ]);
     setMembers((membersRes.data as any) || []);
     setInvitations((invitesRes.data as any) || []);
+    setTeamMembers((tmRes.data as any) || []);
+    setTeamInvites((tiRes.data as any) || []);
   }, [orgId]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleInvite = async () => {
-    if (!orgId || !inviteEmail) return;
+    if (!orgId || !inviteEmail || !inviteName) return;
     setSending(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSending(false); return; }
 
-    const { error } = await supabase.from("invitations").insert({
+    // Insert into team_invites
+    const { data: inviteData, error: inviteError } = await supabase.from("team_invites").insert({
       org_id: orgId,
       email: inviteEmail.toLowerCase().trim(),
-      role: inviteRole,
+      name: inviteName.trim(),
+      role_label: inviteRoleLabel.trim() || "Member",
+      permissions: invitePerms as any,
+    }).select().single();
+
+    if (inviteError) {
+      toast.error("Failed to create invite");
+      setSending(false);
+      return;
+    }
+
+    // Also create legacy invitation for auth flow
+    await supabase.from("invitations").insert({
+      org_id: orgId,
+      email: inviteEmail.toLowerCase().trim(),
+      role: "viewer" as const,
       invited_by: user.id,
     });
 
-    if (error) {
-      toast.error("Failed to send invitation");
-    } else {
-      toast.success(`Invitation sent to ${inviteEmail}`);
-      setInviteEmail("");
-      setInviteOpen(false);
-      load();
-    }
+    const inviteLink = `${window.location.origin}/join?token=${inviteData.token}`;
+    await navigator.clipboard.writeText(inviteLink);
+    toast.success(`Invite created! Link copied to clipboard.`);
+    
+    setInviteName("");
+    setInviteEmail("");
+    setInviteRoleLabel("");
+    setInvitePerms(defaultPermissions());
+    setInviteOpen(false);
+    load();
     setSending(false);
+  };
+
+  const resendInvite = async (invite: TeamInvite) => {
+    const link = `${window.location.origin}/join?token=${invite.token}`;
+    await navigator.clipboard.writeText(link);
+    toast.success("Invite link copied to clipboard");
+  };
+
+  const updateMemberPermissions = async (perms: Permissions) => {
+    if (!editingMember) return;
+    const { error } = await supabase
+      .from("team_members")
+      .update({ permissions: perms as any })
+      .eq("id", editingMember.id);
+    if (error) toast.error("Failed to update permissions");
+    else { toast.success("Permissions updated"); load(); }
+  };
+
+  const removeMember = async (member: TeamMember) => {
+    const { error } = await supabase.from("team_members").delete().eq("id", member.id);
+    if (error) toast.error("Failed to remove member");
+    else { toast.success("Member removed"); setRemoveDialog(null); load(); }
+  };
+
+  const cancelInvite = async (inviteId: string) => {
+    const { error } = await supabase.from("team_invites").delete().eq("id", inviteId);
+    if (error) toast.error("Failed to cancel invite");
+    else { toast.success("Invite cancelled"); load(); }
   };
 
   const updateMemberRole = async (memberId: string, newRole: "admin" | "viewer") => {
@@ -101,7 +193,7 @@ export default function Team() {
     else { toast.success("Role updated"); load(); }
   };
 
-  const removeMember = async (memberId: string) => {
+  const removeOrgMember = async (memberId: string) => {
     const { error } = await supabase.from("org_members").delete().eq("id", memberId);
     if (error) toast.error("Failed to remove member");
     else { toast.success("Member removed"); load(); }
@@ -113,7 +205,12 @@ export default function Team() {
     else { toast.success("Invitation cancelled"); load(); }
   };
 
-  const isAdmin = userRole === "admin";
+  const getTrainingBadge = (tm: TeamMember) => {
+    if (tm.training_completed) return <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20 text-xs"><Check className="h-3 w-3 mr-1" />Completed</Badge>;
+    const progressKeys = Object.values(tm.training_progress || {}).filter(Boolean).length;
+    if (progressKeys > 0) return <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-xs"><Clock className="h-3 w-3 mr-1" />In Progress</Badge>;
+    return <Badge variant="outline" className="bg-muted text-muted-foreground text-xs">Not Started</Badge>;
+  };
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -131,45 +228,63 @@ export default function Team() {
                 <UserPlus className="h-4 w-4 mr-1" /> Invite Member
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Invite Team Member</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Email Address</label>
-                  <Input
-                    type="email"
-                    placeholder="colleague@example.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                  />
+                  <Label>Name</Label>
+                  <Input placeholder="John Doe" value={inviteName} onChange={(e) => setInviteName(e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Role</label>
-                  <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as "admin" | "viewer")}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">
-                        <div className="flex items-center gap-2">
-                          <Shield className="h-3.5 w-3.5" /> Admin — Full access
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="viewer">
-                        <div className="flex items-center gap-2">
-                          <Eye className="h-3.5 w-3.5" /> Viewer — Read only
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Email Address</Label>
+                  <Input type="email" placeholder="john@example.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
                 </div>
+                <div className="space-y-1">
+                  <Label>Role Label</Label>
+                  <Input placeholder="e.g. Listings Manager, Analyst" value={inviteRoleLabel} onChange={(e) => setInviteRoleLabel(e.target.value)} />
+                </div>
+
+                {/* Permissions section */}
+                <Collapsible open={invitePermsOpen} onOpenChange={setInvitePermsOpen}>
+                  <CollapsibleTrigger asChild>
+                    <button className="w-full flex items-center justify-between rounded-lg border bg-card px-4 py-3 hover:bg-muted/30 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Set Permissions</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {Object.values(invitePerms).filter(Boolean).length} enabled
+                        </Badge>
+                      </div>
+                      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${invitePermsOpen ? "rotate-180" : ""}`} />
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="mt-2 space-y-2 max-h-48 overflow-y-auto rounded-lg border p-3">
+                      {Object.entries(invitePerms).map(([key, val]) => {
+                        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
+                        return (
+                          <label key={key} className="flex items-center justify-between text-sm cursor-pointer">
+                            <span>{label}</span>
+                            <input
+                              type="checkbox"
+                              checked={val}
+                              onChange={() => setInvitePerms((p) => ({ ...p, [key]: !val }))}
+                              className="accent-primary"
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+
                 <p className="text-xs text-muted-foreground">
-                  They'll need to sign up with this email. The invitation expires in 7 days.
+                  An invite link will be generated and copied to your clipboard.
                 </p>
-                <Button onClick={handleInvite} disabled={!inviteEmail || sending} className="w-full">
-                  {sending ? "Sending..." : "Send Invitation"}
+                <Button onClick={handleInvite} disabled={!inviteEmail || !inviteName || sending} className="w-full">
+                  {sending ? "Creating..." : "Create Invite & Copy Link"}
                 </Button>
               </div>
             </DialogContent>
@@ -177,11 +292,121 @@ export default function Team() {
         )}
       </div>
 
-      {/* Members */}
+      {/* Team Members (from team_members table) */}
+      {teamMembers.length > 0 && (
+        <Card>
+          <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+            <GraduationCap className="h-4 w-4 text-primary" />
+            <span className="font-semibold text-sm">Team Members</span>
+            <Badge variant="secondary" className="text-xs">{teamMembers.length}</Badge>
+          </div>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Joined</TableHead>
+                  <TableHead>Training</TableHead>
+                  {isAdmin && <TableHead className="w-[140px]">Actions</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {teamMembers.map((tm) => (
+                  <TableRow key={tm.id}>
+                    <TableCell>
+                      <div>
+                        <span className="font-medium">{tm.name}</span>
+                        <p className="text-xs text-muted-foreground">{tm.email}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">{tm.role_label}</Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {format(new Date(tm.joined_at), "dd MMM yyyy")}
+                    </TableCell>
+                    <TableCell>{getTrainingBadge(tm)}</TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => { setEditingMember(tm); setPermEditorOpen(true); }}
+                          >
+                            <Settings className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-destructive"
+                            onClick={() => setRemoveDialog(tm)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pending Team Invites */}
+      {teamInvites.filter((i) => i.status === "pending").length > 0 && (
+        <Card>
+          <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+            <Mail className="h-4 w-4 text-amber-500" />
+            <span className="font-semibold text-sm">Pending Team Invites</span>
+          </div>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Sent</TableHead>
+                  {isAdmin && <TableHead className="w-[120px]">Actions</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {teamInvites.filter((i) => i.status === "pending").map((inv) => (
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-medium">{inv.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{inv.email}</TableCell>
+                    <TableCell><Badge variant="outline" className="text-xs">{inv.role_label}</Badge></TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{format(new Date(inv.created_at), "dd MMM yyyy")}</TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => resendInvite(inv)}>
+                            <Copy className="h-3.5 w-3.5 mr-1" /> Link
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => cancelInvite(inv.id)}>
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Org Members (existing) */}
       <Card>
         <div className="flex items-center gap-2 px-4 pt-4 pb-2">
           <Users className="h-4 w-4 text-primary" />
-          <span className="font-semibold text-sm">Members</span>
+          <span className="font-semibold text-sm">Organization Members</span>
         </div>
         <CardContent className="p-0">
           <Table>
@@ -197,41 +422,29 @@ export default function Team() {
               {members.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={isAdmin ? 4 : 3} className="text-center py-8 text-muted-foreground">
-                    No members yet. Invite someone to get started.
+                    No members yet.
                   </TableCell>
                 </TableRow>
               ) : members.map((m) => (
                 <TableRow key={m.id}>
-                  <TableCell className="font-medium">
-                    {(m as any).profiles?.display_name || "Unknown"}
-                  </TableCell>
+                  <TableCell className="font-medium">{(m as any).profiles?.display_name || "Unknown"}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={m.role === "admin"
-                      ? "bg-primary/10 text-primary border-primary/20"
-                      : "bg-muted text-muted-foreground"
-                    }>
+                    <Badge variant="outline" className={m.role === "admin" ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground"}>
                       {m.role === "admin" ? <><Shield className="h-3 w-3 mr-1" />Admin</> : <><Eye className="h-3 w-3 mr-1" />Viewer</>}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {format(new Date(m.created_at), "dd MMM yyyy")}
-                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">{format(new Date(m.created_at), "dd MMM yyyy")}</TableCell>
                   {isAdmin && (
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Select
-                          value={m.role}
-                          onValueChange={(v) => updateMemberRole(m.id, v as "admin" | "viewer")}
-                        >
-                          <SelectTrigger className="h-7 w-[80px] text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
+                        <Select value={m.role} onValueChange={(v) => updateMemberRole(m.id, v as "admin" | "viewer")}>
+                          <SelectTrigger className="h-7 w-[80px] text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="admin">Admin</SelectItem>
                             <SelectItem value="viewer">Viewer</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => removeMember(m.id)}>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => removeOrgMember(m.id)}>
                           <X className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -244,12 +457,12 @@ export default function Team() {
         </CardContent>
       </Card>
 
-      {/* Pending Invitations */}
-      {invitations.length > 0 && (
+      {/* Legacy Pending Invitations */}
+      {invitations.filter((i) => i.status === "pending").length > 0 && (
         <Card>
           <div className="flex items-center gap-2 px-4 pt-4 pb-2">
-            <Mail className="h-4 w-4 text-warning" />
-            <span className="font-semibold text-sm">Pending Invitations</span>
+            <Mail className="h-4 w-4 text-amber-500" />
+            <span className="font-semibold text-sm">Legacy Invitations</span>
           </div>
           <CardContent className="p-0">
             <Table>
@@ -259,40 +472,25 @@ export default function Team() {
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Sent</TableHead>
-                  <TableHead>Expires</TableHead>
                   {isAdmin && <TableHead className="w-[60px]"></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invitations.map((inv) => (
+                {invitations.filter((i) => i.status === "pending").map((inv) => (
                   <TableRow key={inv.id}>
                     <TableCell className="font-medium">{inv.email}</TableCell>
+                    <TableCell><Badge variant="outline" className="text-xs">{inv.role}</Badge></TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs">{inv.role}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={
-                        inv.status === "pending" ? "bg-warning/10 text-warning border-warning/20" :
-                        inv.status === "accepted" ? "bg-success/10 text-success border-success/20" :
-                        "bg-muted text-muted-foreground"
-                      }>
-                        {inv.status === "pending" ? <><Clock className="h-3 w-3 mr-1" />Pending</> :
-                         inv.status === "accepted" ? <><Check className="h-3 w-3 mr-1" />Accepted</> : inv.status}
+                      <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/20">
+                        <Clock className="h-3 w-3 mr-1" />Pending
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {format(new Date(inv.created_at), "dd MMM yyyy")}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {format(new Date(inv.expires_at), "dd MMM yyyy")}
-                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{format(new Date(inv.created_at), "dd MMM yyyy")}</TableCell>
                     {isAdmin && (
                       <TableCell>
-                        {inv.status === "pending" && (
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => cancelInvitation(inv.id)}>
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => cancelInvitation(inv.id)}>
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
                       </TableCell>
                     )}
                   </TableRow>
@@ -335,8 +533,6 @@ export default function Team() {
       {/* Onboarding: Video + Feature Guide */}
       <div className="space-y-4">
         <h2 className="text-sm font-semibold">Onboarding & Training</h2>
-
-        {/* Video CTA */}
         <div className="rounded-xl border bg-card p-5 flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold">Watch the Platform Walkthrough</p>
@@ -348,8 +544,6 @@ export default function Team() {
             </a>
           </Button>
         </div>
-
-        {/* Written Feature Guide */}
         <Collapsible open={guideOpen} onOpenChange={setGuideOpen}>
           <div className="rounded-xl border bg-card overflow-hidden">
             <CollapsibleTrigger asChild>
@@ -378,6 +572,35 @@ export default function Team() {
           </div>
         </Collapsible>
       </div>
+
+      {/* Permissions Editor Sheet */}
+      {editingMember && (
+        <PermissionsEditor
+          open={permEditorOpen}
+          onOpenChange={setPermEditorOpen}
+          permissions={editingMember.permissions}
+          onSave={updateMemberPermissions}
+          memberName={editingMember.name}
+        />
+      )}
+
+      {/* Remove Confirmation */}
+      <Dialog open={!!removeDialog} onOpenChange={() => setRemoveDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Team Member</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove <strong>{removeDialog?.name}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveDialog(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => removeDialog && removeMember(removeDialog)}>
+              Remove Member
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

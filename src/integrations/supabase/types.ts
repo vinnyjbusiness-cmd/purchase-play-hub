@@ -1561,6 +1561,97 @@ export type Database = {
           },
         ]
       }
+      team_invites: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          name: string
+          org_id: string
+          permissions: Json
+          role_label: string
+          status: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          name?: string
+          org_id: string
+          permissions?: Json
+          role_label?: string
+          status?: string
+          token?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string
+          org_id?: string
+          permissions?: Json
+          role_label?: string
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_invites_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_members: {
+        Row: {
+          email: string
+          id: string
+          joined_at: string
+          name: string
+          org_id: string
+          permissions: Json
+          role_label: string
+          training_completed: boolean
+          training_progress: Json
+          user_id: string
+        }
+        Insert: {
+          email: string
+          id?: string
+          joined_at?: string
+          name?: string
+          org_id: string
+          permissions?: Json
+          role_label?: string
+          training_completed?: boolean
+          training_progress?: Json
+          user_id: string
+        }
+        Update: {
+          email?: string
+          id?: string
+          joined_at?: string
+          name?: string
+          org_id?: string
+          permissions?: Json
+          role_label?: string
+          training_completed?: boolean
+          training_progress?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_members_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       todos: {
         Row: {
           assigned_to: string | null

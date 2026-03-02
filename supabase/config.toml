@@ -1,1 +1,4 @@
 project_id = "qkwtnokinthrguqzwimm"
+
+[functions.training-chat]
+verify_jwt = false
