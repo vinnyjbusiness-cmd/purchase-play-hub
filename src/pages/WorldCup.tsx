@@ -6,11 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Search, Download, Zap, CheckCircle2, Trash2, Pencil, Smartphone, Copy, Check,
   Package, ShoppingCart, TrendingUp, Percent, Ticket, Plus, ChevronDown, ChevronRight,
-  Users, User, Apple,
+  Users, User, Apple, Filter,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours } from "date-fns";
@@ -40,6 +39,7 @@ interface Order {
   delivery_status: string | null; device_type: string | null;
   contacted: boolean; notes: string | null; order_date: string;
   currency: string; event_id: string; platform_id: string | null;
+  contact_id: string | null;
   events: { match_code: string; home_team: string; away_team: string; event_date: string; venue: string | null } | null;
   platforms: { name: string } | null;
   payment_received?: boolean;
@@ -85,6 +85,101 @@ const statusColor: Record<string, string> = {
   reserved: "bg-warning/10 text-warning border-warning/20",
   sold: "bg-primary/10 text-primary border-primary/20",
   cancelled: "bg-destructive/10 text-destructive border-destructive/20",
+};
+
+// ── Country flags ──
+const countryFlags: Record<string, string> = {
+  "usa": "🇺🇸", "united states": "🇺🇸", "mexico": "🇲🇽", "canada": "🇨🇦",
+  "brazil": "🇧🇷", "argentina": "🇦🇷", "colombia": "🇨🇴", "ecuador": "🇪🇨",
+  "paraguay": "🇵🇾", "uruguay": "🇺🇾", "chile": "🇨🇱", "peru": "🇵🇪", "bolivia": "🇧🇴", "venezuela": "🇻🇪",
+  "england": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "france": "🇫🇷", "germany": "🇩🇪", "spain": "🇪🇸", "italy": "🇮🇹",
+  "portugal": "🇵🇹", "netherlands": "🇳🇱", "belgium": "🇧🇪", "switzerland": "🇨🇭",
+  "croatia": "🇭🇷", "denmark": "🇩🇰", "sweden": "🇸🇪", "norway": "🇳🇴",
+  "poland": "🇵🇱", "austria": "🇦🇹", "scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "wales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿",
+  "ireland": "🇮🇪", "republic of ireland": "🇮🇪", "northern ireland": "🇬🇧",
+  "turkey": "🇹🇷", "türkiye": "🇹🇷", "greece": "🇬🇷", "romania": "🇷🇴",
+  "ukraine": "🇺🇦", "czech republic": "🇨🇿", "czechia": "🇨🇿", "slovakia": "🇸🇰",
+  "serbia": "🇷🇸", "albania": "🇦🇱", "slovenia": "🇸🇮", "hungary": "🇭🇺",
+  "bosnia": "🇧🇦", "bosnia and herzegovina": "🇧🇦", "bosnia and herzegvonia": "🇧🇦",
+  "north macedonia": "🇲🇰", "kosovo": "🇽🇰", "montenegro": "🇲🇪",
+  "japan": "🇯🇵", "south korea": "🇰🇷", "iran": "🇮🇷", "qatar": "🇶🇦",
+  "saudi arabia": "🇸🇦", "australia": "🇦🇺", "new zealand": "🇳🇿",
+  "morocco": "🇲🇦", "senegal": "🇸🇳", "nigeria": "🇳🇬", "cameroon": "🇨🇲",
+  "ghana": "🇬🇭", "egypt": "🇪🇬", "ivory coast": "🇨🇮", "algeria": "🇩🇿",
+  "tunisia": "🇹🇳", "south africa": "🇿🇦", "cape verde": "🇨🇻",
+  "curacao": "🇨🇼", "curaçao": "🇨🇼", "jamaica": "🇯🇲", "haiti": "🇭🇹",
+  "dr congo": "🇨🇩", "new caledonia": "🇳🇨", "china": "🇨🇳",
+  "uzbekistan": "🇺🇿", "indonesia": "🇮🇩", "iraq": "🇮🇶", "suriname": "🇸🇷",
+};
+
+function getFlag(name: string): string {
+  const lower = name.toLowerCase().trim();
+  return countryFlags[lower] || "";
+}
+
+// Parse team names from imported events with messy home_team/away_team
+function parseEventTeams(homeTeam: string, awayTeam: string): { team1: string; team2: string; matchNum: string | null; round: string } {
+  // Imported format: home_team = "#M10 - (Group E - Germany", away_team = "Curaçao) Football World Cup 2026 - Group Stage"
+  // Clean format: home_team = "Germany", away_team = "Curacao"
+
+  let team1 = homeTeam;
+  let team2 = awayTeam;
+  let matchNum: string | null = null;
+  let round = "Group Stage";
+
+  // Check imported format
+  const importMatch = homeTeam.match(/^#M(\d+)\s*-\s*\(([^)]*?)\s*-\s*(.+)$/);
+  if (importMatch) {
+    matchNum = importMatch[1];
+    const groupInfo = importMatch[2].trim(); // e.g. "Group E"
+    team1 = importMatch[3].trim();
+
+    // Parse away team: "Curaçao) Football World Cup 2026 - Group Stage"
+    const awayMatch = awayTeam.match(/^(.+?)\)\s*Football World Cup 2026\s*-\s*(.+)$/);
+    if (awayMatch) {
+      team2 = awayMatch[1].trim();
+      round = awayMatch[2].trim();
+    }
+  }
+
+  // Check WC2026-M format
+  // These already have clean team names
+  const wcMatch = homeTeam.match(/^(W\d+|Winner|Runner-up)/i);
+  if (!importMatch && !wcMatch) {
+    // Clean event — determine round from match number in match_code
+    // Will be set by caller
+  }
+
+  return { team1, team2, matchNum, round };
+}
+
+function getRoundFromMatchNum(num: number): string {
+  if (num <= 48) return "Group Stage";
+  if (num <= 56) return "3rd Place Deciders";
+  if (num <= 64) return "Round of 32";
+  if (num <= 80) return "Round of 16";
+  if (num <= 88) return "Quarter-Finals";
+  if (num <= 92) return "Semi-Finals";
+  if (num === 103) return "3rd Place Play-off";
+  if (num === 104) return "Final";
+  return "Knockout Stage";
+}
+
+const roundOrder: Record<string, number> = {
+  "Group Stage": 0, "3rd Place Deciders": 1, "Round of 32": 2, "Round of 16": 3,
+  "Quarter-Finals": 4, "Semi-Finals": 5, "3rd Place Play-off": 6, "Final": 7, "Knockout Stage": 3,
+};
+
+const roundColors: Record<string, string> = {
+  "Group Stage": "from-emerald-600/80 to-emerald-800/80",
+  "3rd Place Deciders": "from-amber-600/80 to-amber-800/80",
+  "Round of 32": "from-blue-600/80 to-blue-800/80",
+  "Round of 16": "from-indigo-600/80 to-indigo-800/80",
+  "Quarter-Finals": "from-purple-600/80 to-purple-800/80",
+  "Semi-Finals": "from-rose-600/80 to-rose-800/80",
+  "3rd Place Play-off": "from-orange-600/80 to-orange-800/80",
+  "Final": "from-yellow-500/80 to-amber-600/80",
+  "Knockout Stage": "from-violet-600/80 to-violet-800/80",
 };
 
 const phoneToFlag = (phone: string | null): string | null => {
@@ -138,10 +233,45 @@ function groupByQuantity(items: InventoryItem[]) {
   }));
 }
 
+// Helper: extract parsed event info
+function getParsedEvent(ev: { home_team: string; away_team: string; match_code: string; venue?: string | null }) {
+  const parsed = parseEventTeams(ev.home_team, ev.away_team);
+  // For non-imported events with WC2026-M format
+  if (!parsed.matchNum) {
+    const m = ev.match_code.match(/WC2026-M(\d+)/);
+    if (m) {
+      parsed.matchNum = m[1];
+      parsed.round = getRoundFromMatchNum(parseInt(m[1]));
+    }
+  } else {
+    // For imported events, derive round from match number too
+    parsed.round = getRoundFromMatchNum(parseInt(parsed.matchNum));
+  }
+  return parsed;
+}
+
+// Row color palette for orders (cycling subtle accent backgrounds)
+const orderRowColors = [
+  "border-l-4 border-l-emerald-500/60",
+  "border-l-4 border-l-blue-500/60",
+  "border-l-4 border-l-purple-500/60",
+  "border-l-4 border-l-amber-500/60",
+  "border-l-4 border-l-rose-500/60",
+  "border-l-4 border-l-cyan-500/60",
+  "border-l-4 border-l-indigo-500/60",
+  "border-l-4 border-l-orange-500/60",
+];
+
 // ── Main Component ──
 export default function WorldCup() {
   const [tab, setTab] = useState("orders");
-  const [countryFilter, setCountryFilter] = useState("all");
+
+  // Filter state
+  const [filterRound, setFilterRound] = useState("all");
+  const [filterCountry, setFilterCountry] = useState("all");
+  const [filterVenue, setFilterVenue] = useState("all");
+  const [filterEvent, setFilterEvent] = useState("all");
+  const [filterPlatform, setFilterPlatform] = useState("all");
 
   // Data
   const [wcEvents, setWcEvents] = useState<EventInfo[]>([]);
@@ -152,6 +282,7 @@ export default function WorldCup() {
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
   const [orderLines, setOrderLines] = useState<OrderLine[]>([]);
   const [assignments, setAssignments] = useState<Record<string, AssignmentInfo>>({});
+  const [contacts, setContacts] = useState<{ id: string; name: string }[]>([]);
 
   // UI state
   const [search, setSearch] = useState("");
@@ -162,9 +293,10 @@ export default function WorldCup() {
   const [showAddInv, setShowAddInv] = useState(false);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [collapsedRounds, setCollapsedRounds] = useState<Set<string>>(new Set());
+  const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
-    // 1. Fetch WC events
     const { data: evData } = await supabase
       .from("events")
       .select("id,match_code,home_team,away_team,event_date,competition,venue")
@@ -177,7 +309,6 @@ export default function WorldCup() {
       return;
     }
 
-    // 2. Fetch scoped data in parallel
     const [ordRes, purchRes, invRes, olRes, supRes, platRes] = await Promise.all([
       supabase.from("orders").select("*, events(match_code,home_team,away_team,event_date,venue), platforms(name)").in("event_id", wcIds).order("order_date", { ascending: false }),
       supabase.from("purchases").select("id,supplier_order_id,quantity,unit_cost,total_cost,total_cost_gbp,currency,purchase_date,supplier_paid,notes,category,section,event_id,supplier_id").in("event_id", wcIds),
@@ -193,16 +324,22 @@ export default function WorldCup() {
     setSuppliers(supRes.data || []);
     setPlatforms(platRes.data || []);
 
-    // Filter order_lines to only WC orders
+    const cIds: string[] = [];
+    loadedOrders.forEach((o: Order) => { if (o.contact_id) cIds.push(o.contact_id); });
+    const uniqueContactIds = [...new Set(cIds)];
+    if (uniqueContactIds.length > 0) {
+      const { data: contactData } = await supabase.from("suppliers").select("id,name").in("id", uniqueContactIds as string[]);
+      setContacts((contactData || []).map(c => ({ id: c.id, name: c.name })));
+    }
+
     const wcOrderIds = new Set(loadedOrders.map((o: Order) => o.id));
     const filteredOL = (olRes.data || []).filter((ol: OrderLine) => wcOrderIds.has(ol.order_id));
     setOrderLines(filteredOL);
 
-    // Build assignments
     if (filteredOL.length > 0) {
       const invIds = filteredOL.map((ol: OrderLine) => ol.inventory_id);
       const { data: invInfo } = await supabase.from("inventory").select("id,purchase_id").in("id", invIds);
-      const purchaseIds = [...new Set((invInfo || []).map(i => i.purchase_id).filter(Boolean))];
+      const purchaseIds = [...new Set((invInfo || []).map(i => i.purchase_id).filter((id): id is string => !!id))];
       const { data: purchInfo } = purchaseIds.length > 0
         ? await supabase.from("purchases").select("id, suppliers(name,contact_name)").in("id", purchaseIds)
         : { data: [] };
@@ -229,22 +366,75 @@ export default function WorldCup() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Country filter bar
-  const countries = useMemo(() => {
-    const set = new Set<string>();
-    wcEvents.forEach(e => { set.add(e.home_team); set.add(e.away_team); });
-    // Remove generic placeholders
-    const filtered = [...set].filter(t => !["TBC", "TBA", "Winner", "Runner"].some(x => t.includes(x)));
-    return filtered.sort();
+  // ── Parsed event data for filters ──
+  const parsedEventsMap = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof getParsedEvent>>();
+    wcEvents.forEach(e => map.set(e.id, getParsedEvent(e)));
+    return map;
   }, [wcEvents]);
 
-  // Filter events by country
+  // Filter options
+  const roundOptions = useMemo(() => {
+    const rounds = new Set<string>();
+    parsedEventsMap.forEach(p => rounds.add(p.round));
+    return [...rounds].sort((a, b) => (roundOrder[a] ?? 99) - (roundOrder[b] ?? 99)).map(r => ({ value: r, label: r }));
+  }, [parsedEventsMap]);
+
+  const countryOptions = useMemo(() => {
+    const set = new Set<string>();
+    parsedEventsMap.forEach(p => {
+      if (p.team1 && !p.team1.match(/^W\d|^Winner|^Runner/i)) set.add(p.team1);
+      if (p.team2 && !p.team2.match(/^W\d|^Winner|^Runner/i)) set.add(p.team2);
+    });
+    return [...set].sort().map(c => ({ value: c.toLowerCase(), label: `${getFlag(c)} ${c}` }));
+  }, [parsedEventsMap]);
+
+  const venueOptions = useMemo(() => {
+    const set = new Set<string>();
+    wcEvents.forEach(e => { if (e.venue) set.add(e.venue.trim()); });
+    return [...set].sort().map(v => ({ value: v, label: v }));
+  }, [wcEvents]);
+
+  const eventOptions = useMemo(() => {
+    // Only events that have orders
+    const evIdsWithOrders = new Set(orders.map(o => o.event_id));
+    return wcEvents
+      .filter(e => evIdsWithOrders.has(e.id))
+      .sort((a, b) => a.event_date.localeCompare(b.event_date))
+      .map(e => {
+        const p = parsedEventsMap.get(e.id);
+        const label = p?.matchNum ? `M${p.matchNum} — ${p.team1} vs ${p.team2}` : `${e.home_team} vs ${e.away_team}`;
+        return { value: e.id, label };
+      });
+  }, [wcEvents, orders, parsedEventsMap]);
+
+  const platformOptions = useMemo(() => {
+    const set = new Map<string, string>();
+    orders.forEach(o => {
+      if (o.platforms?.name) set.set(o.platform_id || "", o.platforms.name);
+      if (o.contact_id) {
+        const c = contacts.find(c => c.id === o.contact_id);
+        if (c) set.set(`contact-${c.id}`, `Contact: ${c.name}`);
+      }
+    });
+    return [...set.entries()].map(([value, label]) => ({ value, label }));
+  }, [orders, contacts]);
+
+  // Filter events by all criteria
   const filteredEventIds = useMemo(() => {
-    if (countryFilter === "all") return new Set(wcEvents.map(e => e.id));
-    return new Set(wcEvents.filter(e =>
-      e.home_team.toLowerCase() === countryFilter || e.away_team.toLowerCase() === countryFilter
-    ).map(e => e.id));
-  }, [wcEvents, countryFilter]);
+    return new Set(wcEvents.filter(e => {
+      const p = parsedEventsMap.get(e.id);
+      if (!p) return false;
+      if (filterRound !== "all" && p.round !== filterRound) return false;
+      if (filterCountry !== "all") {
+        const lower = filterCountry.toLowerCase();
+        if (p.team1.toLowerCase() !== lower && p.team2.toLowerCase() !== lower) return false;
+      }
+      if (filterVenue !== "all" && (e.venue || "").trim() !== filterVenue) return false;
+      if (filterEvent !== "all" && e.id !== filterEvent) return false;
+      return true;
+    }).map(e => e.id));
+  }, [wcEvents, parsedEventsMap, filterRound, filterCountry, filterVenue, filterEvent]);
 
   const supplierMap = useMemo(() => Object.fromEntries(suppliers.map(s => [s.id, s])), [suppliers]);
   const platformMap = useMemo(() => Object.fromEntries(platforms.map(p => [p.id, p])), [platforms]);
@@ -253,6 +443,12 @@ export default function WorldCup() {
   // ── ORDERS TAB ──
   const filteredOrders = useMemo(() => orders.filter(o => {
     if (!filteredEventIds.has(o.event_id)) return false;
+    if (filterPlatform !== "all") {
+      if (filterPlatform.startsWith("contact-")) {
+        const cId = filterPlatform.replace("contact-", "");
+        if (o.contact_id !== cId) return false;
+      } else if (o.platform_id !== filterPlatform) return false;
+    }
     if (search) {
       const q = search.toLowerCase();
       return (o.order_ref || "").toLowerCase().includes(q) || (o.buyer_name || "").toLowerCase().includes(q) ||
@@ -261,20 +457,44 @@ export default function WorldCup() {
         (o.platforms?.name || "").toLowerCase().includes(q);
     }
     return true;
-  }), [orders, filteredEventIds, search]);
+  }), [orders, filteredEventIds, filterPlatform, search]);
 
-  const groupedOrders = useMemo(() => {
-    const map = new Map<string, { event: Order["events"]; eventIds: string[]; orders: Order[] }>();
+  // Group orders by event, then by round
+  const groupedByRound = useMemo(() => {
+    // First group by event
+    const eventMap = new Map<string, { event: Order["events"]; eventIds: string[]; orders: Order[]; parsed: ReturnType<typeof getParsedEvent> | null }>();
     filteredOrders.forEach(o => {
       const ev = o.events;
       if (!ev) return;
       const key = getEventKey(ev.home_team, ev.away_team, ev.event_date);
-      if (!map.has(key)) map.set(key, { event: ev, eventIds: [o.event_id], orders: [] });
-      else { const g = map.get(key)!; if (!g.eventIds.includes(o.event_id)) g.eventIds.push(o.event_id); }
-      map.get(key)!.orders.push(o);
+      if (!eventMap.has(key)) {
+        const p = parsedEventsMap.get(o.event_id) || null;
+        eventMap.set(key, { event: ev, eventIds: [o.event_id], orders: [], parsed: p });
+      } else {
+        const g = eventMap.get(key)!;
+        if (!g.eventIds.includes(o.event_id)) g.eventIds.push(o.event_id);
+      }
+      eventMap.get(key)!.orders.push(o);
     });
-    return [...map.values()].sort((a, b) => (a.event?.event_date || "").localeCompare(b.event?.event_date || ""));
-  }, [filteredOrders]);
+
+    // Group by round
+    const roundMap = new Map<string, typeof eventMap extends Map<string, infer V> ? V[] : never>();
+    eventMap.forEach((group) => {
+      const round = group.parsed?.round || "Group Stage";
+      if (!roundMap.has(round)) roundMap.set(round, []);
+      roundMap.get(round)!.push(group);
+    });
+
+    // Sort rounds
+    return [...roundMap.entries()]
+      .sort(([a], [b]) => (roundOrder[a] ?? 99) - (roundOrder[b] ?? 99))
+      .map(([round, events]) => ({
+        round,
+        events: events.sort((a, b) => (a.event?.event_date || "").localeCompare(b.event?.event_date || "")),
+        totalOrders: events.reduce((s, e) => s + e.orders.length, 0),
+        totalTickets: events.reduce((s, e) => s + e.orders.reduce((t, o) => t + o.quantity, 0), 0),
+      }));
+  }, [filteredOrders, parsedEventsMap]);
 
   const isFullyAssigned = (order: Order) => { const info = assignments[order.id]; return info && info.linked_count >= order.quantity; };
 
@@ -296,7 +516,25 @@ export default function WorldCup() {
     return { label: `${days}d`, color: "text-muted-foreground" };
   };
 
+  const toggleRound = (round: string) => {
+    setCollapsedRounds(prev => {
+      const next = new Set(prev);
+      next.has(round) ? next.delete(round) : next.add(round);
+      return next;
+    });
+  };
+
+  const toggleEvent = (key: string) => {
+    setCollapsedEvents(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
   // ── FINANCE TAB ──
+  // Keep countryFilter compatibility for finance/inventory tabs
+  const countryFilter = filterCountry;
   const { unique: dedupedEvents, groupedIds } = useMemo(() => deduplicateEvents(wcEvents), [wcEvents]);
 
   const financeData = useMemo(() => {
@@ -363,7 +601,7 @@ export default function WorldCup() {
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
-      {/* Sticky header: tabs + country filter */}
+      {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-background border-b border-border shrink-0">
         <div className="px-6 pt-4 pb-2">
           <h1 className="text-2xl font-bold tracking-tight">World Cup 2026</h1>
@@ -376,153 +614,235 @@ export default function WorldCup() {
             </TabsList>
           </Tabs>
         </div>
-        {/* Country filter bar */}
-        <div className="px-6 py-2 flex items-center gap-4 overflow-x-auto border-t border-border">
-          <button onClick={() => setCountryFilter("all")}
-            className={cn("text-sm font-medium whitespace-nowrap transition-colors", countryFilter === "all" ? "text-emerald-500" : "text-muted-foreground hover:text-foreground")}>
-            All
-          </button>
-          {countries.map(c => (
-            <button key={c} onClick={() => setCountryFilter(c.toLowerCase() === countryFilter ? "all" : c.toLowerCase())}
-              className={cn("text-sm font-medium whitespace-nowrap transition-colors", countryFilter === c.toLowerCase() ? "text-emerald-500" : "text-muted-foreground hover:text-foreground")}>
-              {c}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto">
         {tab === "orders" && (
-          <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-              <p className="text-muted-foreground text-sm">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} across {groupedOrders.length} game{groupedOrders.length !== 1 ? "s" : ""}</p>
-              <AddOrderDialog onCreated={load} />
-            </div>
-            <div className="relative max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search orders..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+          <div className="p-6 space-y-5">
+            {/* Filters */}
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="relative flex-1 min-w-[180px] max-w-xs space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Search</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Search orders..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+                </div>
+              </div>
+              <FilterSelect label="Round" value={filterRound} onValueChange={setFilterRound} options={roundOptions} />
+              <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
+              <FilterSelect label="Stadium" value={filterVenue} onValueChange={setFilterVenue} options={venueOptions} />
+              <FilterSelect label="Event" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
+              <FilterSelect label="Platform" value={filterPlatform} onValueChange={setFilterPlatform} options={platformOptions} />
             </div>
 
-            <div className="space-y-5">
-              {groupedOrders.length === 0 && <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No World Cup orders found</div>}
-              {groupedOrders.map(group => {
-                const deadline = getDeadline(group.event?.event_date);
-                const deadlineStatus = getDeadlineStatus(group.event?.event_date);
-                const totalQty = group.orders.reduce((s, o) => s + o.quantity, 0);
-                const assignedCount = group.orders.filter(o => isFullyAssigned(o)).length;
+            <div className="flex items-center justify-between">
+              <p className="text-muted-foreground text-sm">
+                {filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} across {groupedByRound.reduce((s, r) => s + r.events.length, 0)} game{groupedByRound.reduce((s, r) => s + r.events.length, 0) !== 1 ? "s" : ""}
+              </p>
+              <AddOrderDialog onCreated={load} />
+            </div>
+
+            {/* Grouped by Round → Event */}
+            <div className="space-y-4">
+              {groupedByRound.length === 0 && <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No World Cup orders found</div>}
+              {groupedByRound.map(roundGroup => {
+                const isRoundCollapsed = collapsedRounds.has(roundGroup.round);
+                const gradientClass = roundColors[roundGroup.round] || "from-muted to-muted";
+
                 return (
-                  <div key={group.eventIds[0]} className="rounded-xl border bg-card overflow-hidden shadow-sm">
-                    <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/40">
-                      <div>
-                        <p className="font-bold text-base">{group.event ? formatEventTitle(group.event.home_team, group.event.away_team, group.event.match_code) : "Unknown"}{group.event?.venue && <span className="text-muted-foreground font-normal text-sm ml-2">— {group.event.venue}</span>}</p>
-                        <p className="text-sm font-bold text-foreground mt-0.5">{group.event?.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}</p>
+                  <div key={roundGroup.round} className="space-y-3">
+                    {/* Round header */}
+                    <button
+                      onClick={() => toggleRound(roundGroup.round)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-5 py-3 rounded-xl bg-gradient-to-r text-white transition-all hover:opacity-90",
+                        gradientClass
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        {isRoundCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                        <span className="font-black text-lg uppercase tracking-wide">{roundGroup.round}</span>
                       </div>
                       <div className="flex items-center gap-5">
-                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Deadline</p><p className={`text-sm font-mono ${deadlineStatus.color}`}>{deadline ? format(deadline, "dd MMM HH:mm") : "—"}</p></div>
-                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Orders</p><p className="text-sm font-mono font-bold">{group.orders.length}</p></div>
-                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tickets</p><p className="text-sm font-mono font-bold">{totalQty}</p></div>
-                        {assignedCount > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">{assignedCount} assigned</Badge>}
+                        <div className="text-center">
+                          <p className="text-[10px] uppercase tracking-wider text-white/70">Events</p>
+                          <p className="text-sm font-bold font-mono">{roundGroup.events.length}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] uppercase tracking-wider text-white/70">Orders</p>
+                          <p className="text-sm font-bold font-mono">{roundGroup.totalOrders}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] uppercase tracking-wider text-white/70">Tickets</p>
+                          <p className="text-sm font-bold font-mono">{roundGroup.totalTickets}</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-[10px] uppercase tracking-wider w-[90px]">Order #</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider">Platform</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">🏳️</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider">Customer</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider">Phone</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider">Email</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider w-[50px]">Cat</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">Qty</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider text-right w-[70px]">Sale</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider text-center w-[70px]">Delivered</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider w-[80px]">Status</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider w-[100px]">Assigned From</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider w-[60px]">Assign</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider w-[40px]"></TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {group.orders.map(o => {
-                            const flag = phoneToFlag(o.buyer_phone);
-                            const assigned = isFullyAssigned(o);
-                            const assignInfo = assignments[o.id];
-                            return (
-                              <TableRow key={o.id} className={`cursor-pointer text-xs h-10 transition-colors ${o.delivery_status === "delivered" || o.delivery_status === "completed" ? "bg-success/10 hover:bg-success/20 border-l-2 border-l-success" : assigned ? "bg-success/5 hover:bg-success/10 border-l-2 border-l-success/50" : "hover:bg-muted/40"}`}
-                                onClick={() => setSelectedOrderId(o.id)}>
-                                <TableCell className="font-mono font-bold text-xs py-2">{o.order_ref ? <CopyText text={o.order_ref} className="font-mono font-bold text-foreground text-xs" /> : "—"}</TableCell>
-                                <TableCell className="py-2">
-                                  {(() => {
-                                    const assignInfo = assignments[o.id];
-                                    const contactName = assignInfo?.supplier_contact_name;
-                                    const platformName = o.platforms?.name || "NA";
-                                    if (contactName) {
-                                      return (
-                                        <div>
-                                          <span className="font-medium text-foreground text-xs">{contactName}</span>
-                                          <span className="block text-[10px] text-muted-foreground">{platformName}</span>
-                                        </div>
-                                      );
-                                    }
-                                    return <span className="text-muted-foreground">{platformName}</span>;
-                                  })()}
-                                </TableCell>
-                                <TableCell className="text-center text-base py-2">{flag || "NA"}</TableCell>
-                                <TableCell className="py-2"><span className="font-medium">{o.buyer_name || "NA"}</span></TableCell>
-                                <TableCell className="py-2">{o.buyer_phone ? <CopyText text={o.buyer_phone} className="text-muted-foreground text-xs" /> : <span className="text-muted-foreground/40 text-xs">NA</span>}</TableCell>
-                                <TableCell className="py-2">{o.buyer_email ? <CopyText text={o.buyer_email} className="text-muted-foreground text-xs max-w-[140px]" /> : <span className="text-muted-foreground/40 text-xs">NA</span>}</TableCell>
-                                <TableCell className="py-2 text-muted-foreground">{o.category || "NA"}</TableCell>
-                                <TableCell className="text-center font-mono font-bold py-2">{o.quantity}</TableCell>
-                                <TableCell className="text-right font-mono py-2">£{Number(o.sale_price).toFixed(0)}</TableCell>
-                                <TableCell className="text-center py-2">
-                                  <Checkbox checked={o.delivery_status === "delivered" || o.delivery_status === "completed"}
-                                    onCheckedChange={checked => updateField(o.id, "delivery_status", checked ? "delivered" : "pending")}
-                                    onClick={e => e.stopPropagation()} className="h-5 w-5 data-[state=checked]:bg-success data-[state=checked]:border-success" />
-                                </TableCell>
-                                <TableCell className="py-2">
-                                  {o.delivery_status === "delivered" || o.delivery_status === "completed"
-                                    ? <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/20 font-bold">DELIVERED</Badge>
-                                    : <Badge variant="outline" className="text-[10px] py-0 bg-warning/10 text-warning border-warning/20 font-bold">OUTSTANDING</Badge>}
-                                </TableCell>
-                                <TableCell className="py-2">
-                                  {assigned ? <span className="inline-flex items-center gap-1 text-xs font-medium text-success"><CheckCircle2 className="h-3 w-3" />{assignInfo?.supplier_contact_name || "Assigned"}</span>
-                                    : assignInfo?.linked_count ? <span className="text-xs text-warning font-medium">{assignInfo.linked_count}/{o.quantity} · {assignInfo.supplier_contact_name || "—"}</span>
-                                    : <span className="text-muted-foreground/40 text-xs">NA</span>}
-                                </TableCell>
-                                <TableCell className="py-2">
-                                  <Button size="sm" variant={assigned ? "ghost" : "outline"} className={`h-7 w-7 p-0 ${assigned ? "text-success" : ""}`}
-                                    onClick={e => { e.stopPropagation(); setAssignOrder(o); }}>
-                                    {assigned ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
-                                  </Button>
-                                </TableCell>
-                                <TableCell className="py-2">
-                                  <div className="flex items-center gap-0.5">
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={e => { e.stopPropagation(); setEditOrder(o); }}><Pencil className="h-3.5 w-3.5" /></Button>
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                                      onClick={async e => {
-                                        e.stopPropagation();
-                                      if (!confirm("Delete this order?")) return;
-                                        const { data: lines } = await supabase.from("order_lines").select("inventory_id").eq("order_id", o.id);
-                                        if (lines?.length) await supabase.from("inventory").update({ status: "available" as any }).in("id", lines.map(l => l.inventory_id));
-                                        await supabase.from("order_lines").delete().eq("order_id", o.id);
-                                        await supabase.from("refunds").delete().eq("order_id", o.id);
-                                        if ((o as any).contact_id) {
-                                          await supabase.from("balance_payments").delete().ilike("notes", `Auto: Order ${o.id}`);
-                                        }
-                                        await supabase.from("orders").delete().eq("id", o.id);
-                                        toast.success("Order deleted"); load();
-                                      }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                    </button>
+
+                    {!isRoundCollapsed && (
+                      <div className="space-y-3 pl-2">
+                        {roundGroup.events.map((group, eventIdx) => {
+                          const eventKey = group.eventIds[0];
+                          const isEventCollapsed = collapsedEvents.has(eventKey);
+                          const deadline = getDeadline(group.event?.event_date);
+                          const deadlineStatus = getDeadlineStatus(group.event?.event_date);
+                          const totalQty = group.orders.reduce((s, o) => s + o.quantity, 0);
+                          const delivered = group.orders.filter(o => o.delivery_status === "delivered" || o.delivery_status === "completed").length;
+                          const totalSales = group.orders.reduce((s, o) => s + Number(o.sale_price) * o.quantity, 0);
+                          const parsed = group.parsed;
+                          const flag1 = parsed ? getFlag(parsed.team1) : "";
+                          const flag2 = parsed ? getFlag(parsed.team2) : "";
+                          const matchLabel = parsed?.matchNum ? `M${parsed.matchNum}` : null;
+                          const team1 = parsed?.team1 || group.event?.home_team || "Unknown";
+                          const team2 = parsed?.team2 || group.event?.away_team || "Unknown";
+
+                          return (
+                            <div key={eventKey} className="rounded-xl border bg-card overflow-hidden shadow-sm">
+                              <button
+                                onClick={() => toggleEvent(eventKey)}
+                                className="w-full flex items-center justify-between px-5 py-3 text-left transition-colors hover:bg-muted/40"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  {isEventCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {matchLabel && <Badge className="bg-primary/20 text-primary text-[10px] font-bold border-primary/30">{matchLabel}</Badge>}
+                                      <span className="font-bold text-base">
+                                        {flag1 && <span className="mr-1">{flag1}</span>}{team1}
+                                        <span className="text-muted-foreground font-normal mx-2">vs</span>
+                                        {flag2 && <span className="mr-1">{flag2}</span>}{team2}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                      <span className="font-semibold text-foreground">{group.event?.event_date ? format(new Date(group.event.event_date), "EEE dd MMM yyyy, HH:mm") : ""}</span>
+                                      {group.event?.venue && <span>· {group.event.venue}</span>}
+                                    </div>
                                   </div>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
+                                </div>
+                                <div className="flex items-center gap-4 shrink-0">
+                                  <div className="text-center hidden sm:block"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Deadline</p><p className={`text-xs font-mono ${deadlineStatus.color}`}>{deadline ? format(deadline, "dd MMM HH:mm") : "—"}</p></div>
+                                  <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Orders</p><p className="text-sm font-mono font-bold">{group.orders.length}</p></div>
+                                  <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tickets</p><p className="text-sm font-mono font-bold">{totalQty}</p></div>
+                                  <div className="text-center hidden sm:block"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</p><p className="text-sm font-mono font-bold">{fmt(totalSales)}</p></div>
+                                  {delivered > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">{delivered}/{group.orders.length} delivered</Badge>}
+                                </div>
+                              </button>
+
+                              {!isEventCollapsed && (
+                                <div className="border-t overflow-hidden">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead className="text-[10px] uppercase tracking-wider w-[90px]">Order #</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider">Platform</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider">Customer</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider">Phone</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider">Email</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider w-[50px]">Cat</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">Qty</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider text-right w-[70px]">Sale</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider text-center w-[70px]">Delivered</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider w-[80px]">Status</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider w-[100px]">Assigned</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider w-[60px]">Assign</TableHead>
+                                        <TableHead className="text-[10px] uppercase tracking-wider w-[40px]"></TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {group.orders.map((o, oIdx) => {
+                                        const flag = phoneToFlag(o.buyer_phone);
+                                        const assigned = isFullyAssigned(o);
+                                        const assignInfo = assignments[o.id];
+                                        const colorClass = orderRowColors[oIdx % orderRowColors.length];
+                                        const isDelivered = o.delivery_status === "delivered" || o.delivery_status === "completed";
+                                        return (
+                                          <TableRow key={o.id}
+                                            className={cn(
+                                              "cursor-pointer text-xs h-10 transition-colors",
+                                              colorClass,
+                                              isDelivered ? "bg-success/8 hover:bg-success/15" : "hover:bg-muted/40"
+                                            )}
+                                            onClick={() => setSelectedOrderId(o.id)}
+                                          >
+                                            <TableCell className="font-mono font-bold text-xs py-2">{o.order_ref ? <CopyText text={o.order_ref} className="font-mono font-bold text-foreground text-xs" /> : "—"}</TableCell>
+                                            <TableCell className="py-2">
+                                              {(() => {
+                                                const ai = assignments[o.id];
+                                                const contactName = ai?.supplier_contact_name;
+                                                const platformName = o.platforms?.name || "Direct";
+                                                if (contactName) {
+                                                  return (
+                                                    <div>
+                                                      <span className="font-medium text-foreground text-xs">{contactName}</span>
+                                                      <span className="block text-[10px] text-muted-foreground">{platformName}</span>
+                                                    </div>
+                                                  );
+                                                }
+                                                return <span className="text-muted-foreground">{platformName}</span>;
+                                              })()}
+                                            </TableCell>
+                                            <TableCell className="py-2">
+                                              <span className="font-medium">{o.buyer_name || "—"}</span>
+                                              {flag && <span className="ml-1">{flag}</span>}
+                                            </TableCell>
+                                            <TableCell className="py-2">{o.buyer_phone ? <CopyText text={o.buyer_phone} className="text-muted-foreground text-xs" /> : <span className="text-muted-foreground/40 text-xs">—</span>}</TableCell>
+                                            <TableCell className="py-2">{o.buyer_email ? <CopyText text={o.buyer_email} className="text-muted-foreground text-xs max-w-[140px]" /> : <span className="text-muted-foreground/40 text-xs">—</span>}</TableCell>
+                                            <TableCell className="py-2 text-muted-foreground">{o.category || "—"}</TableCell>
+                                            <TableCell className="text-center font-mono font-bold py-2">{o.quantity}</TableCell>
+                                            <TableCell className="text-right font-mono py-2">£{Number(o.sale_price).toFixed(0)}</TableCell>
+                                            <TableCell className="text-center py-2">
+                                              <Checkbox checked={isDelivered}
+                                                onCheckedChange={checked => updateField(o.id, "delivery_status", checked ? "delivered" : "pending")}
+                                                onClick={e => e.stopPropagation()} className="h-5 w-5 data-[state=checked]:bg-success data-[state=checked]:border-success" />
+                                            </TableCell>
+                                            <TableCell className="py-2">
+                                              {isDelivered
+                                                ? <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/20 font-bold">DELIVERED</Badge>
+                                                : <Badge variant="outline" className="text-[10px] py-0 bg-warning/10 text-warning border-warning/20 font-bold">OUTSTANDING</Badge>}
+                                            </TableCell>
+                                            <TableCell className="py-2">
+                                              {assigned ? <span className="inline-flex items-center gap-1 text-xs font-medium text-success"><CheckCircle2 className="h-3 w-3" />{assignInfo?.supplier_contact_name || "Assigned"}</span>
+                                                : assignInfo?.linked_count ? <span className="text-xs text-warning font-medium">{assignInfo.linked_count}/{o.quantity}</span>
+                                                : <span className="text-muted-foreground/40 text-xs">—</span>}
+                                            </TableCell>
+                                            <TableCell className="py-2">
+                                              <Button size="sm" variant={assigned ? "ghost" : "outline"} className={`h-7 w-7 p-0 ${assigned ? "text-success" : ""}`}
+                                                onClick={e => { e.stopPropagation(); setAssignOrder(o); }}>
+                                                {assigned ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
+                                              </Button>
+                                            </TableCell>
+                                            <TableCell className="py-2">
+                                              <div className="flex items-center gap-0.5">
+                                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={e => { e.stopPropagation(); setEditOrder(o); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                                                  onClick={async e => {
+                                                    e.stopPropagation();
+                                                    if (!confirm("Delete this order?")) return;
+                                                    const { data: lines } = await supabase.from("order_lines").select("inventory_id").eq("order_id", o.id);
+                                                    if (lines?.length) await supabase.from("inventory").update({ status: "available" as any }).in("id", lines.map(l => l.inventory_id));
+                                                    await supabase.from("order_lines").delete().eq("order_id", o.id);
+                                                    await supabase.from("refunds").delete().eq("order_id", o.id);
+                                                    if (o.contact_id) {
+                                                      await supabase.from("balance_payments").delete().ilike("notes", `Auto: Order ${o.id}`);
+                                                    }
+                                                    await supabase.from("orders").delete().eq("id", o.id);
+                                                    toast.success("Order deleted"); load();
+                                                  }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                              </div>
+                                            </TableCell>
+                                          </TableRow>
+                                        );
+                                      })}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -532,6 +852,10 @@ export default function WorldCup() {
 
         {tab === "finance" && (
           <div className="p-6 space-y-6">
+            {/* Finance filters */}
+            <div className="flex flex-wrap items-end gap-3 mb-2">
+              <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
+            </div>
             <p className="text-muted-foreground text-sm">Financial overview{countryFilter !== "all" ? ` — ${countryFilter.replace(/\b\w/g, c => c.toUpperCase())}` : " across all World Cup fixtures"}</p>
             <div className="grid grid-cols-3 gap-4">
               <div className="rounded-xl border bg-card p-5 text-center"><TrendingUp className="h-5 w-5 mx-auto mb-2 text-success" /><p className="text-xs text-muted-foreground uppercase tracking-wider">Total Revenue</p><p className="text-xl font-bold text-success">{fmt(totalRevenue)}</p></div>
@@ -597,6 +921,9 @@ export default function WorldCup() {
 
         {tab === "inventory" && (
           <div className="p-6 space-y-6">
+            <div className="flex flex-wrap items-end gap-3 mb-2">
+              <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
+            </div>
             <div className="flex items-center justify-between">
               <p className="text-muted-foreground text-sm">{filteredInv.length} ticket{filteredInv.length !== 1 ? "s" : ""} across {groupedInv.length} event{groupedInv.length !== 1 ? "s" : ""}</p>
               <Button onClick={() => setShowAddInv(true)}><Plus className="h-4 w-4 mr-1" /> Add Inventory</Button>
