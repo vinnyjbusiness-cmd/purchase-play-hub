@@ -5,11 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Search, Download, Zap, CheckCircle2, Trash2, Pencil, Smartphone, Copy, Check,
   Package, ShoppingCart, TrendingUp, Percent, Ticket, Plus, ChevronDown, ChevronRight,
-  Users, User, Apple, Filter,
+  Users, User, Apple, CheckSquare, Square,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours } from "date-fns";
@@ -19,6 +19,7 @@ import { getEventKey, deduplicateEvents } from "@/lib/eventDedup";
 import { formatEventTitle, getMatchBadge } from "@/lib/eventDisplay";
 import FilterSelect from "@/components/FilterSelect";
 import AddOrderDialog from "@/components/AddOrderDialog";
+import AddPurchaseDialog from "@/components/AddPurchaseDialog";
 import OrderDetailSheet from "@/components/OrderDetailSheet";
 import AssignPurchaseDialog from "@/components/AssignPurchaseDialog";
 import EditOrderDialog from "@/components/EditOrderDialog";
@@ -50,7 +51,7 @@ interface Purchase {
   unit_cost: number; total_cost: number | null; total_cost_gbp: number | null;
   currency: string; purchase_date: string; supplier_paid: boolean;
   notes: string | null; category: string; section: string | null;
-  event_id: string; supplier_id: string;
+  event_id: string; supplier_id: string; status: string;
 }
 
 interface InventoryItem {
@@ -71,14 +72,7 @@ interface AssignmentInfo { linked_count: number; supplier_contact_name: string |
 interface OrderLine { inventory_id: string; order_id: string; }
 
 const fmt = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
-
-const deliveryColor: Record<string, string> = {
-  pending: "bg-warning/10 text-warning border-warning/20",
-  awaiting_delivery: "bg-primary/10 text-primary border-primary/20",
-  sent: "bg-primary/10 text-primary border-primary/20",
-  delivered: "bg-success/10 text-success border-success/20",
-  completed: "bg-success/10 text-success border-success/20",
-};
+const currSym = (c: string) => (c === "USD" ? "$" : c === "EUR" ? "€" : "£");
 
 const statusColor: Record<string, string> = {
   available: "bg-success/10 text-success border-success/20",
@@ -113,41 +107,24 @@ const countryFlags: Record<string, string> = {
 };
 
 function getFlag(name: string): string {
-  const lower = name.toLowerCase().trim();
-  return countryFlags[lower] || "";
+  return countryFlags[name.toLowerCase().trim()] || "";
 }
 
-// Parse team names from imported events with messy home_team/away_team
 function parseEventTeams(homeTeam: string, awayTeam: string): { team1: string; team2: string; matchNum: string | null; round: string } {
-  // Imported format: home_team = "#M10 - (Group E - Germany", away_team = "Curaçao) Football World Cup 2026 - Group Stage"
-  // Clean format: home_team = "Germany", away_team = "Curacao"
-
   let team1 = homeTeam;
   let team2 = awayTeam;
   let matchNum: string | null = null;
   let round = "Group Stage";
 
-  // Check imported format
   const importMatch = homeTeam.match(/^#M(\d+)\s*-\s*\(([^)]*?)\s*-\s*(.+)$/);
   if (importMatch) {
     matchNum = importMatch[1];
-    const groupInfo = importMatch[2].trim(); // e.g. "Group E"
     team1 = importMatch[3].trim();
-
-    // Parse away team: "Curaçao) Football World Cup 2026 - Group Stage"
     const awayMatch = awayTeam.match(/^(.+?)\)\s*Football World Cup 2026\s*-\s*(.+)$/);
     if (awayMatch) {
       team2 = awayMatch[1].trim();
       round = awayMatch[2].trim();
     }
-  }
-
-  // Check WC2026-M format
-  // These already have clean team names
-  const wcMatch = homeTeam.match(/^(W\d+|Winner|Runner-up)/i);
-  if (!importMatch && !wcMatch) {
-    // Clean event — determine round from match number in match_code
-    // Will be set by caller
   }
 
   return { team1, team2, matchNum, round };
@@ -164,6 +141,39 @@ function getRoundFromMatchNum(num: number): string {
   if (num === 104) return "Final";
   return "Knockout Stage";
 }
+
+function getWCRound(matchCode: string | null | undefined): string {
+  if (!matchCode) return "Other";
+  const m = matchCode.match(/^WC2026-M(\d+)$/);
+  if (!m) return "Other";
+  const n = parseInt(m[1], 10);
+  if (n <= 72) {
+    const groupIdx = Math.floor((n - 1) / 6);
+    return `Group ${String.fromCharCode(65 + groupIdx)}`;
+  }
+  if (n <= 88) return "Round of 32";
+  if (n <= 96) return "Round of 16";
+  if (n <= 100) return "Quarter-Finals";
+  if (n <= 102) return "Semi-Finals";
+  if (n === 103) return "Third Place Play-off";
+  if (n === 104) return "Final";
+  return "Other";
+}
+
+const WC_ROUND_ORDER = [
+  "Group A", "Group B", "Group C", "Group D", "Group E", "Group F",
+  "Group G", "Group H", "Group I", "Group J", "Group K", "Group L",
+  "Round of 32", "Round of 16", "Quarter-Finals", "Semi-Finals", "Third Place Play-off", "Final",
+];
+
+const WC_ROUND_GRADIENTS: Record<string, string> = {
+  "Round of 32": "from-blue-500/80 to-blue-700/80",
+  "Round of 16": "from-indigo-500/80 to-indigo-700/80",
+  "Quarter-Finals": "from-purple-500/80 to-purple-700/80",
+  "Semi-Finals": "from-amber-500/80 to-amber-700/80",
+  "Third Place Play-off": "from-orange-500/80 to-orange-700/80",
+  "Final": "from-yellow-500/80 to-red-600/80",
+};
 
 const roundOrder: Record<string, number> = {
   "Group Stage": 0, "3rd Place Deciders": 1, "Round of 32": 2, "Round of 16": 3,
@@ -233,10 +243,8 @@ function groupByQuantity(items: InventoryItem[]) {
   }));
 }
 
-// Helper: extract parsed event info
 function getParsedEvent(ev: { home_team: string; away_team: string; match_code: string; venue?: string | null }) {
   const parsed = parseEventTeams(ev.home_team, ev.away_team);
-  // For non-imported events with WC2026-M format
   if (!parsed.matchNum) {
     const m = ev.match_code.match(/WC2026-M(\d+)/);
     if (m) {
@@ -244,13 +252,11 @@ function getParsedEvent(ev: { home_team: string; away_team: string; match_code: 
       parsed.round = getRoundFromMatchNum(parseInt(m[1]));
     }
   } else {
-    // For imported events, derive round from match number too
     parsed.round = getRoundFromMatchNum(parseInt(parsed.matchNum));
   }
   return parsed;
 }
 
-// Row color palette for orders (cycling subtle accent backgrounds)
 const orderRowColors = [
   "border-l-4 border-l-emerald-500/60",
   "border-l-4 border-l-blue-500/60",
@@ -262,18 +268,32 @@ const orderRowColors = [
   "border-l-4 border-l-orange-500/60",
 ];
 
+const categoryColors: Record<string, string> = {
+  "Cat 1": "from-amber-500/70 to-amber-700/70",
+  "Cat 2": "from-blue-500/70 to-blue-700/70",
+  "Cat 3": "from-emerald-500/70 to-emerald-700/70",
+  "Cat 4": "from-purple-500/70 to-purple-700/70",
+};
+
+const GRADIENT_PALETTE = [
+  "from-violet-600/90 to-indigo-700/90",
+  "from-emerald-600/90 to-teal-700/90",
+  "from-rose-600/90 to-pink-700/90",
+  "from-amber-600/90 to-orange-700/90",
+  "from-sky-600/90 to-cyan-700/90",
+  "from-fuchsia-600/90 to-purple-700/90",
+];
+
 // ── Main Component ──
 export default function WorldCup() {
   const [tab, setTab] = useState("orders");
 
-  // Filter state
   const [filterRound, setFilterRound] = useState("all");
   const [filterCountry, setFilterCountry] = useState("all");
   const [filterVenue, setFilterVenue] = useState("all");
   const [filterEvent, setFilterEvent] = useState("all");
   const [filterPlatform, setFilterPlatform] = useState("all");
 
-  // Data
   const [wcEvents, setWcEvents] = useState<EventInfo[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -284,7 +304,6 @@ export default function WorldCup() {
   const [assignments, setAssignments] = useState<Record<string, AssignmentInfo>>({});
   const [contacts, setContacts] = useState<{ id: string; name: string }[]>([]);
 
-  // UI state
   const [search, setSearch] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [assignOrder, setAssignOrder] = useState<Order | null>(null);
@@ -295,6 +314,10 @@ export default function WorldCup() {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [collapsedRounds, setCollapsedRounds] = useState<Set<string>>(new Set());
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set());
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedInvRounds, setCollapsedInvRounds] = useState<Set<string>>(new Set());
+  const [manualAssigned, setManualAssigned] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const { data: evData } = await supabase
@@ -311,7 +334,7 @@ export default function WorldCup() {
 
     const [ordRes, purchRes, invRes, olRes, supRes, platRes] = await Promise.all([
       supabase.from("orders").select("*, events(match_code,home_team,away_team,event_date,venue), platforms(name)").in("event_id", wcIds).order("order_date", { ascending: false }),
-      supabase.from("purchases").select("id,supplier_order_id,quantity,unit_cost,total_cost,total_cost_gbp,currency,purchase_date,supplier_paid,notes,category,section,event_id,supplier_id").in("event_id", wcIds),
+      supabase.from("purchases").select("id,supplier_order_id,quantity,unit_cost,total_cost,total_cost_gbp,currency,purchase_date,supplier_paid,notes,category,section,event_id,supplier_id,status").in("event_id", wcIds),
       supabase.from("inventory").select("*, events(match_code,home_team,away_team,event_date,venue)").in("event_id", wcIds).order("created_at", { ascending: false }),
       supabase.from("order_lines").select("inventory_id,order_id"),
       supabase.from("suppliers").select("id,name"),
@@ -366,7 +389,7 @@ export default function WorldCup() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Parsed event data for filters ──
+  // ── Parsed event data ──
   const parsedEventsMap = useMemo(() => {
     const map = new Map<string, ReturnType<typeof getParsedEvent>>();
     wcEvents.forEach(e => map.set(e.id, getParsedEvent(e)));
@@ -396,7 +419,6 @@ export default function WorldCup() {
   }, [wcEvents]);
 
   const eventOptions = useMemo(() => {
-    // Only events that have orders
     const evIdsWithOrders = new Set(orders.map(o => o.event_id));
     return wcEvents
       .filter(e => evIdsWithOrders.has(e.id))
@@ -420,7 +442,7 @@ export default function WorldCup() {
     return [...set.entries()].map(([value, label]) => ({ value, label }));
   }, [orders, contacts]);
 
-  // Filter events by all criteria
+  // Filter events
   const filteredEventIds = useMemo(() => {
     return new Set(wcEvents.filter(e => {
       const p = parsedEventsMap.get(e.id);
@@ -449,7 +471,7 @@ export default function WorldCup() {
         if (o.contact_id !== cId) return false;
       } else if (o.platform_id !== filterPlatform) return false;
     }
-    if (search) {
+    if (search && tab === "orders") {
       const q = search.toLowerCase();
       return (o.order_ref || "").toLowerCase().includes(q) || (o.buyer_name || "").toLowerCase().includes(q) ||
         (o.buyer_email || "").toLowerCase().includes(q) || (o.buyer_phone || "").toLowerCase().includes(q) ||
@@ -457,11 +479,10 @@ export default function WorldCup() {
         (o.platforms?.name || "").toLowerCase().includes(q);
     }
     return true;
-  }), [orders, filteredEventIds, filterPlatform, search]);
+  }), [orders, filteredEventIds, filterPlatform, search, tab]);
 
-  // Group orders by event, then by round
+  // Group by Round → Event → Category
   const groupedByRound = useMemo(() => {
-    // First group by event
     const eventMap = new Map<string, { event: Order["events"]; eventIds: string[]; orders: Order[]; parsed: ReturnType<typeof getParsedEvent> | null }>();
     filteredOrders.forEach(o => {
       const ev = o.events;
@@ -477,7 +498,6 @@ export default function WorldCup() {
       eventMap.get(key)!.orders.push(o);
     });
 
-    // Group by round
     const roundMap = new Map<string, typeof eventMap extends Map<string, infer V> ? V[] : never>();
     eventMap.forEach((group) => {
       const round = group.parsed?.round || "Group Stage";
@@ -485,7 +505,6 @@ export default function WorldCup() {
       roundMap.get(round)!.push(group);
     });
 
-    // Sort rounds
     return [...roundMap.entries()]
       .sort(([a], [b]) => (roundOrder[a] ?? 99) - (roundOrder[b] ?? 99))
       .map(([round, events]) => ({
@@ -516,24 +535,11 @@ export default function WorldCup() {
     return { label: `${days}d`, color: "text-muted-foreground" };
   };
 
-  const toggleRound = (round: string) => {
-    setCollapsedRounds(prev => {
-      const next = new Set(prev);
-      next.has(round) ? next.delete(round) : next.add(round);
-      return next;
-    });
-  };
-
-  const toggleEvent = (key: string) => {
-    setCollapsedEvents(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  };
+  const toggleRound = (round: string) => setCollapsedRounds(prev => { const n = new Set(prev); n.has(round) ? n.delete(round) : n.add(round); return n; });
+  const toggleEvent = (key: string) => setCollapsedEvents(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const toggleCategory = (key: string) => setCollapsedCategories(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   // ── FINANCE TAB ──
-  // Keep countryFilter compatibility for finance/inventory tabs
   const countryFilter = filterCountry;
   const { unique: dedupedEvents, groupedIds } = useMemo(() => deduplicateEvents(wcEvents), [wcEvents]);
 
@@ -575,10 +581,33 @@ export default function WorldCup() {
     toast.success(!val ? "Marked as received" : "Marked as pending");
   };
 
+  // ── PURCHASES TAB ──
+  const filteredPurchases = useMemo(() => purchases.filter(p => {
+    if (!filteredEventIds.has(p.event_id)) return false;
+    if (search && tab === "purchases") {
+      const q = search.toLowerCase();
+      const sup = supplierMap[p.supplier_id];
+      return (p.category || "").toLowerCase().includes(q) || (sup?.name || "").toLowerCase().includes(q) || (p.notes || "").toLowerCase().includes(q);
+    }
+    return true;
+  }), [purchases, filteredEventIds, search, tab, supplierMap]);
+
+  const purchasesByEvent = useMemo(() => {
+    const map = new Map<string, { event: EventInfo | null; purchases: Purchase[] }>();
+    filteredPurchases.forEach(p => {
+      if (!map.has(p.event_id)) {
+        const ev = wcEvents.find(e => e.id === p.event_id) || null;
+        map.set(p.event_id, { event: ev, purchases: [] });
+      }
+      map.get(p.event_id)!.purchases.push(p);
+    });
+    return [...map.values()].sort((a, b) => (a.event?.event_date || "").localeCompare(b.event?.event_date || ""));
+  }, [filteredPurchases, wcEvents]);
+
   // ── INVENTORY TAB ──
   const filteredInv = useMemo(() => inventory.filter(i => {
     if (!filteredEventIds.has(i.event_id)) return false;
-    if (search) {
+    if (search && tab === "inventory") {
       const q = search.toLowerCase();
       return (i.category || "").toLowerCase().includes(q) || (i.section || "").toLowerCase().includes(q) ||
         (i.first_name || "").toLowerCase().includes(q) || (i.last_name || "").toLowerCase().includes(q) ||
@@ -586,7 +615,7 @@ export default function WorldCup() {
         (i.events?.away_team || "").toLowerCase().includes(q);
     }
     return true;
-  }), [inventory, filteredEventIds, search]);
+  }), [inventory, filteredEventIds, search, tab]);
 
   const groupedInv = useMemo(() => {
     const map: Record<string, { event: InventoryItem["events"]; eventId: string; items: InventoryItem[] }> = {};
@@ -597,11 +626,334 @@ export default function WorldCup() {
     return Object.values(map).sort((a, b) => (a.event?.event_date || "").localeCompare(b.event?.event_date || ""));
   }, [filteredInv]);
 
+  // Group inventory events by WC round
+  const invRoundGroups = useMemo(() => {
+    const roundMap: Record<string, typeof groupedInv> = {};
+    groupedInv.forEach(g => {
+      const round = getWCRound(g.event?.match_code);
+      if (!roundMap[round]) roundMap[round] = [];
+      roundMap[round].push(g);
+    });
+    return Object.entries(roundMap).sort(([a], [b]) => {
+      const ia = WC_ROUND_ORDER.indexOf(a);
+      const ib = WC_ROUND_ORDER.indexOf(b);
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    });
+  }, [groupedInv]);
+
   const toggleItemExpanded = (id: string) => setExpandedItems(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleGroupCollapsed = (key: string) => setCollapsedGroups(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const toggleInvRound = (key: string) => setCollapsedInvRounds(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const toggleManualAssigned = (key: string) => setManualAssigned(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const isGroupAssigned = (groupKey: string, groupItems: InventoryItem[]) => manualAssigned.has(groupKey) || (groupItems.length > 0 && groupItems.every(i => assignedInvSet.has(i.id)));
+
+  const renderOrderRow = (o: Order, oIdx: number) => {
+    const flag = phoneToFlag(o.buyer_phone);
+    const assigned = isFullyAssigned(o);
+    const assignInfo = assignments[o.id];
+    const colorClass = orderRowColors[oIdx % orderRowColors.length];
+    const isDelivered = o.delivery_status === "delivered" || o.delivery_status === "completed";
+    return (
+      <TableRow key={o.id}
+        className={cn("cursor-pointer text-xs h-10 transition-colors", colorClass, isDelivered ? "bg-success/8 hover:bg-success/15" : "hover:bg-muted/40")}
+        onClick={() => setSelectedOrderId(o.id)}>
+        <TableCell className="font-mono font-bold text-xs py-2">{o.order_ref ? <CopyText text={o.order_ref} className="font-mono font-bold text-foreground text-xs" /> : "—"}</TableCell>
+        <TableCell className="py-2">
+          {(() => {
+            const ai = assignments[o.id];
+            const contactName = ai?.supplier_contact_name;
+            const platformName = o.platforms?.name || "Direct";
+            if (contactName) return <div><span className="font-medium text-foreground text-xs">{contactName}</span><span className="block text-[10px] text-muted-foreground">{platformName}</span></div>;
+            return <span className="text-muted-foreground">{platformName}</span>;
+          })()}
+        </TableCell>
+        <TableCell className="py-2"><span className="font-medium">{o.buyer_name || "—"}</span>{flag && <span className="ml-1">{flag}</span>}</TableCell>
+        <TableCell className="py-2">{o.buyer_phone ? <CopyText text={o.buyer_phone} className="text-muted-foreground text-xs" /> : <span className="text-muted-foreground/40 text-xs">—</span>}</TableCell>
+        <TableCell className="py-2">{o.buyer_email ? <CopyText text={o.buyer_email} className="text-muted-foreground text-xs max-w-[140px]" /> : <span className="text-muted-foreground/40 text-xs">—</span>}</TableCell>
+        <TableCell className="text-center font-mono font-bold py-2">{o.quantity}</TableCell>
+        <TableCell className="text-right font-mono py-2">{currSym(o.currency)}{Number(o.sale_price).toFixed(0)}</TableCell>
+        <TableCell className="text-center py-2">
+          <Checkbox checked={isDelivered}
+            onCheckedChange={checked => updateField(o.id, "delivery_status", checked ? "delivered" : "pending")}
+            onClick={e => e.stopPropagation()} className="h-5 w-5 data-[state=checked]:bg-success data-[state=checked]:border-success" />
+        </TableCell>
+        <TableCell className="py-2">
+          {isDelivered
+            ? <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/20 font-bold">DELIVERED</Badge>
+            : <Badge variant="outline" className="text-[10px] py-0 bg-warning/10 text-warning border-warning/20 font-bold">OUTSTANDING</Badge>}
+        </TableCell>
+        <TableCell className="py-2">
+          {assigned ? <span className="inline-flex items-center gap-1 text-xs font-medium text-success"><CheckCircle2 className="h-3 w-3" />{assignInfo?.supplier_contact_name || "Assigned"}</span>
+            : assignInfo?.linked_count ? <span className="text-xs text-warning font-medium">{assignInfo.linked_count}/{o.quantity}</span>
+            : <span className="text-muted-foreground/40 text-xs">—</span>}
+        </TableCell>
+        <TableCell className="py-2">
+          <Button size="sm" variant={assigned ? "ghost" : "outline"} className={`h-7 w-7 p-0 ${assigned ? "text-success" : ""}`}
+            onClick={e => { e.stopPropagation(); setAssignOrder(o); }}>
+            {assigned ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
+          </Button>
+        </TableCell>
+        <TableCell className="py-2">
+          <div className="flex items-center gap-0.5">
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={e => { e.stopPropagation(); setEditOrder(o); }}><Pencil className="h-3.5 w-3.5" /></Button>
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+              onClick={async e => {
+                e.stopPropagation();
+                if (!confirm("Delete this order?")) return;
+                const { data: lines } = await supabase.from("order_lines").select("inventory_id").eq("order_id", o.id);
+                if (lines?.length) await supabase.from("inventory").update({ status: "available" as any }).in("id", lines.map(l => l.inventory_id));
+                await supabase.from("order_lines").delete().eq("order_id", o.id);
+                await supabase.from("refunds").delete().eq("order_id", o.id);
+                if (o.contact_id) await supabase.from("balance_payments").delete().ilike("notes", `Auto: Order ${o.id}`);
+                await supabase.from("orders").delete().eq("id", o.id);
+                toast.success("Order deleted"); load();
+              }}><Trash2 className="h-3.5 w-3.5" /></Button>
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  // ── Inventory rendering helper ──
+  const renderInvGroup = (qg: ReturnType<typeof groupByQuantity>[number], groupIdx: number) => {
+    const email = qg.items[0]?.email;
+    const area = qg.items[0]?.block;
+    const row = qg.items[0]?.row_name;
+    const seats = qg.items.map(i => i.seat).filter(Boolean).join(", ");
+    const isCollapsed = collapsedGroups.has(qg.key);
+    const isAssigned = isGroupAssigned(qg.key, qg.items);
+    const gradient = GRADIENT_PALETTE[groupIdx % GRADIENT_PALETTE.length];
+    const leadName = [qg.items[0]?.first_name, qg.items[0]?.last_name].filter(Boolean).join(" ");
+
+    return (
+      <div key={qg.key} className={cn("rounded-xl overflow-hidden shadow-lg transition-all", isAssigned ? "opacity-50 saturate-50" : "")}>
+        <div className={cn("bg-gradient-to-br text-white px-5 py-4", isAssigned ? "from-muted-foreground/40 to-muted-foreground/60" : gradient)}>
+          <div className="flex items-start justify-between gap-3">
+            <button className="flex-1 min-w-0 text-left" onClick={() => toggleGroupCollapsed(qg.key)}>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-white/60">Lead Booker</p>
+              <p className="text-base font-bold truncate mt-0.5">{leadName || "Unassigned"}</p>
+              {email && <p className="text-xs text-white/70 truncate mt-0.5 font-mono">{email}</p>}
+            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button variant="ghost" size="icon" className={cn("h-7 w-7 hover:bg-white/20", isAssigned ? "text-white" : "text-white/70")}
+                onClick={e => { e.stopPropagation(); toggleManualAssigned(qg.key); }}>
+                {isAssigned ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-white/70 hover:bg-white/20"
+                onClick={e => { e.stopPropagation(); setSelectedInvId(qg.items[0]?.id || null); }}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-white/70 hover:bg-white/20"
+                onClick={async e => {
+                  e.stopPropagation();
+                  if (!confirm(`Delete ${qg.items.length} ticket${qg.items.length !== 1 ? "s" : ""}?`)) return;
+                  const ids = qg.items.map(i => i.id);
+                  await supabase.from("order_lines").delete().in("inventory_id", ids);
+                  await supabase.from("inventory").delete().in("id", ids);
+                  toast.success(`${qg.items.length} ticket${qg.items.length !== 1 ? "s" : ""} deleted`); load();
+                }}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+          {(() => {
+            const groupTotalCost = qg.items.reduce((sum, i) => sum + (i.face_value || 0), 0);
+            return (
+              <div className="flex items-end justify-between mt-3">
+                <div>
+                  <p className="text-xs font-mono text-white/80">
+                    {area && <>Area <span className="text-white font-semibold">{area}</span></>}
+                    {row && <>{area ? " · " : ""}Row <span className="text-white font-semibold">{row}</span></>}
+                    {seats && <>{(area || row) ? " · " : ""}Seats <span className="text-white font-semibold">{seats}</span></>}
+                  </p>
+                  {groupTotalCost > 0 && <p className="text-xs font-mono text-white/70 mt-1">Cost: <span className="text-white font-semibold">${groupTotalCost.toFixed(0)}</span><span className="text-white/50 ml-1">(${(groupTotalCost / qg.qty).toFixed(0)}/ea)</span></p>}
+                </div>
+                <div className="text-right"><p className="text-2xl font-black font-mono leading-none">{qg.qty}</p><p className="text-[9px] uppercase tracking-widest text-white/60 mt-0.5">Ticket{qg.qty !== 1 ? "s" : ""}</p></div>
+              </div>
+            );
+          })()}
+          <div className="flex justify-center mt-2">
+            <button onClick={() => toggleGroupCollapsed(qg.key)} className="text-white/40 hover:text-white/80 transition-colors">
+              {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        {!isCollapsed && (
+          <div className="bg-card border border-t-0 rounded-b-xl">
+            <div className="px-4 sm:px-5 py-4 flex flex-wrap gap-2">
+              {qg.items.map((item, idx) => (
+                <button key={item.id} onClick={() => toggleItemExpanded(item.id)}
+                  className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 hover:bg-muted/60 transition-colors text-left", expandedItems.has(item.id) ? "bg-muted/60 border-primary/30" : "bg-muted/30")}>
+                  <span className="flex items-center justify-center h-7 w-7 rounded bg-primary/10 text-primary text-xs font-bold font-mono">{item.seat || (idx + 1)}</span>
+                  <div className="text-xs">
+                    <p className="font-medium">{[item.first_name, item.last_name].filter(Boolean).join(" ") || "—"}</p>
+                    <p className="text-muted-foreground">Ticket {idx + 1}/{qg.qty}{item.face_value != null && item.face_value > 0 && <span className="ml-1 text-foreground font-mono font-semibold">${item.face_value.toFixed(0)}</span>}</p>
+                  </div>
+                  {item.row_name && <Badge variant="outline" className="text-[9px] ml-1 font-mono">R{item.row_name}</Badge>}
+                  <Badge variant="outline" className={cn("text-[9px]", statusColor[item.status] || "")}>{item.status}</Badge>
+                  {expandedItems.has(item.id) ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                </button>
+              ))}
+            </div>
+            {qg.items.filter(item => expandedItems.has(item.id)).map(item => (
+              <div key={`detail-${item.id}`} className="border-t px-5 py-3 space-y-3 bg-muted/10">
+                <p className="text-xs font-semibold text-muted-foreground">Seat {item.seat || "—"} · {[item.first_name, item.last_name].filter(Boolean).join(" ") || "Unknown"}</p>
+                {(item.email || item.password || item.supporter_id) && (
+                  <div className="rounded-lg bg-muted/30 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Login Details</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-xs">
+                      {item.email && <div><span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block mb-0.5">FIFA Login</span><div className="flex items-center gap-1"><span className="font-medium truncate">{item.email}</span><CopyButton text={item.email} /></div></div>}
+                      {item.password && <div><span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block mb-0.5">FIFA Password</span><div className="flex items-center gap-1"><span className="font-mono font-medium">{item.password}</span><CopyButton text={item.password} /></div></div>}
+                      {item.supporter_id && <div><span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block mb-0.5">Supporter ID</span><div className="flex items-center gap-1"><span className="font-mono font-medium">{item.supporter_id}</span><CopyButton text={item.supporter_id} /></div></div>}
+                    </div>
+                  </div>
+                )}
+                {(item.iphone_pass_link || item.android_pass_link || item.pk_pass_url) && (
+                  <div className="rounded-lg bg-muted/30 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Digital Passes</p>
+                    <div className="space-y-2">
+                      {item.iphone_pass_link && <div className="flex items-center gap-2 text-xs"><Apple className="h-3.5 w-3.5 text-muted-foreground shrink-0" /><a href={item.iphone_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>{item.iphone_pass_link}</a><CopyButton text={item.iphone_pass_link} /></div>}
+                      {item.android_pass_link && <div className="flex items-center gap-2 text-xs"><Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" /><a href={item.android_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>{item.android_pass_link}</a><CopyButton text={item.android_pass_link} /></div>}
+                      {item.pk_pass_url && <div className="flex items-center gap-2 text-xs"><Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" /><a href={item.pk_pass_url} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>Download</a><CopyButton text={item.pk_pass_url} /></div>}
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 pt-1">
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSelectedInvId(item.id)}><Pencil className="h-3 w-3 mr-1" /> Edit</Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={async e => {
+                      e.stopPropagation();
+                      if (!confirm("Delete this ticket?")) return;
+                      await supabase.from("order_lines").delete().eq("inventory_id", item.id);
+                      await supabase.from("inventory").delete().eq("id", item.id);
+                      toast.success("Ticket deleted"); load();
+                    }}>
+                    <Trash2 className="h-3 w-3 mr-1" /> Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderInvEventCard = (group: typeof groupedInv[number]) => {
+    const total = group.items.length;
+    const available = group.items.filter(i => i.status === "available").length;
+    const sold = group.items.filter(i => i.status === "sold").length;
+    const assigned = group.items.filter(i => assignedInvSet.has(i.id)).length;
+    const isExpanded = expandedEvent === group.eventId;
+    const eventDate = group.event?.event_date ? new Date(group.event.event_date) : null;
+    const parsed = group.event ? getParsedEvent(group.event) : null;
+    const flag1 = parsed ? getFlag(parsed.team1) : "";
+    const flag2 = parsed ? getFlag(parsed.team2) : "";
+    const team1 = parsed?.team1 || group.event?.home_team || "Unknown";
+    const team2 = parsed?.team2 || group.event?.away_team || "Unknown";
+    const matchLabel = parsed?.matchNum ? `M${parsed.matchNum}` : null;
+
+    const availableItems = group.items.filter(i => i.status === "available");
+    const qtyGroups = groupByQuantity(availableItems);
+    const singles = qtyGroups.filter(g => g.qty === 1).length;
+    const pairs = qtyGroups.filter(g => g.qty === 2).length;
+    const quadsPlus = qtyGroups.filter(g => g.qty >= 4).length;
+
+    return (
+      <div key={group.eventId} className="rounded-xl border bg-card overflow-hidden shadow-sm">
+        <button onClick={() => setExpandedEvent(isExpanded ? null : group.eventId)}
+          className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/40">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center justify-center h-11 w-11 rounded-lg bg-primary/10 text-primary"><Ticket className="h-5 w-5" /></div>
+            <div>
+              <div className="flex items-center gap-2">
+                {matchLabel && <Badge className="bg-primary/20 text-primary text-[10px] font-bold border-primary/30">{matchLabel}</Badge>}
+                <p className="font-bold text-base">
+                  {flag1 && <span className="mr-1">{flag1}</span>}{team1}
+                  <span className="text-muted-foreground font-normal mx-2">vs</span>
+                  {flag2 && <span className="mr-1">{flag2}</span>}{team2}
+                </p>
+              </div>
+              {eventDate && <span className="text-xs font-semibold text-foreground">{format(eventDate, "EEE dd MMM yyyy, HH:mm")}</span>}
+              {group.event?.venue && <span className="text-xs text-muted-foreground ml-2">• {group.event.venue}</span>}
+              <div className="flex items-center gap-1.5 mt-1.5">
+                {singles > 0 && <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground"><User className="h-2.5 w-2.5 mr-0.5" />{singles} single{singles !== 1 ? "s" : ""}</Badge>}
+                {pairs > 0 && <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20"><Users className="h-2.5 w-2.5 mr-0.5" />{pairs} pair{pairs !== 1 ? "s" : ""}</Badge>}
+                {quadsPlus > 0 && <Badge variant="outline" className="text-[10px] bg-success/10 text-success border-success/20">{quadsPlus} quad+</Badge>}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-2">
+              <div className="text-center px-3 py-1 rounded-md bg-muted/60"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</p><p className="text-sm font-bold font-mono">{total}</p></div>
+              {available > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">{available} avail</Badge>}
+              {sold > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-primary/10 text-primary border-primary/20">{sold} sold</Badge>}
+              <div className="text-center px-3 py-1 rounded-md bg-muted/60"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Assigned</p><p className="text-sm font-bold font-mono">{assigned}/{total}</p></div>
+            </div>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              onClick={async e => {
+                e.stopPropagation();
+                if (!confirm(`Delete all inventory for this event?`)) return;
+                const ids = group.items.map(i => i.id);
+                await supabase.from("order_lines").delete().in("inventory_id", ids);
+                await supabase.from("inventory").delete().in("id", ids);
+                toast.success("Inventory deleted"); load();
+              }}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            {isExpanded ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
+          </div>
+        </button>
+
+        {isExpanded && (() => {
+          const sectionMap: Record<string, InventoryItem[]> = {};
+          group.items.forEach(item => { const sec = item.section || item.category || "Unknown"; if (!sectionMap[sec]) sectionMap[sec] = []; sectionMap[sec].push(item); });
+          return (
+            <div className="border-t">
+              <div className="px-6 py-6 bg-muted/20 text-center space-y-3">
+                <h2 className="text-xl sm:text-2xl font-black tracking-tight uppercase">
+                  {flag1 && <span className="mr-2">{flag1}</span>}{team1} <span className="text-destructive">v</span> {flag2 && <span className="mr-2">{flag2}</span>}{team2}
+                </h2>
+                {eventDate && <p className="text-xs tracking-widest text-muted-foreground uppercase font-mono">{format(eventDate, "dd MMMM yyyy")} · {format(eventDate, "HH:mm")}{group.event?.venue && <> · {group.event.venue}</>}</p>}
+                <div className="inline-flex items-center gap-6 border rounded-lg px-6 py-3 bg-card mt-2">
+                  <div className="text-center"><p className="text-lg font-bold text-primary font-mono">{total}</p><p className="text-[10px] uppercase tracking-widest text-muted-foreground">Total</p></div>
+                  <div className="text-center"><p className="text-lg font-bold text-primary font-mono">{assigned}</p><p className="text-[10px] uppercase tracking-widest text-muted-foreground">Assigned</p></div>
+                </div>
+              </div>
+              {Object.entries(sectionMap).map(([sectionName, sectionItems]) => {
+                const allGroups = groupByQuantity(sectionItems);
+                const unassignedGroups = allGroups.filter(qg => !isGroupAssigned(qg.key, qg.items));
+                const assignedGroups = allGroups.filter(qg => isGroupAssigned(qg.key, qg.items));
+                const sectionTotalCost = sectionItems.reduce((sum, i) => sum + (i.face_value || 0), 0);
+                const sectionPerTicket = sectionItems.length > 0 && sectionTotalCost > 0 ? sectionTotalCost / sectionItems.length : 0;
+
+                return (
+                  <div key={sectionName} className="px-5 py-4 space-y-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h3 className="text-sm font-black uppercase tracking-wide">{sectionName}</h3>
+                      <Badge className="bg-destructive text-destructive-foreground text-[10px] font-bold uppercase tracking-wider">{sectionItems.length} Ticket{sectionItems.length !== 1 ? "s" : ""}</Badge>
+                      {sectionTotalCost > 0 && <Badge variant="outline" className="text-[10px] font-bold bg-muted/60">Total: ${sectionTotalCost.toFixed(0)} {sectionPerTicket > 0 && `($${sectionPerTicket.toFixed(0)}/ea)`}</Badge>}
+                    </div>
+                    {unassignedGroups.length > 0 && <div className="space-y-4">{unassignedGroups.map((qg, i) => renderInvGroup(qg, i))}</div>}
+                    {assignedGroups.length > 0 && (
+                      <div className="space-y-3 mt-4">
+                        <div className="flex items-center gap-2"><div className="h-px flex-1 bg-border" /><span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold px-2">Assigned</span><div className="h-px flex-1 bg-border" /></div>
+                        {assignedGroups.map((qg, i) => renderInvGroup(qg, i + unassignedGroups.length))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
-      {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-background border-b border-border shrink-0">
         <div className="px-6 pt-4 pb-2">
           <h1 className="text-2xl font-bold tracking-tight">World Cup 2026</h1>
@@ -609,6 +961,7 @@ export default function WorldCup() {
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList>
               <TabsTrigger value="orders"><ShoppingCart className="h-3.5 w-3.5 mr-1.5" />Orders</TabsTrigger>
+              <TabsTrigger value="purchases"><Package className="h-3.5 w-3.5 mr-1.5" />Purchases</TabsTrigger>
               <TabsTrigger value="finance"><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Finance</TabsTrigger>
               <TabsTrigger value="inventory"><Ticket className="h-3.5 w-3.5 mr-1.5" />Inventory</TabsTrigger>
             </TabsList>
@@ -616,11 +969,10 @@ export default function WorldCup() {
         </div>
       </div>
 
-      {/* Tab content */}
       <div className="flex-1 overflow-y-auto">
+        {/* ── ORDERS TAB ── */}
         {tab === "orders" && (
           <div className="p-6 space-y-5">
-            {/* Filters */}
             <div className="flex flex-wrap items-end gap-3">
               <div className="relative flex-1 min-w-[180px] max-w-xs space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">Search</label>
@@ -635,54 +987,34 @@ export default function WorldCup() {
               <FilterSelect label="Event" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
               <FilterSelect label="Platform" value={filterPlatform} onValueChange={setFilterPlatform} options={platformOptions} />
             </div>
-
             <div className="flex items-center justify-between">
-              <p className="text-muted-foreground text-sm">
-                {filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} across {groupedByRound.reduce((s, r) => s + r.events.length, 0)} game{groupedByRound.reduce((s, r) => s + r.events.length, 0) !== 1 ? "s" : ""}
-              </p>
+              <p className="text-muted-foreground text-sm">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} across {groupedByRound.reduce((s, r) => s + r.events.length, 0)} game{groupedByRound.reduce((s, r) => s + r.events.length, 0) !== 1 ? "s" : ""}</p>
               <AddOrderDialog onCreated={load} />
             </div>
 
-            {/* Grouped by Round → Event */}
             <div className="space-y-4">
               {groupedByRound.length === 0 && <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No World Cup orders found</div>}
               {groupedByRound.map(roundGroup => {
                 const isRoundCollapsed = collapsedRounds.has(roundGroup.round);
                 const gradientClass = roundColors[roundGroup.round] || "from-muted to-muted";
-
                 return (
                   <div key={roundGroup.round} className="space-y-3">
-                    {/* Round header */}
-                    <button
-                      onClick={() => toggleRound(roundGroup.round)}
-                      className={cn(
-                        "w-full flex items-center justify-between px-5 py-3 rounded-xl bg-gradient-to-r text-white transition-all hover:opacity-90",
-                        gradientClass
-                      )}
-                    >
+                    <button onClick={() => toggleRound(roundGroup.round)}
+                      className={cn("w-full flex items-center justify-between px-5 py-3 rounded-xl bg-gradient-to-r text-white transition-all hover:opacity-90", gradientClass)}>
                       <div className="flex items-center gap-3">
                         {isRoundCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
                         <span className="font-black text-lg uppercase tracking-wide">{roundGroup.round}</span>
                       </div>
                       <div className="flex items-center gap-5">
-                        <div className="text-center">
-                          <p className="text-[10px] uppercase tracking-wider text-white/70">Events</p>
-                          <p className="text-sm font-bold font-mono">{roundGroup.events.length}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[10px] uppercase tracking-wider text-white/70">Orders</p>
-                          <p className="text-sm font-bold font-mono">{roundGroup.totalOrders}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[10px] uppercase tracking-wider text-white/70">Tickets</p>
-                          <p className="text-sm font-bold font-mono">{roundGroup.totalTickets}</p>
-                        </div>
+                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-white/70">Events</p><p className="text-sm font-bold font-mono">{roundGroup.events.length}</p></div>
+                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-white/70">Orders</p><p className="text-sm font-bold font-mono">{roundGroup.totalOrders}</p></div>
+                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-white/70">Tickets</p><p className="text-sm font-bold font-mono">{roundGroup.totalTickets}</p></div>
                       </div>
                     </button>
 
                     {!isRoundCollapsed && (
                       <div className="space-y-3 pl-2">
-                        {roundGroup.events.map((group, eventIdx) => {
+                        {roundGroup.events.map((group) => {
                           const eventKey = group.eventIds[0];
                           const isEventCollapsed = collapsedEvents.has(eventKey);
                           const deadline = getDeadline(group.event?.event_date);
@@ -697,12 +1029,19 @@ export default function WorldCup() {
                           const team1 = parsed?.team1 || group.event?.home_team || "Unknown";
                           const team2 = parsed?.team2 || group.event?.away_team || "Unknown";
 
+                          // Group orders by category
+                          const ordersByCategory = new Map<string, Order[]>();
+                          group.orders.forEach(o => {
+                            const cat = o.category || "Uncategorised";
+                            if (!ordersByCategory.has(cat)) ordersByCategory.set(cat, []);
+                            ordersByCategory.get(cat)!.push(o);
+                          });
+                          const categoryEntries = [...ordersByCategory.entries()].sort(([a], [b]) => a.localeCompare(b));
+
                           return (
                             <div key={eventKey} className="rounded-xl border bg-card overflow-hidden shadow-sm">
-                              <button
-                                onClick={() => toggleEvent(eventKey)}
-                                className="w-full flex items-center justify-between px-5 py-3 text-left transition-colors hover:bg-muted/40"
-                              >
+                              <button onClick={() => toggleEvent(eventKey)}
+                                className="w-full flex items-center justify-between px-5 py-3 text-left transition-colors hover:bg-muted/40">
                                 <div className="flex items-center gap-3 min-w-0">
                                   {isEventCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
                                   <div className="min-w-0">
@@ -730,112 +1069,59 @@ export default function WorldCup() {
                               </button>
 
                               {!isEventCollapsed && (
-                                <div className="border-t overflow-hidden">
-                                  <Table>
-                                    <TableHeader>
-                                      <TableRow>
-                                        <TableHead className="text-[10px] uppercase tracking-wider w-[90px]">Order #</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider">Platform</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider">Customer</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider">Phone</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider">Email</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider w-[50px]">Cat</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">Qty</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider text-right w-[70px]">Sale</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider text-center w-[70px]">Delivered</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider w-[80px]">Status</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider w-[100px]">Assigned</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider w-[60px]">Assign</TableHead>
-                                        <TableHead className="text-[10px] uppercase tracking-wider w-[40px]"></TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {group.orders.map((o, oIdx) => {
-                                        const flag = phoneToFlag(o.buyer_phone);
-                                        const assigned = isFullyAssigned(o);
-                                        const assignInfo = assignments[o.id];
-                                        const colorClass = orderRowColors[oIdx % orderRowColors.length];
-                                        const isDelivered = o.delivery_status === "delivered" || o.delivery_status === "completed";
-                                        return (
-                                          <TableRow key={o.id}
-                                            className={cn(
-                                              "cursor-pointer text-xs h-10 transition-colors",
-                                              colorClass,
-                                              isDelivered ? "bg-success/8 hover:bg-success/15" : "hover:bg-muted/40"
-                                            )}
-                                            onClick={() => setSelectedOrderId(o.id)}
-                                          >
-                                            <TableCell className="font-mono font-bold text-xs py-2">{o.order_ref ? <CopyText text={o.order_ref} className="font-mono font-bold text-foreground text-xs" /> : "—"}</TableCell>
-                                            <TableCell className="py-2">
-                                              {(() => {
-                                                const ai = assignments[o.id];
-                                                const contactName = ai?.supplier_contact_name;
-                                                const platformName = o.platforms?.name || "Direct";
-                                                if (contactName) {
-                                                  return (
-                                                    <div>
-                                                      <span className="font-medium text-foreground text-xs">{contactName}</span>
-                                                      <span className="block text-[10px] text-muted-foreground">{platformName}</span>
-                                                    </div>
-                                                  );
-                                                }
-                                                return <span className="text-muted-foreground">{platformName}</span>;
-                                              })()}
-                                            </TableCell>
-                                            <TableCell className="py-2">
-                                              <span className="font-medium">{o.buyer_name || "—"}</span>
-                                              {flag && <span className="ml-1">{flag}</span>}
-                                            </TableCell>
-                                            <TableCell className="py-2">{o.buyer_phone ? <CopyText text={o.buyer_phone} className="text-muted-foreground text-xs" /> : <span className="text-muted-foreground/40 text-xs">—</span>}</TableCell>
-                                            <TableCell className="py-2">{o.buyer_email ? <CopyText text={o.buyer_email} className="text-muted-foreground text-xs max-w-[140px]" /> : <span className="text-muted-foreground/40 text-xs">—</span>}</TableCell>
-                                            <TableCell className="py-2 text-muted-foreground">{o.category || "—"}</TableCell>
-                                            <TableCell className="text-center font-mono font-bold py-2">{o.quantity}</TableCell>
-                                            <TableCell className="text-right font-mono py-2">£{Number(o.sale_price).toFixed(0)}</TableCell>
-                                            <TableCell className="text-center py-2">
-                                              <Checkbox checked={isDelivered}
-                                                onCheckedChange={checked => updateField(o.id, "delivery_status", checked ? "delivered" : "pending")}
-                                                onClick={e => e.stopPropagation()} className="h-5 w-5 data-[state=checked]:bg-success data-[state=checked]:border-success" />
-                                            </TableCell>
-                                            <TableCell className="py-2">
-                                              {isDelivered
-                                                ? <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/20 font-bold">DELIVERED</Badge>
-                                                : <Badge variant="outline" className="text-[10px] py-0 bg-warning/10 text-warning border-warning/20 font-bold">OUTSTANDING</Badge>}
-                                            </TableCell>
-                                            <TableCell className="py-2">
-                                              {assigned ? <span className="inline-flex items-center gap-1 text-xs font-medium text-success"><CheckCircle2 className="h-3 w-3" />{assignInfo?.supplier_contact_name || "Assigned"}</span>
-                                                : assignInfo?.linked_count ? <span className="text-xs text-warning font-medium">{assignInfo.linked_count}/{o.quantity}</span>
-                                                : <span className="text-muted-foreground/40 text-xs">—</span>}
-                                            </TableCell>
-                                            <TableCell className="py-2">
-                                              <Button size="sm" variant={assigned ? "ghost" : "outline"} className={`h-7 w-7 p-0 ${assigned ? "text-success" : ""}`}
-                                                onClick={e => { e.stopPropagation(); setAssignOrder(o); }}>
-                                                {assigned ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
-                                              </Button>
-                                            </TableCell>
-                                            <TableCell className="py-2">
-                                              <div className="flex items-center gap-0.5">
-                                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={e => { e.stopPropagation(); setEditOrder(o); }}><Pencil className="h-3.5 w-3.5" /></Button>
-                                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                                                  onClick={async e => {
-                                                    e.stopPropagation();
-                                                    if (!confirm("Delete this order?")) return;
-                                                    const { data: lines } = await supabase.from("order_lines").select("inventory_id").eq("order_id", o.id);
-                                                    if (lines?.length) await supabase.from("inventory").update({ status: "available" as any }).in("id", lines.map(l => l.inventory_id));
-                                                    await supabase.from("order_lines").delete().eq("order_id", o.id);
-                                                    await supabase.from("refunds").delete().eq("order_id", o.id);
-                                                    if (o.contact_id) {
-                                                      await supabase.from("balance_payments").delete().ilike("notes", `Auto: Order ${o.id}`);
-                                                    }
-                                                    await supabase.from("orders").delete().eq("id", o.id);
-                                                    toast.success("Order deleted"); load();
-                                                  }}><Trash2 className="h-3.5 w-3.5" /></Button>
-                                              </div>
-                                            </TableCell>
-                                          </TableRow>
-                                        );
-                                      })}
-                                    </TableBody>
-                                  </Table>
+                                <div className="border-t">
+                                  {categoryEntries.map(([catName, catOrders]) => {
+                                    const catKey = `${eventKey}__${catName}`;
+                                    const isCatCollapsed = collapsedCategories.has(catKey);
+                                    const catQty = catOrders.reduce((s, o) => s + o.quantity, 0);
+                                    const catTotal = catOrders.reduce((s, o) => s + Number(o.sale_price) * o.quantity, 0);
+                                    const catGradient = categoryColors[catName] || "from-slate-500/60 to-slate-700/60";
+
+                                    return (
+                                      <div key={catKey}>
+                                        {/* Category sub-header - only show if multiple categories */}
+                                        {categoryEntries.length > 1 && (
+                                          <button onClick={() => toggleCategory(catKey)}
+                                            className={cn("w-full flex items-center justify-between px-5 py-2 bg-gradient-to-r text-white text-sm transition-all hover:brightness-110", catGradient)}>
+                                            <div className="flex items-center gap-2">
+                                              {isCatCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                              <span className="font-bold uppercase tracking-wide">{catName}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                              <span className="text-xs font-mono">{catOrders.length} order{catOrders.length !== 1 ? "s" : ""}</span>
+                                              <span className="text-xs font-mono">{catQty} ticket{catQty !== 1 ? "s" : ""}</span>
+                                              <span className="text-xs font-mono font-bold">{fmt(catTotal)}</span>
+                                            </div>
+                                          </button>
+                                        )}
+                                        {!isCatCollapsed && (
+                                          <div className="overflow-hidden">
+                                            <Table>
+                                              <TableHeader>
+                                                <TableRow>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider w-[90px]">Order #</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider">Platform</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider">Customer</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider">Phone</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider">Email</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider text-center w-[40px]">Qty</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider text-right w-[70px]">Sale</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider text-center w-[70px]">Delivered</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider w-[80px]">Status</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider w-[100px]">Assigned</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider w-[60px]">Assign</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider w-[40px]"></TableHead>
+                                                </TableRow>
+                                              </TableHeader>
+                                              <TableBody>
+                                                {catOrders.map((o, oIdx) => renderOrderRow(o, oIdx))}
+                                              </TableBody>
+                                            </Table>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
@@ -850,9 +1136,107 @@ export default function WorldCup() {
           </div>
         )}
 
+        {/* ── PURCHASES TAB ── */}
+        {tab === "purchases" && (
+          <div className="p-6 space-y-5">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="relative flex-1 min-w-[180px] max-w-xs space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Search</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Search purchases..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+                </div>
+              </div>
+              <FilterSelect label="Round" value={filterRound} onValueChange={setFilterRound} options={roundOptions} />
+              <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-muted-foreground text-sm">{filteredPurchases.length} purchase{filteredPurchases.length !== 1 ? "s" : ""} across {purchasesByEvent.length} event{purchasesByEvent.length !== 1 ? "s" : ""}</p>
+              <AddPurchaseDialog onCreated={load} />
+            </div>
+
+            <div className="space-y-3">
+              {purchasesByEvent.length === 0 && <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No World Cup purchases found</div>}
+              {purchasesByEvent.map(({ event, purchases: evPurchases }) => {
+                const parsed = event ? getParsedEvent(event) : null;
+                const flag1 = parsed ? getFlag(parsed.team1) : "";
+                const flag2 = parsed ? getFlag(parsed.team2) : "";
+                const team1 = parsed?.team1 || event?.home_team || "Unknown";
+                const team2 = parsed?.team2 || event?.away_team || "Unknown";
+                const matchLabel = parsed?.matchNum ? `M${parsed.matchNum}` : null;
+                const totalCostEv = evPurchases.reduce((s, p) => s + (p.total_cost_gbp || p.quantity * p.unit_cost), 0);
+                const totalQty = evPurchases.reduce((s, p) => s + p.quantity, 0);
+                const eventKey = event?.id || "unknown";
+                const isCollapsed = collapsedEvents.has(`p-${eventKey}`);
+
+                return (
+                  <div key={eventKey} className="rounded-xl border bg-card overflow-hidden shadow-sm">
+                    <button onClick={() => toggleEvent(`p-${eventKey}`)}
+                      className="w-full flex items-center justify-between px-5 py-3 text-left transition-colors hover:bg-muted/40">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {isCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {matchLabel && <Badge className="bg-primary/20 text-primary text-[10px] font-bold border-primary/30">{matchLabel}</Badge>}
+                            <span className="font-bold text-base">
+                              {flag1 && <span className="mr-1">{flag1}</span>}{team1}
+                              <span className="text-muted-foreground font-normal mx-2">vs</span>
+                              {flag2 && <span className="mr-1">{flag2}</span>}{team2}
+                            </span>
+                          </div>
+                          {event && <p className="text-xs text-muted-foreground mt-0.5">{format(new Date(event.event_date), "EEE dd MMM yyyy, HH:mm")}{event.venue && ` · ${event.venue}`}</p>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 shrink-0">
+                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tickets</p><p className="text-sm font-mono font-bold">{totalQty}</p></div>
+                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total Cost</p><p className="text-sm font-mono font-bold">{fmt(totalCostEv)}</p></div>
+                      </div>
+                    </button>
+                    {!isCollapsed && (
+                      <div className="border-t overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-[10px] uppercase tracking-wider">Supplier</TableHead>
+                              <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
+                              <TableHead className="text-[10px] uppercase tracking-wider text-center">Qty</TableHead>
+                              <TableHead className="text-[10px] uppercase tracking-wider text-right">Unit Cost</TableHead>
+                              <TableHead className="text-[10px] uppercase tracking-wider text-right">Total</TableHead>
+                              <TableHead className="text-[10px] uppercase tracking-wider text-center">Paid</TableHead>
+                              <TableHead className="text-[10px] uppercase tracking-wider">Notes</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {evPurchases.map((p, idx) => {
+                              const sym = currSym(p.currency);
+                              return (
+                                <TableRow key={p.id} className={cn("text-xs h-10", orderRowColors[idx % orderRowColors.length])}>
+                                  <TableCell className="py-2 font-medium">{supplierMap[p.supplier_id]?.name || "—"}</TableCell>
+                                  <TableCell className="py-2">{p.category}</TableCell>
+                                  <TableCell className="py-2 text-center font-mono font-bold">{p.quantity}</TableCell>
+                                  <TableCell className="py-2 text-right font-mono">{sym}{p.unit_cost.toFixed(2)}</TableCell>
+                                  <TableCell className="py-2 text-right font-mono font-bold">{sym}{(p.quantity * p.unit_cost).toFixed(2)}</TableCell>
+                                  <TableCell className="py-2 text-center">
+                                    <Switch checked={p.supplier_paid} onCheckedChange={() => toggleSupplierPaid(p.id, p.supplier_paid)} className="scale-75" />
+                                  </TableCell>
+                                  <TableCell className="py-2 text-muted-foreground truncate max-w-[150px]">{p.notes || "—"}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── FINANCE TAB ── */}
         {tab === "finance" && (
           <div className="p-6 space-y-6">
-            {/* Finance filters */}
             <div className="flex flex-wrap items-end gap-3 mb-2">
               <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
             </div>
@@ -919,140 +1303,72 @@ export default function WorldCup() {
           </div>
         )}
 
+        {/* ── INVENTORY TAB ── */}
         {tab === "inventory" && (
           <div className="p-6 space-y-6">
-            <div className="flex flex-wrap items-end gap-3 mb-2">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="relative flex-1 min-w-[180px] max-w-xs space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Search</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Search inventory..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+                </div>
+              </div>
+              <FilterSelect label="Round" value={filterRound} onValueChange={setFilterRound} options={roundOptions} />
               <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
+              <FilterSelect label="Stadium" value={filterVenue} onValueChange={setFilterVenue} options={venueOptions} />
             </div>
             <div className="flex items-center justify-between">
               <p className="text-muted-foreground text-sm">{filteredInv.length} ticket{filteredInv.length !== 1 ? "s" : ""} across {groupedInv.length} event{groupedInv.length !== 1 ? "s" : ""}</p>
               <Button onClick={() => setShowAddInv(true)}><Plus className="h-4 w-4 mr-1" /> Add Inventory</Button>
             </div>
-            <div className="relative max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search inventory..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
-            </div>
 
-            <div className="space-y-3">
-              {groupedInv.length === 0 && <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No World Cup inventory found</div>}
-              {groupedInv.map(group => {
-                const total = group.items.length;
-                const available = group.items.filter(i => i.status === "available").length;
-                const sold = group.items.filter(i => i.status === "sold").length;
-                const assigned = group.items.filter(i => assignedInvSet.has(i.id)).length;
-                const isExpanded = expandedEvent === group.eventId;
-                const eventDate = group.event?.event_date ? new Date(group.event.event_date) : null;
-
-                const availableItems = group.items.filter(i => i.status === "available");
-                const qtyGroups = groupByQuantity(availableItems);
-                const singles = qtyGroups.filter(g => g.qty === 1).length;
-                const pairs = qtyGroups.filter(g => g.qty === 2).length;
-
-                return (
-                  <div key={group.eventId} className="rounded-xl border bg-card overflow-hidden shadow-sm">
-                    <button onClick={() => setExpandedEvent(isExpanded ? null : group.eventId)}
-                      className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/40">
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center justify-center h-11 w-11 rounded-lg bg-primary/10 text-primary"><Ticket className="h-5 w-5" /></div>
-                        <div>
-                          <p className="font-bold text-base">{group.event ? `${group.event.home_team} vs ${group.event.away_team}` : "Unknown"}</p>
-                          {eventDate && <span className="text-xs font-semibold text-foreground">{format(eventDate, "EEE dd MMM yyyy, HH:mm")}</span>}
-                          {group.event?.venue && <span className="text-xs text-muted-foreground ml-2">• {group.event.venue}</span>}
-                          <div className="flex items-center gap-1.5 mt-1.5">
-                            {singles > 0 && <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground"><User className="h-2.5 w-2.5 mr-0.5" />{singles} single{singles !== 1 ? "s" : ""}</Badge>}
-                            {pairs > 0 && <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20"><Users className="h-2.5 w-2.5 mr-0.5" />{pairs} pair{pairs !== 1 ? "s" : ""}</Badge>}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="hidden sm:flex items-center gap-2">
-                          <div className="text-center px-3 py-1 rounded-md bg-muted/60"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</p><p className="text-sm font-bold font-mono">{total}</p></div>
-                          {available > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">{available} avail</Badge>}
-                          {sold > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-primary/10 text-primary border-primary/20">{sold} sold</Badge>}
-                        </div>
-                        {isExpanded ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
-                      </div>
-                    </button>
-
-                    {isExpanded && (() => {
-                      const sectionMap: Record<string, InventoryItem[]> = {};
-                      group.items.forEach(item => { const sec = item.section || item.category || "Unknown"; if (!sectionMap[sec]) sectionMap[sec] = []; sectionMap[sec].push(item); });
-                      return (
-                        <div className="border-t">
-                          {Object.entries(sectionMap).map(([sectionName, sectionItems]) => {
-                            const allGroups = groupByQuantity(sectionItems);
-                            return (
-                              <div key={sectionName} className="px-5 py-4 space-y-3">
-                                <div className="flex items-center gap-3">
-                                  <h3 className="text-sm font-black uppercase tracking-wide">{sectionName}</h3>
-                                  <Badge className="bg-destructive text-destructive-foreground text-[10px] font-bold uppercase tracking-wider">{sectionItems.length} Ticket{sectionItems.length !== 1 ? "s" : ""}</Badge>
-                                </div>
-                                <div className="space-y-3">
-                                  {allGroups.map(qg => (
-                                    <div key={qg.key} className="rounded-xl border bg-card overflow-hidden">
-                                      <div className="px-5 py-3 flex items-start justify-between gap-4">
-                                        <div className="space-y-1">
-                                          {qg.items[0]?.email && <p className="text-sm font-medium text-primary">{qg.items[0].email}</p>}
-                                          <p className="text-xs text-muted-foreground font-mono">
-                                            {qg.items[0]?.block && <>Area <span className="text-foreground font-semibold">{qg.items[0].block}</span></>}
-                                            {qg.items[0]?.row_name && <>{qg.items[0]?.block ? " · " : ""}Row <span className="text-foreground font-semibold">{qg.items[0].row_name}</span></>}
-                                          </p>
-                                        </div>
-                                        <div className="text-right"><p className="text-xl font-bold text-destructive">{qg.qty}</p><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ticket{qg.qty !== 1 ? "s" : ""}</p></div>
-                                      </div>
-                                      <div className="px-5 pb-4 flex flex-wrap gap-2">
-                                        {qg.items.map((item, idx) => (
-                                          <button key={item.id} onClick={() => toggleItemExpanded(item.id)}
-                                            className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 hover:bg-muted/60 transition-colors text-left", expandedItems.has(item.id) ? "bg-muted/60 border-primary/30" : "bg-muted/30")}>
-                                            <span className="flex items-center justify-center h-7 w-7 rounded bg-destructive/10 text-destructive text-xs font-bold font-mono">{item.seat || (idx + 1)}</span>
-                                            <div className="text-xs">
-                                              <p className="font-medium">{[item.first_name, item.last_name].filter(Boolean).join(" ") || "—"}</p>
-                                              <p className="text-muted-foreground">Ticket {idx + 1}/{qg.qty}</p>
-                                            </div>
-                                            <Badge variant="outline" className={cn("text-[9px]", statusColor[item.status] || "")}>{item.status}</Badge>
-                                          </button>
-                                        ))}
-                                      </div>
-                                      {qg.items.filter(item => expandedItems.has(item.id)).map(item => (
-                                        <div key={`detail-${item.id}`} className="border-t px-5 py-3 space-y-3 bg-muted/10">
-                                          <p className="text-xs font-semibold text-muted-foreground">Seat {item.seat || "—"} · {[item.first_name, item.last_name].filter(Boolean).join(" ") || "Unknown"}</p>
-                                          {(item.email || item.password || item.supporter_id) && (
-                                            <div className="rounded-lg bg-muted/30 p-3">
-                                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Login Details</p>
-                                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                                                {item.supporter_id && <div className="flex items-center gap-1"><div><span className="text-muted-foreground block">Supporter ID</span><span className="font-mono font-medium">{item.supporter_id}</span></div><CopyButton text={item.supporter_id} /></div>}
-                                                {item.email && <div className="flex items-center gap-1"><div><span className="text-muted-foreground block">Email</span><span className="font-medium">{item.email}</span></div><CopyButton text={item.email} /></div>}
-                                                {item.password && <div className="flex items-center gap-1"><div><span className="text-muted-foreground block">Password</span><span className="font-mono font-medium">{item.password}</span></div><CopyButton text={item.password} /></div>}
-                                              </div>
-                                            </div>
-                                          )}
-                                          {(item.iphone_pass_link || item.android_pass_link || item.pk_pass_url) && (
-                                            <div className="rounded-lg bg-muted/30 p-3">
-                                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Digital Passes</p>
-                                              <div className="space-y-2">
-                                                {item.iphone_pass_link && <div className="flex items-center gap-2 text-xs"><Apple className="h-3.5 w-3.5 text-muted-foreground shrink-0" /><a href={item.iphone_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>{item.iphone_pass_link}</a><CopyButton text={item.iphone_pass_link} /></div>}
-                                                {item.android_pass_link && <div className="flex items-center gap-2 text-xs"><Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" /><a href={item.android_pass_link} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>{item.android_pass_link}</a><CopyButton text={item.android_pass_link} /></div>}
-                                                {item.pk_pass_url && <div className="flex items-center gap-2 text-xs"><Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" /><a href={item.pk_pass_url} target="_blank" rel="noopener" className="text-primary hover:underline truncate flex-1" onClick={e => e.stopPropagation()}>Download</a><CopyButton text={item.pk_pass_url} /></div>}
-                                              </div>
-                                            </div>
-                                          )}
-                                          <div className="flex items-center gap-2 pt-1">
-                                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSelectedInvId(item.id)}><Pencil className="h-3 w-3 mr-1" /> Edit</Button>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
+            {/* Round sub-groups like main inventory */}
+            <div className="rounded-xl border-2 border-border/60 overflow-hidden">
+              <div className="bg-gradient-to-br from-emerald-600/90 to-teal-800/90 text-white px-5 py-3.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest font-medium text-white/60">Inventory</p>
+                    <p className="text-lg font-bold mt-0.5">World Cup 2026</p>
                   </div>
-                );
-              })}
+                  <div className="flex items-center gap-3">
+                    <div className="text-center px-3 py-1 rounded-md bg-white/10"><p className="text-sm font-bold font-mono">{filteredInv.length}</p><p className="text-[9px] uppercase tracking-widest text-white/60">Tickets</p></div>
+                    <div className="text-center px-3 py-1 rounded-md bg-white/10"><p className="text-sm font-bold font-mono">{groupedInv.length}</p><p className="text-[9px] uppercase tracking-widest text-white/60">Events</p></div>
+                    {(() => { const avail = filteredInv.filter(i => i.status === "available").length; return avail > 0 ? <Badge variant="outline" className="text-[10px] font-bold uppercase bg-white/10 text-white border-white/20">{avail} avail</Badge> : null; })()}
+                  </div>
+                </div>
+              </div>
+              <div className="bg-card p-3 space-y-4">
+                {invRoundGroups.length === 0 && <div className="p-12 text-center text-muted-foreground">No World Cup inventory found</div>}
+                {invRoundGroups.map(([roundName, roundEvents]) => {
+                  const roundKey = `wc-inv__${roundName}`;
+                  const isRoundCollapsed = collapsedInvRounds.has(roundKey);
+                  const roundTickets = roundEvents.reduce((s, g) => s + g.items.length, 0);
+                  const isGroupStage = roundName.startsWith("Group ");
+                  const roundGradient = isGroupStage ? "from-emerald-500/60 to-emerald-700/60" : (WC_ROUND_GRADIENTS[roundName] || "from-slate-500/60 to-slate-700/60");
+
+                  return (
+                    <div key={roundKey} className="rounded-lg border border-border/50 overflow-hidden">
+                      <button onClick={() => toggleInvRound(roundKey)}
+                        className={cn("w-full bg-gradient-to-r text-white px-4 py-2.5 text-left transition-all hover:brightness-110", roundGradient)}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <p className="text-sm font-bold">{roundName}</p>
+                            <Badge variant="outline" className="text-[10px] font-bold bg-white/10 text-white border-white/20">{roundTickets} ticket{roundTickets !== 1 ? "s" : ""}</Badge>
+                            <Badge variant="outline" className="text-[10px] bg-white/10 text-white border-white/20">{roundEvents.length} match{roundEvents.length !== 1 ? "es" : ""}</Badge>
+                          </div>
+                          {isRoundCollapsed ? <ChevronRight className="h-4 w-4 text-white/60" /> : <ChevronDown className="h-4 w-4 text-white/60" />}
+                        </div>
+                      </button>
+                      {!isRoundCollapsed && (
+                        <div className="space-y-3 p-3">
+                          {roundEvents.map(g => renderInvEventCard(g))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
