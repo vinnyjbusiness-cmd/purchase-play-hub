@@ -55,7 +55,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
     section: "",
     block: "",
     hospitality_option: "",
-    supplier_order_id: "",
+    currency: "GBP",
     quantity: "1",
     unit_cost: "",
     split_type: "",
@@ -101,7 +101,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
     setForm({
       club: "", event_id: "", supplier_id: "", supplier_name: "", supplier_number: "",
       category_type: "", section: "", block: "", hospitality_option: "",
-      supplier_order_id: "", quantity: "1", unit_cost: "", split_type: "", notes: "",
+      currency: "GBP", quantity: "1", unit_cost: "", split_type: "", notes: "",
     });
   };
 
@@ -129,13 +129,12 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
       const { data: inserted, error } = await supabase.from("purchases").insert({
         supplier_id: form.supplier_id,
         event_id: form.event_id,
-        supplier_order_id: form.supplier_order_id || null,
         category,
         section,
         quantity: parseInt(form.quantity),
         unit_cost: parseFloat(form.unit_cost),
         fees: 0,
-        currency: "GBP" as const,
+        currency: form.currency as "GBP" | "USD" | "EUR",
         exchange_rate: 1,
         status: "confirmed" as const,
         split_type: form.split_type || null,
@@ -169,7 +168,10 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
 
   const set = (key: string, value: string) => {
     const updates: Record<string, string> = { [key]: value };
-    if (key === "club") updates.event_id = "";
+    if (key === "club") {
+      updates.event_id = "";
+      updates.currency = value === "world-cup" ? "USD" : "GBP";
+    }
     if (key === "category_type") {
       updates.section = "";
       updates.block = "";
@@ -300,11 +302,17 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
             </div>
           )}
 
-          {/* Order ID — only for non-Trade */}
-          {!isTrade && selectedSupplier && (
+          {/* Currency selector for World Cup */}
+          {isWorldCup && (
             <div className="space-y-1.5">
-              <Label>Contact Order ID</Label>
-              <Input value={form.supplier_order_id} onChange={(e) => set("supplier_order_id", e.target.value)} placeholder="Reference number" />
+              <Label>Currency</Label>
+              <Select value={form.currency} onValueChange={(v) => set("currency", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="GBP">GBP</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           )}
 
