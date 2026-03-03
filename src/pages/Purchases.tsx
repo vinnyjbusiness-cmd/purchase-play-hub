@@ -22,6 +22,7 @@ interface Purchase {
   quantity: number;
   unit_cost: number;
   total_cost: number;
+  currency: string;
   status: string;
   supplier_paid: boolean;
   purchase_date: string;
@@ -31,6 +32,8 @@ interface Purchase {
   suppliers: { name: string; contact_name: string | null; contact_phone: string | null } | null;
   events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
 }
+
+const currSym = (c: string) => (c === "USD" ? "$" : c === "EUR" ? "€" : "£");
 
 function parseNotesContact(notes: string | null): { name: string | null; phone: string | null } {
   if (!notes) return { name: null, phone: null };
@@ -200,6 +203,7 @@ export default function Purchases() {
           <p className="text-muted-foreground text-sm">
             {filtered.length} purchase{filtered.length !== 1 ? "s" : ""} · {totalQtyAll} tickets across {grouped.length} game{grouped.length !== 1 ? "s" : ""} · Total: £{totalCost.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
           </p>
+
         </div>
         <AddPurchaseDialog onCreated={load} />
       </div>
@@ -265,7 +269,7 @@ export default function Purchases() {
                   </div>
                   <div className="text-center">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total Cost</p>
-                    <p className="text-sm font-mono font-bold">£{groupTotal.toLocaleString("en-GB", { minimumFractionDigits: 2 })}</p>
+                    <p className="text-sm font-mono font-bold">{currSym(group.purchases[0]?.currency || "GBP")}{groupTotal.toLocaleString("en-GB", { minimumFractionDigits: 2 })}</p>
                   </div>
                   {paidCount > 0 && (
                     <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">
@@ -316,8 +320,8 @@ export default function Purchases() {
                           <TableCell className="text-center text-xs text-muted-foreground">{contact.phone || p.suppliers?.contact_phone || "—"}</TableCell>
                           <TableCell>{p.category}</TableCell>
                           <TableCell className="text-right">{p.quantity}</TableCell>
-                          <TableCell className="text-right">£{Number(p.unit_cost).toFixed(2)}</TableCell>
-                          <TableCell className="text-right font-medium">£{Number(p.total_cost).toFixed(2)}</TableCell>
+                          <TableCell className="text-right">{currSym(p.currency)}{Number(p.unit_cost).toFixed(2)}</TableCell>
+                          <TableCell className="text-right font-medium">{currSym(p.currency)}{Number(p.total_cost).toFixed(2)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2 min-w-[100px]">
                               <div className="flex gap-0.5">
