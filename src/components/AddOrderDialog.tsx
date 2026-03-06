@@ -290,8 +290,9 @@ export default function AddOrderDialog({ onCreated }: Props) {
               </PopoverContent>
             </Popover>
           </div>
+          )}
 
-          {showAddContact && (
+          {form.platform_id === "__contact__" && showAddContact && (
             <InlineAddContact
               onCancel={() => setShowAddContact(false)}
               onCreated={(contact) => {
