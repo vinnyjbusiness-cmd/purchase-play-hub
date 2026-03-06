@@ -198,16 +198,45 @@ export default function AddOrderDialog({ onCreated }: Props) {
             </div>
             <div className="space-y-1.5">
               <Label>Event *</Label>
-              <Select value={form.event_id} onValueChange={(v) => setForm({ ...form, event_id: v })} disabled={!form.club}>
-                <SelectTrigger><SelectValue placeholder={form.club ? "Select event" : "Pick club first"} /></SelectTrigger>
-                <SelectContent>
-                  {filteredEvents.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={eventOpen} onOpenChange={setEventOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="w-full justify-between font-normal" disabled={!form.club}>
+                    {form.event_id
+                      ? (() => {
+                          const ev = filteredEvents.find((e) => e.id === form.event_id);
+                          return ev ? formatEventLabel(ev.home_team, ev.away_team, ev.event_date, ev.match_code) : "Select event";
+                        })()
+                      : (form.club ? "Search event..." : "Pick club first")}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Type M1, M42..." />
+                    <CommandList>
+                      <CommandEmpty>No event found.</CommandEmpty>
+                      <CommandGroup>
+                        {filteredEvents.map((e) => {
+                          const label = formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code);
+                          return (
+                            <CommandItem
+                              key={e.id}
+                              value={label}
+                              onSelect={() => {
+                                setForm({ ...form, event_id: e.id });
+                                setEventOpen(false);
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", form.event_id === e.id ? "opacity-100" : "opacity-0")} />
+                              {label}
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
