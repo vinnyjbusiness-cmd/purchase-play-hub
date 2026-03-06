@@ -56,15 +56,29 @@ export default function AddOrderDialog({ onCreated }: Props) {
 
   const isWorldCup = form.club === "world-cup";
 
+  const [eventOpen, setEventOpen] = useState(false);
+
   const filteredEvents = (() => {
     const matched = events.filter((e) => {
       if (!form.club) return false;
-      if (form.club === "world-cup") return e.competition?.toLowerCase().includes("world cup");
+      if (form.club === "world-cup") {
+        // Only show proper WC2026-M## events, deduplicated by match_code
+        return e.match_code && /^WC2026-M\d+$/.test(e.match_code);
+      }
       const clubLabel = CLUBS.find((c) => c.value === form.club)?.label || "";
       const clubName = clubLabel.split(" (")[0].toLowerCase();
       return e.home_team.toLowerCase().includes(clubName) || e.away_team.toLowerCase().includes(clubName);
     });
-    return deduplicateEvents(matched).unique;
+    const deduped = deduplicateEvents(matched).unique;
+    if (form.club === "world-cup") {
+      // Sort by match number
+      return deduped.sort((a, b) => {
+        const numA = parseInt(a.match_code?.replace("WC2026-M", "") || "0");
+        const numB = parseInt(b.match_code?.replace("WC2026-M", "") || "0");
+        return numA - numB;
+      });
+    }
+    return deduped;
   })();
 
   useEffect(() => {
