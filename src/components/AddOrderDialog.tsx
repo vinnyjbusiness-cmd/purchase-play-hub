@@ -246,9 +246,10 @@ export default function AddOrderDialog({ onCreated }: Props) {
             <Input value={form.order_ref} onChange={(e) => setForm({ ...form, order_ref: e.target.value })} placeholder="e.g. ORD-123" />
           </div>
 
-          {/* Contact dropdown - shown when source is Contact, or as customer picker otherwise */}
+          {/* Contact dropdown - only shown when source is Contact */}
+          {form.platform_id === "__contact__" && (
           <div className="space-y-1.5">
-            <Label>{form.platform_id === "__contact__" ? "Contact (Source) *" : "Customer (Contact)"}</Label>
+            <Label>Contact (Source) *</Label>
             <Popover open={contactOpen} onOpenChange={setContactOpen}>
               <PopoverTrigger asChild>
                 <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
