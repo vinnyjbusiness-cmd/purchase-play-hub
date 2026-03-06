@@ -301,7 +301,8 @@ export default function AddOrderDialog({ onCreated }: Props) {
             />
           )}
 
-          {/* Editable name/phone */}
+          {/* Editable name/phone - only for contact source */}
+          {form.platform_id === "__contact__" && (
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Customer Name</Label>
@@ -312,6 +313,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
               <Input value={form.buyer_phone} onChange={(e) => setForm({ ...form, buyer_phone: e.target.value })} placeholder="e.g. +44 7700 900000" />
             </div>
           </div>
+          )}
 
           {/* Category & Block */}
           <div className="grid grid-cols-2 gap-3">
