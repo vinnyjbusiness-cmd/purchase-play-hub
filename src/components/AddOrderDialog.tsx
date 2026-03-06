@@ -56,15 +56,29 @@ export default function AddOrderDialog({ onCreated }: Props) {
 
   const isWorldCup = form.club === "world-cup";
 
+  const [eventOpen, setEventOpen] = useState(false);
+
   const filteredEvents = (() => {
     const matched = events.filter((e) => {
       if (!form.club) return false;
-      if (form.club === "world-cup") return e.competition?.toLowerCase().includes("world cup");
+      if (form.club === "world-cup") {
+        // Only show proper WC2026-M## events, deduplicated by match_code
+        return e.match_code && /^WC2026-M\d+$/.test(e.match_code);
+      }
       const clubLabel = CLUBS.find((c) => c.value === form.club)?.label || "";
       const clubName = clubLabel.split(" (")[0].toLowerCase();
       return e.home_team.toLowerCase().includes(clubName) || e.away_team.toLowerCase().includes(clubName);
     });
-    return deduplicateEvents(matched).unique;
+    const deduped = deduplicateEvents(matched).unique;
+    if (form.club === "world-cup") {
+      // Sort by match number
+      return deduped.sort((a, b) => {
+        const numA = parseInt(a.match_code?.replace("WC2026-M", "") || "0");
+        const numB = parseInt(b.match_code?.replace("WC2026-M", "") || "0");
+        return numA - numB;
+      });
+    }
+    return deduped;
   })();
 
   useEffect(() => {
@@ -184,16 +198,45 @@ export default function AddOrderDialog({ onCreated }: Props) {
             </div>
             <div className="space-y-1.5">
               <Label>Event *</Label>
-              <Select value={form.event_id} onValueChange={(v) => setForm({ ...form, event_id: v })} disabled={!form.club}>
-                <SelectTrigger><SelectValue placeholder={form.club ? "Select event" : "Pick club first"} /></SelectTrigger>
-                <SelectContent>
-                  {filteredEvents.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={eventOpen} onOpenChange={setEventOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="w-full justify-between font-normal" disabled={!form.club}>
+                    {form.event_id
+                      ? (() => {
+                          const ev = filteredEvents.find((e) => e.id === form.event_id);
+                          return ev ? formatEventLabel(ev.home_team, ev.away_team, ev.event_date, ev.match_code) : "Select event";
+                        })()
+                      : (form.club ? "Search event..." : "Pick club first")}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Type M1, M42..." />
+                    <CommandList>
+                      <CommandEmpty>No event found.</CommandEmpty>
+                      <CommandGroup>
+                        {filteredEvents.map((e) => {
+                          const label = formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code);
+                          return (
+                            <CommandItem
+                              key={e.id}
+                              value={label}
+                              onSelect={() => {
+                                setForm({ ...form, event_id: e.id });
+                                setEventOpen(false);
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", form.event_id === e.id ? "opacity-100" : "opacity-0")} />
+                              {label}
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
@@ -203,9 +246,10 @@ export default function AddOrderDialog({ onCreated }: Props) {
             <Input value={form.order_ref} onChange={(e) => setForm({ ...form, order_ref: e.target.value })} placeholder="e.g. ORD-123" />
           </div>
 
-          {/* Contact dropdown - shown when source is Contact, or as customer picker otherwise */}
+          {/* Contact dropdown - only shown when source is Contact */}
+          {form.platform_id === "__contact__" && (
           <div className="space-y-1.5">
-            <Label>{form.platform_id === "__contact__" ? "Contact (Source) *" : "Customer (Contact)"}</Label>
+            <Label>Contact (Source) *</Label>
             <Popover open={contactOpen} onOpenChange={setContactOpen}>
               <PopoverTrigger asChild>
                 <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
@@ -246,8 +290,9 @@ export default function AddOrderDialog({ onCreated }: Props) {
               </PopoverContent>
             </Popover>
           </div>
+          )}
 
-          {showAddContact && (
+          {form.platform_id === "__contact__" && showAddContact && (
             <InlineAddContact
               onCancel={() => setShowAddContact(false)}
               onCreated={(contact) => {
@@ -258,7 +303,8 @@ export default function AddOrderDialog({ onCreated }: Props) {
             />
           )}
 
-          {/* Editable name/phone */}
+          {/* Editable name/phone - only for contact source */}
+          {form.platform_id === "__contact__" && (
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Customer Name</Label>
@@ -269,6 +315,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
               <Input value={form.buyer_phone} onChange={(e) => setForm({ ...form, buyer_phone: e.target.value })} placeholder="e.g. +44 7700 900000" />
             </div>
           </div>
+          )}
 
           {/* Category & Block */}
           <div className="grid grid-cols-2 gap-3">
