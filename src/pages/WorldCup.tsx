@@ -664,15 +664,25 @@ export default function WorldCup() {
   };
 
   // ── PURCHASES TAB ──
+  const supplierOptions = useMemo(() => {
+    const set = new Map<string, string>();
+    purchases.forEach(p => {
+      const sup = supplierMap[p.supplier_id];
+      if (sup) set.set(p.supplier_id, sup.name);
+    });
+    return [...set.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label }));
+  }, [purchases, supplierMap]);
+
   const filteredPurchases = useMemo(() => purchases.filter(p => {
     if (!filteredEventIds.has(p.event_id)) return false;
+    if (filterSupplier !== "all" && p.supplier_id !== filterSupplier) return false;
     if (search && tab === "purchases") {
       const q = search.toLowerCase();
       const sup = supplierMap[p.supplier_id];
       return (p.category || "").toLowerCase().includes(q) || (sup?.name || "").toLowerCase().includes(q) || (p.notes || "").toLowerCase().includes(q);
     }
     return true;
-  }), [purchases, filteredEventIds, search, tab, supplierMap]);
+  }), [purchases, filteredEventIds, filterSupplier, search, tab, supplierMap]);
 
   const purchasesByEvent = useMemo(() => {
     const map = new Map<string, { event: EventInfo | null; purchases: Purchase[] }>();
