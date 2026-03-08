@@ -202,7 +202,9 @@ export default function Dashboard() {
   }, []);
 
   /* ── derived data ── */
-  const { unique: dedupedEvents, groupedIds } = useMemo(() => deduplicateEvents(events), [events]);
+  const { unique: allDedupedEvents, groupedIds } = useMemo(() => deduplicateEvents(events), [events]);
+  // Exclude World Cup events from the dashboard — they have their own page
+  const dedupedEvents = useMemo(() => allDedupedEvents.filter(e => e.competition !== "World Cup 2026"), [allDedupedEvents]);
   const eventMap = useMemo(() => Object.fromEntries(events.map(e => [e.id, e])), [events]);
   const platformMap = useMemo(() => Object.fromEntries(platforms.map(p => [p.id, p.name])), [platforms]);
 
