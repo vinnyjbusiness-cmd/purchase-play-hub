@@ -18,6 +18,7 @@ import { ChevronDown, ChevronRight, LayoutGrid, Table2, Upload, X, Plus, FileSpr
 interface Props {
   onClose: () => void;
   onCreated: () => void;
+  defaultVenue?: string;
 }
 
 interface EventRow {

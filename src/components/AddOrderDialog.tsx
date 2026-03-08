@@ -19,6 +19,7 @@ import InlineAddContact from "@/components/InlineAddContact";
 
 interface Props {
   onCreated: () => void;
+  defaultClub?: string;
 }
 
 interface ContactRow {
