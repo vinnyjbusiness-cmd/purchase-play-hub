@@ -223,7 +223,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
                     {form.event_id
                       ? (() => {
                           const ev = filteredEvents.find((e) => e.id === form.event_id);
-                          return ev ? formatEventLabel(ev.home_team, ev.away_team, ev.event_date, ev.match_code) : "Select event";
+                          return ev ? cleanEventLabel(ev) : "Select event";
                         })()
                       : (form.club ? "Search event..." : "Pick club first")}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
