@@ -320,6 +320,7 @@ export default function WorldCup() {
   const [filterVenue, setFilterVenue] = useState("all");
   const [filterEvent, setFilterEvent] = useState("all");
   const [filterPlatform, setFilterPlatform] = useState("all");
+  const [filterSupplier, setFilterSupplier] = useState("all");
 
   const [wcEvents, setWcEvents] = useState<EventInfo[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
