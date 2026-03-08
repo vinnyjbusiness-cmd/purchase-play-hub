@@ -30,7 +30,7 @@ interface Purchase {
   event_id: string;
   split_type: string | null;
   suppliers: { name: string; contact_name: string | null; contact_phone: string | null } | null;
-  events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
+  events: { match_code: string; home_team: string; away_team: string; event_date: string; competition: string } | null;
 }
 
 const currSym = (c: string) => (c === "USD" ? "$" : c === "EUR" ? "€" : "£");
@@ -80,7 +80,7 @@ export default function Purchases() {
   const load = useCallback(async () => {
     const { data } = await supabase
       .from("purchases")
-      .select("*, suppliers(name, contact_name, contact_phone), events(match_code, home_team, away_team, event_date)")
+      .select("*, suppliers(name, contact_name, contact_phone), events(match_code, home_team, away_team, event_date, competition)")
       .order("purchase_date", { ascending: false });
     const purchaseList = (data as any) || [];
     setPurchases(purchaseList);
@@ -155,6 +155,8 @@ export default function Purchases() {
   }, [purchases]);
 
   const filtered = purchases.filter((p) => {
+    // Exclude World Cup purchases — they belong on the WC page
+    if (p.events?.competition === "World Cup 2026") return false;
     if (Number(p.total_cost || 0) <= 0 && Number(p.unit_cost || 0) <= 0) return false;
     if (filterSupplier !== "all" && p.suppliers?.name !== filterSupplier) return false;
     if (filterEvent !== "all" && p.events) {

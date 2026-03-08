@@ -49,6 +49,8 @@ interface SupplierInfo { id: string; name: string; }
 interface PlatformInfo { id: string; name: string; }
 
 function matchesClub(event: EventInfo, clubValue: string): boolean {
+  // World Cup events only show when explicitly selected
+  if (clubValue !== "world-cup" && event.competition.toLowerCase().includes("world cup")) return false;
   if (clubValue === "all") return true;
   const clubLabel = CLUBS.find(c => c.value === clubValue)?.label.toLowerCase() || "";
   if (clubValue === "world-cup") return event.competition.toLowerCase().includes("world cup");

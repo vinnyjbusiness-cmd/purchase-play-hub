@@ -26,7 +26,7 @@ const C = {
 } as const;
 
 /* ── types ── */
-interface EventInfo { id: string; match_code: string; home_team: string; away_team: string; event_date: string; venue?: string | null; }
+interface EventInfo { id: string; match_code: string; home_team: string; away_team: string; event_date: string; venue?: string | null; competition?: string; }
 interface OrderInfo { id: string; status: string; delivery_status: string | null; event_id: string; quantity: number; platform_id: string | null; }
 interface PlatformInfo { id: string; name: string; }
 interface AuditEntry { id: string; table_name: string; action: string; created_at: string; new_values: any; old_values: any; }
@@ -166,7 +166,7 @@ export default function Dashboard() {
     async function load() {
       const [profileRes, eventsRes, ordersRes, platformsRes, auditRes, olRes, invRes, listRes, todoRes] = await Promise.all([
         supabase.from("profiles").select("display_name").limit(1).single(),
-        supabase.from("events").select("id,match_code,home_team,away_team,event_date,venue").order("event_date"),
+        supabase.from("events").select("id,match_code,home_team,away_team,event_date,venue,competition").order("event_date"),
         supabase.from("orders").select("id,status,delivery_status,event_id,quantity,platform_id"),
         supabase.from("platforms").select("id,name"),
         supabase.from("audit_log").select("id,table_name,action,created_at,new_values,old_values").order("created_at", { ascending: false }).limit(50),
@@ -202,7 +202,9 @@ export default function Dashboard() {
   }, []);
 
   /* ── derived data ── */
-  const { unique: dedupedEvents, groupedIds } = useMemo(() => deduplicateEvents(events), [events]);
+  const { unique: allDedupedEvents, groupedIds } = useMemo(() => deduplicateEvents(events), [events]);
+  // Exclude World Cup events from the dashboard — they have their own page
+  const dedupedEvents = useMemo(() => allDedupedEvents.filter(e => e.competition !== "World Cup 2026"), [allDedupedEvents]);
   const eventMap = useMemo(() => Object.fromEntries(events.map(e => [e.id, e])), [events]);
   const platformMap = useMemo(() => Object.fromEntries(platforms.map(p => [p.id, p.name])), [platforms]);
 
