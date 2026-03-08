@@ -1403,7 +1403,24 @@ export default function WorldCup() {
               ) : eventBreakdown.map(({ ev, evPurchases, evOrders, cost, revenue, profit, ticketsBought, ticketsSold }) => (
                 <div key={ev.id} className="rounded-xl border bg-card overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 bg-muted/40 border-b border-border">
-                    <div><p className="font-bold">{formatEventTitle(ev.home_team, ev.away_team, ev.match_code)}</p><p className="text-xs text-muted-foreground">{format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}{ev.venue && ` · ${ev.venue}`}</p></div>
+                    <div>
+                      <p className="font-bold">{formatEventTitle(ev.home_team, ev.away_team, ev.match_code)}</p>
+                      <p className="text-xs text-muted-foreground">{format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}{ev.venue && ` · ${ev.venue}`}</p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {(() => {
+                          const pendingCount = evOrders.filter(o => !(o as any).payment_received).length;
+                          const receivedCount = evOrders.filter(o => (o as any).payment_received).length;
+                          const paidCount = evPurchases.filter(p => p.supplier_paid).length;
+                          const unpaidCount = evPurchases.filter(p => !p.supplier_paid).length;
+                          return <>
+                            {pendingCount > 0 && <Badge variant="outline" className="text-[9px] bg-warning/10 text-warning border-warning/20">{pendingCount} Pending</Badge>}
+                            {receivedCount > 0 && <Badge variant="outline" className="text-[9px] bg-success/10 text-success border-success/20">{receivedCount} Received</Badge>}
+                            {unpaidCount > 0 && <Badge variant="outline" className="text-[9px] bg-destructive/10 text-destructive border-destructive/20">{unpaidCount} Unpaid</Badge>}
+                            {paidCount > 0 && <Badge variant="outline" className="text-[9px] bg-success/10 text-success border-success/20">{paidCount} Paid</Badge>}
+                          </>;
+                        })()}
+                      </div>
+                    </div>
                     <div className="flex items-center gap-4 text-right">
                       <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Revenue</p><p className="text-sm font-bold text-success">{fmt(revenue)}</p></div>
                       <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Costs</p><p className="text-sm font-bold text-destructive">{fmt(cost)}</p></div>
@@ -1428,16 +1445,15 @@ export default function WorldCup() {
                         </div>
                       )}
                     </div>
-                    <div className="p-4">
-                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><ShoppingCart className="h-3.5 w-3.5" /> Sales ({ticketsSold} tickets)</h4>
+                    <div className="p-4 border-l-2 border-l-success/20">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><ShoppingCart className="h-3.5 w-3.5 text-success" /> Sales ({ticketsSold} tickets)</h4>
                       {evOrders.length === 0 ? <p className="text-xs text-muted-foreground">None</p> : (
                         <div className="space-y-1.5">
                           {evOrders.map(o => (
-                            <div key={o.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-xs">
+                            <div key={o.id} className="flex items-center justify-between rounded-md bg-success/5 px-3 py-2 text-xs">
                               <div className="flex items-center gap-2"><span>{o.quantity}x {o.category}</span><span className="text-muted-foreground">({o.platform_id ? (platformMap[o.platform_id]?.name || "Unknown") : "Direct"})</span></div>
                               <div className="flex items-center gap-2">
-                                <span className="font-mono font-medium">{fmt(o.net_received || o.sale_price - o.fees)}</span>
-                                <span className={cn("text-[10px]", (o as any).payment_received ? "text-success" : "text-warning")}>{(o as any).payment_received ? "Received" : "Pending"}</span>
+                                <span className="font-mono font-semibold text-sm">{fmt(o.net_received || o.sale_price - o.fees)}</span>
                                 <Switch checked={(o as any).payment_received || false} onCheckedChange={() => togglePaymentReceived(o.id, (o as any).payment_received || false)} className="scale-75" />
                               </div>
                             </div>
