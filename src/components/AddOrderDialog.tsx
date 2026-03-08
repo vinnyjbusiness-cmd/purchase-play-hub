@@ -29,7 +29,7 @@ interface ContactRow {
   contact_email: string | null;
 }
 
-export default function AddOrderDialog({ onCreated }: Props) {
+export default function AddOrderDialog({ onCreated, defaultClub }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [platforms, setPlatforms] = useState<{ id: string; name: string }[]>([]);
