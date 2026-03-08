@@ -344,6 +344,12 @@ export default function WorldCup() {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [collapsedInvRounds, setCollapsedInvRounds] = useState<Set<string>>(new Set());
   const [manualAssigned, setManualAssigned] = useState<Set<string>>(new Set());
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [paidConfirm, setPaidConfirm] = useState<string | null>(null);
+  const [paidTimestamps, setPaidTimestamps] = useState<Record<string, string>>({});
+  const [financeRoundFilter, setFinanceRoundFilter] = useState("all");
+  const [quickAssignOrderId, setQuickAssignOrderId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data: evData } = await supabase
