@@ -12,7 +12,11 @@ import {
 import { format, differenceInSeconds } from "date-fns";
 import { cn } from "@/lib/utils";
 import { deduplicateEvents } from "@/lib/eventDedup";
+import { formatEventLabel, getMatchNumber, isWorldCupMatchCode } from "@/lib/eventDisplay";
 import OrderDetailSheet from "@/components/OrderDetailSheet";
+
+// Clubs allowed in Focus Room (case-insensitive partial match)
+const FOCUS_CLUBS = ["liverpool", "arsenal", "manchester united"];
 
 interface EventRow {
   id: string; home_team: string; away_team: string; event_date: string;
@@ -61,7 +65,18 @@ export default function WarRoom() {
   // Deduplicated upcoming events
   const { unique: dedupedEvents, groupedIds } = useMemo(() => {
     const now = new Date();
-    const future = allEvents.filter(e => new Date(e.event_date) > now);
+    const future = allEvents.filter(e => {
+      if (new Date(e.event_date) <= now) return false;
+      // WC events: only M1-M104
+      if (isWorldCupMatchCode(e.match_code)) {
+        const num = parseInt(getMatchNumber(e.match_code) || "0");
+        return num >= 1 && num <= 104;
+      }
+      // Club events: only Liverpool, Arsenal, Man Utd
+      const h = e.home_team.toLowerCase();
+      const a = e.away_team.toLowerCase();
+      return FOCUS_CLUBS.some(club => h.includes(club) || a.includes(club));
+    });
     return deduplicateEvents(future);
   }, [allEvents]);
 
@@ -141,17 +156,17 @@ export default function WarRoom() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="h-3 w-3 rounded-full bg-destructive animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-widest text-destructive">War Room</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-destructive">Focus Room</span>
             </div>
             {/* Event Picker */}
             <Select value={selectedEventId || ""} onValueChange={setSelectedEventId}>
-              <SelectTrigger className="w-[320px] h-8 text-xs">
+              <SelectTrigger className="w-[360px] h-8 text-xs">
                 <SelectValue placeholder="Select event..." />
               </SelectTrigger>
               <SelectContent>
                 {dedupedEvents.map(ev => (
                   <SelectItem key={ev.id} value={ev.id} className="text-xs">
-                    {ev.home_team} vs {ev.away_team} — {format(new Date(ev.event_date), "dd MMM")}
+                    {formatEventLabel(ev.home_team, ev.away_team, ev.event_date, ev.match_code)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -167,7 +182,12 @@ export default function WarRoom() {
         <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
           {/* Event Hero */}
           <div className="text-center space-y-3 animate-fade-in">
-            <Badge variant="outline" className="text-xs">{event.competition}</Badge>
+            <div className="flex items-center justify-center gap-2">
+              <Badge variant="outline" className="text-xs">{event.competition}</Badge>
+              {getMatchNumber(event.match_code) && (
+                <Badge className="text-xs bg-primary/20 text-primary border-primary/30">M{getMatchNumber(event.match_code)}</Badge>
+              )}
+            </div>
             <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
               {event.home_team} vs {event.away_team}
             </h1>
