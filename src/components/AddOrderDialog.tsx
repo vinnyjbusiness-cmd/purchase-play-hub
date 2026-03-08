@@ -159,11 +159,12 @@ export default function AddOrderDialog({ onCreated }: Props) {
     }
   };
 
+  const selectedContact = contacts.find((c) => c.id === form.contact_id);
+
   // Helper to clean WC event names for display
-  const cleanEventLabel = (e: EventRow) => {
+  const cleanEventLabel = (e: typeof events[number]) => {
     const matchNum = getMatchNumber(e.match_code);
     if (matchNum && e.home_team.startsWith("#M")) {
-      // Parse clean names from messy import format
       const homeMatch = e.home_team.match(/^#M\d+\s*-\s*\((?:Group\s+\w+\s*-\s*)?(.+)$/);
       const awayMatch = e.away_team.match(/^(.+?)\)\s*Football World Cup/);
       const cleanHome = homeMatch ? homeMatch[1].trim() : e.home_team;
