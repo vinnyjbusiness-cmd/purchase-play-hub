@@ -12,7 +12,11 @@ import {
 import { format, differenceInSeconds } from "date-fns";
 import { cn } from "@/lib/utils";
 import { deduplicateEvents } from "@/lib/eventDedup";
+import { formatEventLabel, getMatchNumber, isWorldCupMatchCode } from "@/lib/eventDisplay";
 import OrderDetailSheet from "@/components/OrderDetailSheet";
+
+// Clubs allowed in Focus Room (case-insensitive partial match)
+const FOCUS_CLUBS = ["liverpool", "arsenal", "manchester united"];
 
 interface EventRow {
   id: string; home_team: string; away_team: string; event_date: string;
