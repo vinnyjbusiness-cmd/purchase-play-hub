@@ -80,7 +80,7 @@ export default function Purchases() {
   const load = useCallback(async () => {
     const { data } = await supabase
       .from("purchases")
-      .select("*, suppliers(name, contact_name, contact_phone), events(match_code, home_team, away_team, event_date)")
+      .select("*, suppliers(name, contact_name, contact_phone), events(match_code, home_team, away_team, event_date, competition)")
       .order("purchase_date", { ascending: false });
     const purchaseList = (data as any) || [];
     setPurchases(purchaseList);
