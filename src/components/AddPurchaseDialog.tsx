@@ -100,7 +100,7 @@ export default function AddPurchaseDialog({ onCreated, defaultClub }: Props) {
 
   const resetForm = () => {
     setForm({
-      club: "", event_id: "", supplier_id: "", supplier_name: "", supplier_number: "",
+      club: defaultClub || "", event_id: "", supplier_id: "", supplier_name: "", supplier_number: "",
       category_type: "", section: "", block: "", hospitality_option: "",
       currency: "GBP", quantity: "1", unit_cost: "", split_type: "", notes: "",
     });
