@@ -3,10 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { CalendarDays, TrendingUp, TrendingDown, X, BarChart3, Users } from "lucide-react";
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, subMonths, startOfQuarter, endOfQuarter, subYears } from "date-fns";
 import { CLUBS } from "@/lib/seatingSections";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell,
+} from "recharts";
 import type { AnalyticsOrder, AnalyticsPurchase, AnalyticsPlatform } from "@/pages/Analytics";
 import type { MinimalEvent } from "@/lib/eventDedup";
 
