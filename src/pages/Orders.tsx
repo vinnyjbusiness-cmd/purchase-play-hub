@@ -597,11 +597,7 @@ export default function Orders() {
         {grouped.map((group, groupIndex) => {
           const eventKey = group.eventIds[0];
           const isExpanded = expandedEvents.has(eventKey);
-          const totalQty = group.orders.reduce((s, o) => s + o.quantity, 0);
-          const totalValue = group.orders.reduce((s, o) => s + (Number(o.sale_price) * o.quantity), 0);
-          const deliveredCount = group.orders.filter(o => o.status === "delivered").length;
-          const totalCost = group.orders.reduce((s, o) => s + (orderCosts[o.id] || 0), 0);
-          const eventPL = totalValue - totalCost;
+           const totalQty = group.orders.reduce((s, o) => s + o.quantity, 0);
           const totalInventory = group.eventIds.reduce((s, eid) => s + (eventInventoryCounts[eid] || 0), 0);
           const bgClass = EVENT_PALETTE[groupIndex % EVENT_PALETTE.length];
 
@@ -652,28 +648,14 @@ export default function Orders() {
                 </div>
 
                 {/* Stats row — large and bold */}
-                <div className="grid grid-cols-4 md:grid-cols-5 gap-2 md:gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Sold</p>
+                    <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Tickets</p>
                     <p className="text-white font-extrabold text-base md:text-2xl font-mono">{totalQty}</p>
                   </div>
                   <div>
-                    <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Total</p>
-                    <p className="text-white font-extrabold text-base md:text-2xl font-mono">£{totalValue.toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Delivered</p>
-                    <p className="text-white font-extrabold text-base md:text-2xl font-mono">{deliveredCount}/{group.orders.length}</p>
-                  </div>
-                  <div className="hidden md:block">
                     <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">Orders</p>
                     <p className="text-white font-extrabold text-base md:text-2xl font-mono">{group.orders.length}</p>
-                  </div>
-                  <div>
-                    <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-wider font-medium">P/L</p>
-                    <p className={cn("font-extrabold text-base md:text-2xl font-mono", eventPL >= 0 ? "text-green-300" : "text-red-300")}>
-                      {eventPL >= 0 ? "+" : "-"}£{Math.abs(eventPL).toLocaleString()}
-                    </p>
                   </div>
                 </div>
               </button>
