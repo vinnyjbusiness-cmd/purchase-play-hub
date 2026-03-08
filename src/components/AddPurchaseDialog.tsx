@@ -38,7 +38,7 @@ interface SupplierRow {
   contact_phone: string | null;
 }
 
-export default function AddPurchaseDialog({ onCreated }: Props) {
+export default function AddPurchaseDialog({ onCreated, defaultClub }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
