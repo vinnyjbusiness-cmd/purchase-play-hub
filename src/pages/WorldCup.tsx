@@ -1325,13 +1325,40 @@ export default function WorldCup() {
                               const sym = currSym(p.currency);
                               return (
                                 <TableRow key={p.id} className={cn("text-xs h-10", orderRowColors[idx % orderRowColors.length])}>
-                                  <TableCell className="py-2 font-medium">{supplierMap[p.supplier_id]?.name || "—"}</TableCell>
+                                  <TableCell className="py-2">
+                                    <Badge variant="outline" className="text-[10px] bg-muted font-medium">{supplierMap[p.supplier_id]?.name || "—"}</Badge>
+                                  </TableCell>
                                   <TableCell className="py-2">{p.category}</TableCell>
                                   <TableCell className="py-2 text-center font-mono font-bold">{p.quantity}</TableCell>
-                                  <TableCell className="py-2 text-right font-mono">{sym}{p.unit_cost.toFixed(2)}</TableCell>
-                                  <TableCell className="py-2 text-right font-mono font-bold">{sym}{(p.quantity * p.unit_cost).toFixed(2)}</TableCell>
+                                  <TableCell className="py-2 text-right font-mono">
+                                    {p.currency !== "GBP" && <Badge variant="outline" className="text-[9px] mr-1 px-1 py-0 font-mono">{p.currency}</Badge>}
+                                    {sym}{p.unit_cost.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="py-2 text-right font-mono font-bold">
+                                    {p.currency !== "GBP" && <Badge variant="outline" className="text-[9px] mr-1 px-1 py-0 font-mono">{p.currency}</Badge>}
+                                    {sym}{(p.quantity * p.unit_cost).toFixed(2)}
+                                  </TableCell>
                                   <TableCell className="py-2 text-center">
-                                    <Switch checked={p.supplier_paid} onCheckedChange={() => toggleSupplierPaid(p.id, p.supplier_paid)} className="scale-75" />
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      {p.supplier_paid ? (
+                                        <Switch checked={true} onCheckedChange={() => toggleSupplierPaid(p.id, true)} className="scale-75" />
+                                      ) : (
+                                        <Popover open={paidConfirm === p.id} onOpenChange={open => setPaidConfirm(open ? p.id : null)}>
+                                          <PopoverTrigger asChild>
+                                            <div><Switch checked={false} onCheckedChange={() => setPaidConfirm(p.id)} className="scale-75" /></div>
+                                          </PopoverTrigger>
+                                          <PopoverContent className="w-56 p-3" align="center">
+                                            <p className="text-sm font-medium mb-1">Mark as paid?</p>
+                                            <p className="text-xs text-muted-foreground mb-3">This cannot be undone.</p>
+                                            <div className="flex gap-2">
+                                              <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={() => setPaidConfirm(null)}>Cancel</Button>
+                                              <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => toggleSupplierPaid(p.id, false)}>Confirm</Button>
+                                            </div>
+                                          </PopoverContent>
+                                        </Popover>
+                                      )}
+                                      {paidTimestamps[p.id] && <span className="text-[9px] text-muted-foreground">Paid {paidTimestamps[p.id]}</span>}
+                                    </div>
                                   </TableCell>
                                   <TableCell className="py-2 text-muted-foreground truncate max-w-[150px]">{p.notes || "—"}</TableCell>
                                 </TableRow>
