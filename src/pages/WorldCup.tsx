@@ -654,11 +654,6 @@ export default function WorldCup() {
     }).filter(e => e.cost > 0 || e.revenue > 0).sort((a, b) => new Date(a.ev.event_date).getTime() - new Date(b.ev.event_date).getTime());
   }, [financeData, groupedIds]);
 
-  const toggleSupplierPaid = async (id: string, val: boolean) => {
-    await supabase.from("purchases").update({ supplier_paid: !val }).eq("id", id);
-    setPurchases(prev => prev.map(p => p.id === id ? { ...p, supplier_paid: !val } : p));
-    toast.success(!val ? "Marked as paid" : "Marked as unpaid");
-  };
   const togglePaymentReceived = async (id: string, val: boolean) => {
     await supabase.from("orders").update({ payment_received: !val }).eq("id", id);
     setOrders(prev => prev.map(o => o.id === id ? { ...o, payment_received: !val } : o));
