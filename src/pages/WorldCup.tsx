@@ -1212,6 +1212,7 @@ export default function WorldCup() {
                                             <Table>
                                               <TableHeader>
                                                 <TableRow>
+                                                  <TableHead className="w-[30px]"></TableHead>
                                                   <TableHead className="text-[10px] uppercase tracking-wider w-[90px]">Order #</TableHead>
                                                   <TableHead className="text-[10px] uppercase tracking-wider">Platform</TableHead>
                                                   <TableHead className="text-[10px] uppercase tracking-wider">Customer</TableHead>
