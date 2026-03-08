@@ -166,7 +166,7 @@ export default function Dashboard() {
     async function load() {
       const [profileRes, eventsRes, ordersRes, platformsRes, auditRes, olRes, invRes, listRes, todoRes] = await Promise.all([
         supabase.from("profiles").select("display_name").limit(1).single(),
-        supabase.from("events").select("id,match_code,home_team,away_team,event_date,venue").order("event_date"),
+        supabase.from("events").select("id,match_code,home_team,away_team,event_date,venue,competition").order("event_date"),
         supabase.from("orders").select("id,status,delivery_status,event_id,quantity,platform_id"),
         supabase.from("platforms").select("id,name"),
         supabase.from("audit_log").select("id,table_name,action,created_at,new_values,old_values").order("created_at", { ascending: false }).limit(50),
