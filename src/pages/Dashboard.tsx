@@ -26,7 +26,7 @@ const C = {
 } as const;
 
 /* ── types ── */
-interface EventInfo { id: string; match_code: string; home_team: string; away_team: string; event_date: string; venue?: string | null; }
+interface EventInfo { id: string; match_code: string; home_team: string; away_team: string; event_date: string; venue?: string | null; competition?: string; }
 interface OrderInfo { id: string; status: string; delivery_status: string | null; event_id: string; quantity: number; platform_id: string | null; }
 interface PlatformInfo { id: string; name: string; }
 interface AuditEntry { id: string; table_name: string; action: string; created_at: string; new_values: any; old_values: any; }
