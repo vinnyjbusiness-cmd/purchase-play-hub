@@ -401,7 +401,10 @@ export default function AddPurchaseDialog({ onCreated, defaultClub }: Props) {
               <Input type="number" step="0.01" min="0" value={form.unit_cost} onChange={(e) => set("unit_cost", e.target.value)} placeholder="0.00" />
             </div>
             <div className="space-y-1.5">
-              <Label>Split Type</Label>
+              <Label className="flex items-center gap-1.5">
+                Split Type
+                <TooltipProvider><Tooltip><TooltipTrigger asChild><span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-muted text-muted-foreground text-[10px] cursor-help">?</span></TooltipTrigger><TooltipContent className="max-w-[200px]"><p className="text-xs">Singles = 1 ticket each · Pairs = 2 together · Trios = 3 together · Quads = 4 together · All Together = entire batch</p></TooltipContent></Tooltip></TooltipProvider>
+              </Label>
               <Select value={form.split_type} onValueChange={(v) => set("split_type", v)}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>

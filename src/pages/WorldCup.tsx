@@ -971,7 +971,7 @@ export default function WorldCup() {
               <div className="text-center px-3 py-1 rounded-md bg-muted/60"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</p><p className="text-sm font-bold font-mono">{total}</p></div>
               {available > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">{available} avail</Badge>}
               {sold > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-primary/10 text-primary border-primary/20">{sold} sold</Badge>}
-              <div className="text-center px-3 py-1 rounded-md bg-muted/60"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Assigned</p><p className="text-sm font-bold font-mono">{assigned}/{total}</p></div>
+              <TooltipProvider><Tooltip><TooltipTrigger asChild><div className="text-center px-3 py-1 rounded-md bg-muted/60 cursor-help"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Assigned</p><p className="text-sm font-bold font-mono">{assigned}/{total}</p></div></TooltipTrigger><TooltipContent><p className="text-xs">{assigned} of {total} tickets assigned to orders</p></TooltipContent></Tooltip></TooltipProvider>
             </div>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               onClick={async e => {
