@@ -1051,6 +1051,7 @@ export default function AddInventoryDialog({ onClose, onCreated, defaultVenue }:
               <Button onClick={handleWcSubmit} disabled={loading || wcTotalTickets === 0} size="sm" className="min-w-[140px] min-h-[44px] sm:min-h-0">
                 {loading ? "Adding..." : `Add All to Inventory`}
               </Button>
+              <p className="text-[10px] text-muted-foreground text-center mt-1">Esc to close</p>
             </>
           ) : (
             <>
