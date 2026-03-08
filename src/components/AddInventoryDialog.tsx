@@ -1068,6 +1068,7 @@ export default function AddInventoryDialog({ onClose, onCreated, defaultVenue }:
               <Button onClick={handleSubmit} disabled={loading || hasErrors} size="sm" className="min-w-[120px] sm:min-w-[140px] min-h-[44px] sm:min-h-0">
                 {loading ? "Adding..." : `Add ${validTickets.length > 1 ? "All " : ""}${validTickets.length} Ticket${validTickets.length !== 1 ? "s" : ""}`}
               </Button>
+              <p className="text-[10px] text-muted-foreground text-center mt-1">Esc to close</p>
             </>
           )}
         </div>

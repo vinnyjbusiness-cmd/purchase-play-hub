@@ -425,10 +425,23 @@ export default function AddPurchaseDialog({ onCreated, defaultClub }: Props) {
             <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Any additional info..." maxLength={500} rows={2} />
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading || !form.supplier_id || !form.event_id || !form.unit_cost || !form.category_type}>
-            {loading ? "Saving..." : "Add Purchase"}
-          </Button>
-        </form>
+          <div className="space-y-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Button type="submit" className="w-full" disabled={loading || !form.supplier_id || !form.event_id || !form.unit_cost || !form.category_type}>
+                      {loading ? "Saving..." : "Add Purchase"}
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                {(!form.supplier_id || !form.event_id || !form.unit_cost || !form.category_type) && (
+                  <TooltipContent><p className="text-xs">Fill required fields to continue</p></TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+            <p className="text-[10px] text-muted-foreground text-center">Esc to close · Enter to submit</p>
+          </div>
       </DialogContent>
     </Dialog>
   );
