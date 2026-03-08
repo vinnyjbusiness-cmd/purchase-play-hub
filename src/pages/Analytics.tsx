@@ -128,7 +128,7 @@ export default function Analytics() {
         </TabsList>
 
         <TabsContent value="overview">
-          <OverviewTab events={dedupEvents} orders={orders} purchases={purchases} groupedIds={groupedIds} />
+          <OverviewTab events={dedupEvents} orders={orders} purchases={purchases} groupedIds={groupedIds} platforms={platforms} />
         </TabsContent>
         <TabsContent value="events">
           <EventsTab events={events} orders={orders} purchases={purchases} />
