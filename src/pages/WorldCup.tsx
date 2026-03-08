@@ -722,6 +722,37 @@ export default function WorldCup() {
     });
   }, [groupedInv]);
 
+  // ── Per-match stock needs tracking ──
+  const matchStockMetrics = useMemo(() => {
+    const metrics: Record<string, { got: number; sold: number; need: number; available: number }> = {};
+    wcEvents.forEach(ev => {
+      const got = inventory.filter(i => i.event_id === ev.id).length;
+      const sold = orders.filter(o => o.event_id === ev.id && o.status !== "cancelled" && o.status !== "refunded")
+        .reduce((s, o) => s + o.quantity, 0);
+      metrics[ev.id] = { got, sold, need: Math.max(0, sold - got), available: Math.max(0, got - sold) };
+    });
+    return metrics;
+  }, [wcEvents, inventory, orders]);
+
+  const invKPIs = useMemo(() => {
+    let totalGot = 0, totalSold = 0, totalAvailable = 0, totalNeed = 0, fullyCovered = 0, short = 0;
+    const seen = new Set<string>();
+    filteredEventIds.forEach(eid => {
+      if (seen.has(eid)) return;
+      seen.add(eid);
+      const m = matchStockMetrics[eid] || { got: 0, sold: 0, need: 0, available: 0 };
+      totalGot += m.got; totalSold += m.sold; totalAvailable += m.available; totalNeed += m.need;
+      if (m.sold > 0 || m.got > 0) { if (m.sold <= m.got) fullyCovered++; else short++; }
+    });
+    return { totalGot, totalSold, totalAvailable, totalNeed, fullyCovered, short };
+  }, [filteredEventIds, matchStockMetrics]);
+
+  const needsOnlyMatches = useMemo(() => {
+    return wcEvents
+      .filter(ev => filteredEventIds.has(ev.id) && (matchStockMetrics[ev.id]?.need || 0) > 0)
+      .sort((a, b) => a.event_date.localeCompare(b.event_date));
+  }, [wcEvents, filteredEventIds, matchStockMetrics]);
+
   const toggleItemExpanded = (id: string) => setExpandedItems(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleGroupCollapsed = (key: string) => setCollapsedGroups(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const toggleInvRound = (key: string) => setCollapsedInvRounds(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
