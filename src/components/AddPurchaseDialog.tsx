@@ -442,6 +442,7 @@ export default function AddPurchaseDialog({ onCreated, defaultClub }: Props) {
             </TooltipProvider>
             <p className="text-[10px] text-muted-foreground text-center">Esc to close · Enter to submit</p>
           </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
