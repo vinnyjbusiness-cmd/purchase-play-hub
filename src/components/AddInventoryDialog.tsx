@@ -592,12 +592,16 @@ export default function AddInventoryDialog({ onClose, onCreated, defaultVenue }:
           {/* Venue Selector — always shown */}
           <div className="space-y-1.5">
             <Label className="text-xs">Club / Venue</Label>
-            <Select value={venue} onValueChange={(v) => { setVenue(v); setEventId(""); setSection(""); setBlock(""); }}>
-              <SelectTrigger className="h-9"><SelectValue placeholder="Select venue" /></SelectTrigger>
-              <SelectContent>
-                {VENUES.map(v => <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {defaultVenue ? (
+              <Input value={VENUES.find(v => v.value === defaultVenue)?.label || defaultVenue} disabled className="bg-muted h-9" />
+            ) : (
+              <Select value={venue} onValueChange={(v) => { setVenue(v); setEventId(""); setSection(""); setBlock(""); }}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select venue" /></SelectTrigger>
+                <SelectContent>
+                  {VENUES.map(v => <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* ═══════════════ WORLD CUP FLOW ═══════════════ */}
