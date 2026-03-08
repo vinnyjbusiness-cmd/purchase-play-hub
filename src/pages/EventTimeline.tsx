@@ -1,12 +1,11 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { CalendarClock, ChevronDown, ChevronRight, Flame, ChevronsUpDown } from "lucide-react";
-import { format, isThisWeek, isThisMonth, startOfDay, addDays, isSameDay, isBefore, startOfWeek, differenceInDays } from "date-fns";
+import { CalendarClock, Filter, ChevronDown, X } from "lucide-react";
+import { format, isSameDay, startOfDay, addDays, isThisWeek, isThisMonth, startOfWeek, addMonths, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import TimelineFilters, { type TimeFilter, type HomeAwayFilter } from "@/components/timeline/TimelineFilters";
-import WeekAtAGlance from "@/components/timeline/WeekAtAGlance";
+import TimelineCalendar from "@/components/timeline/TimelineCalendar";
 import TimelineEventCard from "@/components/timeline/TimelineEventCard";
 
 interface EventRow {
@@ -20,24 +19,23 @@ interface OrderRow {
 
 const KNOWN_CLUBS = ["Liverpool", "Arsenal", "Chelsea", "Man United", "Manchester United", "Man City", "Manchester City", "Tottenham"];
 
-const matchesClub = (event: EventRow, club: string) => {
-  const lc = club.toLowerCase();
-  if (lc === "world cup 2026") return event.competition.toLowerCase().includes("world cup");
-  return event.home_team.toLowerCase().includes(lc) || event.away_team.toLowerCase().includes(lc);
+const COMP_COLORS: Record<string, string> = {
+  "Premier League": "bg-purple-500/20 text-purple-400 border-purple-500/40",
+  "Champions League": "bg-blue-500/20 text-blue-400 border-blue-500/40",
+  "Europa League": "bg-orange-500/20 text-orange-400 border-orange-500/40",
+  "FA Cup": "bg-red-500/20 text-red-400 border-red-500/40",
+  "Carabao Cup": "bg-green-500/20 text-green-400 border-green-500/40",
+  "World Cup 2026": "bg-amber-500/20 text-amber-400 border-amber-500/40",
 };
 
 export default function EventTimeline() {
   const [events, setEvents] = useState<EventRow[]>([]);
   const [allOrders, setAllOrders] = useState<OrderRow[]>([]);
-  const [expandAll, setExpandAll] = useState(false);
-  const weekRefs = useRef<Record<string, HTMLDivElement | null>>({});
-
-  // Filters
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
-  const [selectedClubs, setSelectedClubs] = useState<string[]>([]);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedCompetitions, setSelectedCompetitions] = useState<string[]>([]);
-  const [selectedDays, setSelectedDays] = useState<number[]>([]);
-  const [homeAwayFilter, setHomeAwayFilter] = useState<HomeAwayFilter>("all");
+  const [selectedClubs, setSelectedClubs] = useState<string[]>([]);
 
   useEffect(() => {
     Promise.all([
@@ -51,7 +49,7 @@ export default function EventTimeline() {
 
   const today = startOfDay(new Date());
 
-  // Dedupe by match_code
+  // Dedupe
   const dedupedEvents = useMemo(() => {
     const seen = new Set<string>();
     return events.filter(e => {
@@ -61,131 +59,74 @@ export default function EventTimeline() {
     });
   }, [events]);
 
-  // Split upcoming vs recently passed (last 7 days)
-  const upcomingAll = useMemo(() => dedupedEvents.filter(e => !isBefore(startOfDay(new Date(e.event_date)), today)), [dedupedEvents, today]);
-  const recentlyPassed = useMemo(() => {
-    const sevenAgo = addDays(today, -7);
-    return dedupedEvents.filter(e => {
-      const d = startOfDay(new Date(e.event_date));
-      return isBefore(d, today) && !isBefore(d, sevenAgo);
-    }).reverse();
-  }, [dedupedEvents, today]);
-
-  // Available clubs and competitions
+  // Available filters
+  const availableCompetitions = useMemo(() => [...new Set(dedupedEvents.map(e => e.competition))].sort(), [dedupedEvents]);
   const availableClubs = useMemo(() => {
     const clubs = new Set<string>();
-    upcomingAll.forEach(e => {
+    dedupedEvents.forEach(e => {
       KNOWN_CLUBS.forEach(c => {
         if (e.home_team.toLowerCase().includes(c.toLowerCase()) || e.away_team.toLowerCase().includes(c.toLowerCase())) clubs.add(c);
       });
       if (e.competition.toLowerCase().includes("world cup")) clubs.add("World Cup 2026");
     });
     return Array.from(clubs).sort();
-  }, [upcomingAll]);
-
-  const availableCompetitions = useMemo(() => {
-    const comps = new Set<string>();
-    upcomingAll.forEach(e => comps.add(e.competition));
-    return Array.from(comps).sort();
-  }, [upcomingAll]);
+  }, [dedupedEvents]);
 
   // Apply filters
   const filteredEvents = useMemo(() => {
-    let result = upcomingAll;
-
-    // Time filter
-    if (timeFilter === "this-week") result = result.filter(e => isThisWeek(new Date(e.event_date), { weekStartsOn: 1 }));
-    else if (timeFilter === "next-week") {
-      const nextWeekStart = addDays(startOfWeek(today, { weekStartsOn: 1 }), 7);
-      const nextWeekEnd = addDays(nextWeekStart, 7);
-      result = result.filter(e => { const d = new Date(e.event_date); return d >= nextWeekStart && d < nextWeekEnd; });
-    } else if (timeFilter === "this-month") result = result.filter(e => isThisMonth(new Date(e.event_date)));
-    else if (timeFilter === "next-30") result = result.filter(e => differenceInDays(new Date(e.event_date), today) <= 30);
-
-    // Club filter
-    if (selectedClubs.length > 0) result = result.filter(e => selectedClubs.some(c => matchesClub(e, c)));
-
-    // Competition filter
+    let result = dedupedEvents;
     if (selectedCompetitions.length > 0) result = result.filter(e => selectedCompetitions.includes(e.competition));
-
-    // Day of week filter
-    if (selectedDays.length > 0) result = result.filter(e => selectedDays.includes(new Date(e.event_date).getDay()));
-
-    // Home/Away filter
-    if (homeAwayFilter === "home") {
-      result = result.filter(e => KNOWN_CLUBS.some(c => e.home_team.toLowerCase().includes(c.toLowerCase())));
-    } else if (homeAwayFilter === "away") {
-      result = result.filter(e => KNOWN_CLUBS.some(c => e.away_team.toLowerCase().includes(c.toLowerCase())));
+    if (selectedClubs.length > 0) {
+      result = result.filter(e => selectedClubs.some(c => {
+        if (c === "World Cup 2026") return e.competition.toLowerCase().includes("world cup");
+        return e.home_team.toLowerCase().includes(c.toLowerCase()) || e.away_team.toLowerCase().includes(c.toLowerCase());
+      }));
     }
-
     return result;
-  }, [upcomingAll, timeFilter, selectedClubs, selectedCompetitions, selectedDays, homeAwayFilter, today]);
+  }, [dedupedEvents, selectedCompetitions, selectedClubs]);
 
-  // Stats
-  const thisWeekCount = useMemo(() => upcomingAll.filter(e => isThisWeek(new Date(e.event_date), { weekStartsOn: 1 })).length, [upcomingAll]);
-  const thisMonthCount = useMemo(() => upcomingAll.filter(e => isThisMonth(new Date(e.event_date))).length, [upcomingAll]);
+  // Events for selected date (or nearby range: selected day ± 3 days)
+  const selectedDateEvents = useMemo(() => {
+    if (!selectedDate) return [];
+    const rangeStart = addDays(selectedDate, -3);
+    const rangeEnd = addDays(selectedDate, 3);
+    return filteredEvents
+      .filter(e => {
+        const d = new Date(e.event_date);
+        return d >= rangeStart && d <= rangeEnd;
+      })
+      .sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
+  }, [filteredEvents, selectedDate]);
 
-  // Today's events
-  const todayEvents = useMemo(() => filteredEvents.filter(e => isSameDay(new Date(e.event_date), today)), [filteredEvents, today]);
-  const nextEvent = useMemo(() => filteredEvents.find(e => !isBefore(new Date(e.event_date), today)), [filteredEvents, today]);
+  // Events grouped by day for the selected range
+  const groupedByDay = useMemo(() => {
+    if (!selectedDate) return [];
+    const groups: { date: Date; label: string; events: EventRow[]; isSelectedDay: boolean }[] = [];
+    const rangeStart = addDays(selectedDate, -3);
 
-  // Group by week
-  const weeklyGroups = useMemo(() => {
-    const nonToday = filteredEvents.filter(e => !isSameDay(new Date(e.event_date), today));
-    const groups: { key: string; label: string; days: string; events: EventRow[]; isBusy: boolean; isCurrentWeek: boolean; isNextWeek: boolean }[] = [];
-    let currentWeekStart: Date | null = null;
-    let currentGroup: EventRow[] = [];
-
-    const flush = () => {
-      if (currentGroup.length > 0 && currentWeekStart) {
-        const uniqueDays = [...new Set(currentGroup.map(e => format(new Date(e.event_date), "EEE")))];
-        const isCurrentWeek = isThisWeek(currentWeekStart, { weekStartsOn: 1 });
-        const nextWeekStart = addDays(startOfWeek(today, { weekStartsOn: 1 }), 7);
-        const isNextWeek = isSameDay(currentWeekStart, nextWeekStart);
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(rangeStart, i);
+      const dayEvents = selectedDateEvents.filter(e => isSameDay(new Date(e.event_date), d));
+      if (dayEvents.length > 0) {
         groups.push({
-          key: currentWeekStart.toISOString(),
-          label: `Week of ${format(currentWeekStart, "dd MMM")}`,
-          days: uniqueDays.join(", "),
-          events: currentGroup,
-          isBusy: currentGroup.length >= 3,
-          isCurrentWeek,
-          isNextWeek,
+          date: d,
+          label: isSameDay(d, today) ? "Today" : isSameDay(d, addDays(today, 1)) ? "Tomorrow" : format(d, "EEE dd MMM"),
+          events: dayEvents,
+          isSelectedDay: isSameDay(d, selectedDate),
         });
       }
-    };
-
-    nonToday.forEach(e => {
-      const d = new Date(e.event_date);
-      const ws = startOfWeek(d, { weekStartsOn: 1 });
-      if (!currentWeekStart || ws.getTime() !== currentWeekStart.getTime()) {
-        flush();
-        currentWeekStart = ws;
-        currentGroup = [e];
-      } else {
-        currentGroup.push(e);
-      }
-    });
-    flush();
+    }
     return groups;
-  }, [filteredEvents, today]);
+  }, [selectedDateEvents, selectedDate, today]);
 
-  const toggleClub = (club: string) => {
-    if (club === "__all__") { setSelectedClubs([]); return; }
-    setSelectedClubs(prev => prev.includes(club) ? prev.filter(c => c !== club) : [...prev, club]);
-  };
-  const toggleCompetition = (comp: string) => {
-    if (comp === "__all__") { setSelectedCompetitions([]); return; }
-    setSelectedCompetitions(prev => prev.includes(comp) ? prev.filter(c => c !== comp) : [...prev, comp]);
-  };
-  const toggleDay = (day: number) => {
-    setSelectedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
-  };
+  // Stats
+  const upcomingCount = dedupedEvents.filter(e => new Date(e.event_date) >= today).length;
+  const thisWeekCount = dedupedEvents.filter(e => isThisWeek(new Date(e.event_date), { weekStartsOn: 1 })).length;
 
-  const handleDayClick = (date: Date) => {
-    const ws = startOfWeek(date, { weekStartsOn: 1 });
-    const ref = weekRefs.current[ws.toISOString()];
-    if (ref) ref.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  const toggleComp = (comp: string) => setSelectedCompetitions(prev => prev.includes(comp) ? prev.filter(c => c !== comp) : [...prev, comp]);
+  const toggleClub = (club: string) => setSelectedClubs(prev => prev.includes(club) ? prev.filter(c => c !== club) : [...prev, club]);
+  const clearFilters = () => { setSelectedCompetitions([]); setSelectedClubs([]); };
+  const hasFilters = selectedCompetitions.length > 0 || selectedClubs.length > 0;
 
   const getMatchEvents = (event: EventRow) => events.filter(e => e.match_code === event.match_code);
   const getMatchOrders = (event: EventRow) => {
@@ -196,126 +137,143 @@ export default function EventTimeline() {
   return (
     <div className="p-6 space-y-5 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <CalendarClock className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold tracking-tight">Event Timeline</h1>
-        <Badge variant="secondary" className="text-xs">
-          {upcomingAll.length} upcoming · {thisWeekCount} this week · {thisMonthCount} this month
-        </Badge>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <CalendarClock className="h-6 w-6 text-primary" />
+          <h1 className="text-2xl font-bold tracking-tight">Event Timeline</h1>
+          <Badge variant="secondary" className="text-xs">{upcomingCount} upcoming · {thisWeekCount} this week</Badge>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {hasFilters && (
+            <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <X className="h-3 w-3" /> Clear filters
+            </button>
+          )}
+          <button
+            onClick={() => setFiltersOpen(prev => !prev)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+              filtersOpen || hasFilters ? "bg-primary/10 text-primary border-primary/30" : "bg-card text-muted-foreground border-border hover:border-primary/40"
+            )}
+          >
+            <Filter className="h-3.5 w-3.5" />
+            Filters
+            {hasFilters && <Badge variant="default" className="h-4 w-4 p-0 text-[9px] rounded-full flex items-center justify-center">{selectedCompetitions.length + selectedClubs.length}</Badge>}
+            <ChevronDown className={cn("h-3 w-3 transition-transform", filtersOpen && "rotate-180")} />
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <TimelineFilters
-        timeFilter={timeFilter} onTimeFilter={setTimeFilter}
-        selectedClubs={selectedClubs} onToggleClub={toggleClub}
-        selectedCompetitions={selectedCompetitions} onToggleCompetition={toggleCompetition}
-        selectedDays={selectedDays} onToggleDay={toggleDay}
-        homeAwayFilter={homeAwayFilter} onHomeAwayFilter={setHomeAwayFilter}
-        availableClubs={availableClubs} availableCompetitions={availableCompetitions}
-      />
+      {/* Collapsible filters */}
+      <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <CollapsibleContent>
+          <div className="rounded-xl border bg-card p-4 space-y-3">
+            {/* Competitions */}
+            <div>
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Competition</span>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {availableCompetitions.map(comp => (
+                  <button
+                    key={comp}
+                    onClick={() => toggleComp(comp)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all",
+                      selectedCompetitions.includes(comp)
+                        ? COMP_COLORS[comp] || "bg-primary/20 text-primary border-primary/40"
+                        : "bg-card text-muted-foreground border-border hover:border-primary/40"
+                    )}
+                  >
+                    {comp}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-      {/* Week at a glance */}
-      <WeekAtAGlance events={filteredEvents} onDayClick={handleDayClick} />
-
-      {/* Today section */}
-      {todayEvents.length > 0 ? (
-        <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-primary animate-pulse" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-primary">Today</h2>
-            <Badge variant="secondary" className="text-[10px]">{todayEvents.length} event{todayEvents.length !== 1 ? "s" : ""}</Badge>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {todayEvents.map(e => (
-              <TimelineEventCard key={e.id} event={e} allMatchEvents={getMatchEvents(e)} orders={getMatchOrders(e)} />
-            ))}
-          </div>
-        </div>
-      ) : nextEvent ? (
-        <div className="rounded-lg border bg-card px-4 py-3 flex items-center gap-3">
-          <CalendarClock className="h-4 w-4 text-primary" />
-          <span className="text-sm text-muted-foreground">
-            Next event: <span className="font-semibold text-foreground">{nextEvent.home_team} vs {nextEvent.away_team}</span>
-            {" "}in {differenceInDays(new Date(nextEvent.event_date), today)}d
-          </span>
-        </div>
-      ) : null}
-
-      {/* Week groups */}
-      {weeklyGroups.length > 0 && (
-        <div className="space-y-1">
-          <div className="flex justify-end">
-            <button onClick={() => setExpandAll(prev => !prev)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-              <ChevronsUpDown className="h-3.5 w-3.5" />
-              {expandAll ? "Collapse all" : "Expand all"}
-            </button>
-          </div>
-
-          <div className="relative">
-            <div className="absolute left-[11px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-primary/40 via-border to-border" />
-            <div className="space-y-4">
-              {weeklyGroups.map(group => {
-                const defaultOpen = group.isCurrentWeek || group.isNextWeek || expandAll;
-                return (
-                  <div key={group.key} ref={el => { weekRefs.current[group.key] = el; }}>
-                    <Collapsible defaultOpen={defaultOpen} open={expandAll ? true : undefined}>
-                      <CollapsibleTrigger className="flex items-center gap-3 mb-2 w-full text-left group/trigger">
-                        <div className="h-6 w-6 rounded-full bg-muted border-2 border-border flex items-center justify-center z-10 shrink-0">
-                          <div className="h-2 w-2 rounded-full bg-muted-foreground" />
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-                          <h2 className="text-sm font-semibold text-muted-foreground group-hover/trigger:text-foreground transition-colors">{group.label}</h2>
-                          <Badge variant="outline" className="text-[10px]">{group.events.length} event{group.events.length !== 1 ? "s" : ""}</Badge>
-                          <span className="text-[10px] text-muted-foreground">{group.days}</span>
-                          {group.isBusy && (
-                            <span className="flex items-center gap-0.5 text-[10px] text-amber-400 font-medium">
-                              <Flame className="h-3 w-3" /> Busy
-                            </span>
-                          )}
-                        </div>
-                        <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-data-[state=open]/trigger:rotate-180" />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="ml-9 grid grid-cols-1 lg:grid-cols-2 gap-3">
-                          {group.events.map(e => (
-                            <TimelineEventCard key={e.id} event={e} allMatchEvents={getMatchEvents(e)} orders={getMatchOrders(e)} />
-                          ))}
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  </div>
-                );
-              })}
+            {/* Clubs */}
+            <div>
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Club / Team</span>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {availableClubs.map(club => (
+                  <button
+                    key={club}
+                    onClick={() => toggleClub(club)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all",
+                      selectedClubs.includes(club)
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-card text-muted-foreground border-border hover:border-primary/40"
+                    )}
+                  >
+                    {club}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
 
-      {/* No results */}
-      {filteredEvents.length === 0 && (
-        <div className="rounded-xl border bg-card p-12 text-center">
-          <CalendarClock className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-          <p className="text-lg font-medium">No events match your filters</p>
-          <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters to see more events.</p>
-        </div>
-      )}
+      {/* Calendar + Detail side by side on desktop, stacked on mobile */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-5">
+        {/* Calendar */}
+        <TimelineCalendar
+          events={filteredEvents}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          currentMonth={currentMonth}
+          onMonthChange={setCurrentMonth}
+        />
 
-      {/* Recently passed */}
-      {recentlyPassed.length > 0 && (
-        <Collapsible>
-          <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full">
-            <ChevronRight className="h-4 w-4 transition-transform data-[state=open]:rotate-90" />
-            <span>Recently Passed ({recentlyPassed.length})</span>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3 opacity-60">
-              {recentlyPassed.map(e => (
-                <TimelineEventCard key={e.id} event={e} allMatchEvents={getMatchEvents(e)} orders={getMatchOrders(e)} />
-              ))}
+        {/* Selected day detail panel */}
+        <div className="space-y-3">
+          {selectedDate ? (
+            <>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold">
+                  Around {format(selectedDate, "EEE dd MMM yyyy")}
+                </h2>
+                <Badge variant="outline" className="text-[10px]">{selectedDateEvents.length} event{selectedDateEvents.length !== 1 ? "s" : ""} nearby</Badge>
+              </div>
+
+              {groupedByDay.length === 0 ? (
+                <div className="rounded-xl border bg-card p-8 text-center">
+                  <p className="text-sm text-muted-foreground">No events around this date</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Try selecting a different day on the calendar</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {groupedByDay.map(group => (
+                    <div key={group.date.toISOString()}>
+                      <div className={cn(
+                        "flex items-center gap-2 mb-2 px-2 py-1 rounded-md",
+                        group.isSelectedDay && "bg-primary/10"
+                      )}>
+                        <div className={cn("h-2 w-2 rounded-full", group.isSelectedDay ? "bg-primary" : "bg-muted-foreground/40")} />
+                        <span className={cn("text-xs font-semibold", group.isSelectedDay ? "text-primary" : "text-muted-foreground")}>
+                          {group.label}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">{group.events.length} event{group.events.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="space-y-2">
+                        {group.events.map(e => (
+                          <TimelineEventCard key={e.id} event={e} allMatchEvents={getMatchEvents(e)} orders={getMatchOrders(e)} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="rounded-xl border bg-card p-8 text-center">
+              <CalendarClock className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+              <p className="text-sm font-medium">Select a date</p>
+              <p className="text-xs text-muted-foreground mt-1">Click any day on the calendar to see events around that date</p>
             </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
+          )}
+        </div>
+      </div>
     </div>
   );
 }
