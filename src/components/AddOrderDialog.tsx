@@ -62,8 +62,12 @@ export default function AddOrderDialog({ onCreated }: Props) {
     const matched = events.filter((e) => {
       if (!form.club) return false;
       if (form.club === "world-cup") {
-        // Only show proper WC2026-M## events, deduplicated by match_code
-        return e.match_code && /^WC2026-M\d+$/.test(e.match_code);
+        // Only show WC events with match numbers 1-104
+        if (!e.match_code) return false;
+        const m = e.match_code.match(/^(?:WC2026-M|#M)(\d+)/);
+        if (!m) return false;
+        const num = parseInt(m[1]);
+        return num >= 1 && num <= 104;
       }
       const clubLabel = CLUBS.find((c) => c.value === form.club)?.label || "";
       const clubName = clubLabel.split(" (")[0].toLowerCase();
@@ -73,8 +77,8 @@ export default function AddOrderDialog({ onCreated }: Props) {
     if (form.club === "world-cup") {
       // Sort by match number
       return deduped.sort((a, b) => {
-        const numA = parseInt(a.match_code?.replace("WC2026-M", "") || "0");
-        const numB = parseInt(b.match_code?.replace("WC2026-M", "") || "0");
+        const numA = parseInt((a.match_code?.match(/^(?:WC2026-M|#M)(\d+)/)?.[1]) || "0");
+        const numB = parseInt((b.match_code?.match(/^(?:WC2026-M|#M)(\d+)/)?.[1]) || "0");
         return numA - numB;
       });
     }
