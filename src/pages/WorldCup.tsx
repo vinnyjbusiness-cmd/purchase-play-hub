@@ -320,6 +320,7 @@ export default function WorldCup() {
   const [filterVenue, setFilterVenue] = useState("all");
   const [filterEvent, setFilterEvent] = useState("all");
   const [filterPlatform, setFilterPlatform] = useState("all");
+  const [filterSupplier, setFilterSupplier] = useState("all");
 
   const [wcEvents, setWcEvents] = useState<EventInfo[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -663,15 +664,25 @@ export default function WorldCup() {
   };
 
   // ── PURCHASES TAB ──
+  const supplierOptions = useMemo(() => {
+    const set = new Map<string, string>();
+    purchases.forEach(p => {
+      const sup = supplierMap[p.supplier_id];
+      if (sup) set.set(p.supplier_id, sup.name);
+    });
+    return [...set.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label }));
+  }, [purchases, supplierMap]);
+
   const filteredPurchases = useMemo(() => purchases.filter(p => {
     if (!filteredEventIds.has(p.event_id)) return false;
+    if (filterSupplier !== "all" && p.supplier_id !== filterSupplier) return false;
     if (search && tab === "purchases") {
       const q = search.toLowerCase();
       const sup = supplierMap[p.supplier_id];
       return (p.category || "").toLowerCase().includes(q) || (sup?.name || "").toLowerCase().includes(q) || (p.notes || "").toLowerCase().includes(q);
     }
     return true;
-  }), [purchases, filteredEventIds, search, tab, supplierMap]);
+  }), [purchases, filteredEventIds, filterSupplier, search, tab, supplierMap]);
 
   const purchasesByEvent = useMemo(() => {
     const map = new Map<string, { event: EventInfo | null; purchases: Purchase[] }>();
@@ -684,6 +695,27 @@ export default function WorldCup() {
     });
     return [...map.values()].sort((a, b) => (a.event?.event_date || "").localeCompare(b.event?.event_date || ""));
   }, [filteredPurchases, wcEvents]);
+
+  // Group purchases by Round → Event → Supplier
+  const purchasesByRound = useMemo(() => {
+    const roundMap = new Map<string, { event: EventInfo; purchases: Purchase[] }[]>();
+    purchasesByEvent.forEach(({ event, purchases: evP }) => {
+      if (!event) return;
+      const parsed = getParsedEvent(event);
+      const round = getWCRound(event.match_code) !== "Other" ? getWCRound(event.match_code) : (parsed.round || "Group Stage");
+      if (!roundMap.has(round)) roundMap.set(round, []);
+      roundMap.get(round)!.push({ event, purchases: evP });
+    });
+    return [...roundMap.entries()]
+      .sort(([a], [b]) => (WC_ROUND_ORDER.indexOf(a) === -1 ? 99 : WC_ROUND_ORDER.indexOf(a)) - (WC_ROUND_ORDER.indexOf(b) === -1 ? 99 : WC_ROUND_ORDER.indexOf(b)))
+      .map(([round, events]) => ({
+        round,
+        events: events.sort((a, b) => a.event.event_date.localeCompare(b.event.event_date)),
+        totalPurchases: events.reduce((s, e) => s + e.purchases.length, 0),
+        totalTickets: events.reduce((s, e) => s + e.purchases.reduce((t, p) => t + p.quantity, 0), 0),
+        totalCost: events.reduce((s, e) => s + e.purchases.reduce((t, p) => t + (p.total_cost_gbp || p.quantity * p.unit_cost), 0), 0),
+      }));
+  }, [purchasesByEvent]);
 
   // ── INVENTORY TAB ──
   const filteredInv = useMemo(() => inventory.filter(i => {
@@ -1309,109 +1341,183 @@ export default function WorldCup() {
               </div>
               <FilterSelect label="Round" value={filterRound} onValueChange={setFilterRound} options={roundOptions} />
               <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
+              <FilterSelect label="Supplier" value={filterSupplier} onValueChange={setFilterSupplier} options={supplierOptions} />
             </div>
             <div className="flex items-center justify-between">
               <p className="text-muted-foreground text-sm">{filteredPurchases.length} purchase{filteredPurchases.length !== 1 ? "s" : ""} across {purchasesByEvent.length} event{purchasesByEvent.length !== 1 ? "s" : ""}</p>
               <AddPurchaseDialog onCreated={load} defaultClub="world-cup" />
             </div>
 
-            <div className="space-y-3">
-              {purchasesByEvent.length === 0 && <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No World Cup purchases found</div>}
-              {purchasesByEvent.map(({ event, purchases: evPurchases }) => {
-                const parsed = event ? getParsedEvent(event) : null;
-                const flag1 = parsed ? getFlag(parsed.team1) : "";
-                const flag2 = parsed ? getFlag(parsed.team2) : "";
-                const team1 = parsed?.team1 || event?.home_team || "Unknown";
-                const team2 = parsed?.team2 || event?.away_team || "Unknown";
-                const matchLabel = parsed?.matchNum ? `M${parsed.matchNum}` : null;
-                const totalCostEv = evPurchases.reduce((s, p) => s + (p.total_cost_gbp || p.quantity * p.unit_cost), 0);
-                const totalQty = evPurchases.reduce((s, p) => s + p.quantity, 0);
-                const eventKey = event?.id || "unknown";
-                const isCollapsed = collapsedEvents.has(`p-${eventKey}`);
+            <div className="space-y-4">
+              {purchasesByRound.length === 0 && <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">No World Cup purchases found</div>}
+              {purchasesByRound.map(({ round, events: roundEvents, totalPurchases: roundTotal, totalTickets: roundTickets, totalCost: roundCost }) => {
+                const isRoundCollapsed = collapsedRounds.has(`pr-${round}`);
+                const gradient = WC_ROUND_GRADIENTS[round] || "from-emerald-600/80 to-emerald-800/80";
 
                 return (
-                  <div key={eventKey} className="rounded-xl border bg-card overflow-hidden shadow-sm">
-                    <button onClick={() => toggleEvent(`p-${eventKey}`)}
-                      className="w-full flex items-center justify-between px-5 py-3 text-left transition-colors hover:bg-muted/40">
-                      <div className="flex items-center gap-3 min-w-0">
-                        {isCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {matchLabel && <Badge className="bg-primary/20 text-primary text-[10px] font-bold border-primary/30">{matchLabel}</Badge>}
-                            <span className="font-bold text-base">
-                              {flag1 && <span className="mr-1">{flag1}</span>}{team1}
-                              <span className="text-muted-foreground font-normal mx-2">vs</span>
-                              {flag2 && <span className="mr-1">{flag2}</span>}{team2}
-                            </span>
-                          </div>
-                          {event && <p className="text-xs text-muted-foreground mt-0.5">{format(new Date(event.event_date), "EEE dd MMM yyyy, HH:mm")}{event.venue && ` · ${event.venue}`}</p>}
-                        </div>
+                  <div key={round} className="space-y-2">
+                    {/* Round header */}
+                    <button onClick={() => setCollapsedRounds(prev => { const n = new Set(prev); n.has(`pr-${round}`) ? n.delete(`pr-${round}`) : n.add(`pr-${round}`); return n; })}
+                      className={cn("w-full flex items-center justify-between rounded-xl px-5 py-3 text-white text-left bg-gradient-to-r shadow-md transition-all hover:brightness-110", gradient)}>
+                      <div className="flex items-center gap-3">
+                        {isRoundCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                        <span className="font-black text-lg uppercase tracking-wide">{round}</span>
                       </div>
-                      <div className="flex items-center gap-4 shrink-0">
-                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tickets</p><p className="text-sm font-mono font-bold">{totalQty}</p></div>
-                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total Cost</p><p className="text-sm font-mono font-bold">{fmt(totalCostEv)}</p></div>
+                      <div className="flex items-center gap-5">
+                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider opacity-80">Purchases</p><p className="text-base font-mono font-black">{roundTotal}</p></div>
+                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider opacity-80">Tickets</p><p className="text-base font-mono font-black">{roundTickets}</p></div>
+                        <div className="text-center"><p className="text-[10px] uppercase tracking-wider opacity-80">Total Cost</p><p className="text-base font-mono font-black">{fmt(roundCost)}</p></div>
                       </div>
                     </button>
-                    {!isCollapsed && (
-                      <div className="border-t overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="text-[10px] uppercase tracking-wider">Supplier</TableHead>
-                              <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
-                              <TableHead className="text-[10px] uppercase tracking-wider text-center">Qty</TableHead>
-                              <TableHead className="text-[10px] uppercase tracking-wider text-right">Unit Cost</TableHead>
-                              <TableHead className="text-[10px] uppercase tracking-wider text-right">Total</TableHead>
-                              <TableHead className="text-[10px] uppercase tracking-wider text-center">Paid</TableHead>
-                              <TableHead className="text-[10px] uppercase tracking-wider">Notes</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {evPurchases.map((p, idx) => {
-                              const sym = currSym(p.currency);
-                              return (
-                                <TableRow key={p.id} className={cn("text-xs h-10", orderRowColors[idx % orderRowColors.length])}>
-                                  <TableCell className="py-2">
-                                    <Badge variant="outline" className="text-[10px] bg-muted font-medium">{supplierMap[p.supplier_id]?.name || "—"}</Badge>
-                                  </TableCell>
-                                  <TableCell className="py-2">{p.category}</TableCell>
-                                  <TableCell className="py-2 text-center font-mono font-bold">{p.quantity}</TableCell>
-                                  <TableCell className="py-2 text-right font-mono">
-                                    {p.currency !== "GBP" && <Badge variant="outline" className="text-[9px] mr-1 px-1 py-0 font-mono">{p.currency}</Badge>}
-                                    {sym}{p.unit_cost.toFixed(2)}
-                                  </TableCell>
-                                  <TableCell className="py-2 text-right font-mono font-bold">
-                                    {p.currency !== "GBP" && <Badge variant="outline" className="text-[9px] mr-1 px-1 py-0 font-mono">{p.currency}</Badge>}
-                                    {sym}{(p.quantity * p.unit_cost).toFixed(2)}
-                                  </TableCell>
-                                  <TableCell className="py-2 text-center">
-                                    <div className="flex flex-col items-center gap-0.5">
-                                      {p.supplier_paid ? (
-                                        <Switch checked={true} onCheckedChange={() => toggleSupplierPaid(p.id, true)} className="scale-75" />
-                                      ) : (
-                                        <Popover open={paidConfirm === p.id} onOpenChange={open => setPaidConfirm(open ? p.id : null)}>
-                                          <PopoverTrigger asChild>
-                                            <div><Switch checked={false} onCheckedChange={() => setPaidConfirm(p.id)} className="scale-75" /></div>
-                                          </PopoverTrigger>
-                                          <PopoverContent className="w-56 p-3" align="center">
-                                            <p className="text-sm font-medium mb-1">Mark as paid?</p>
-                                            <p className="text-xs text-muted-foreground mb-3">This cannot be undone.</p>
-                                            <div className="flex gap-2">
-                                              <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={() => setPaidConfirm(null)}>Cancel</Button>
-                                              <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => toggleSupplierPaid(p.id, false)}>Confirm</Button>
-                                            </div>
-                                          </PopoverContent>
-                                        </Popover>
-                                      )}
-                                      {paidTimestamps[p.id] && <span className="text-[9px] text-muted-foreground">Paid {paidTimestamps[p.id]}</span>}
+
+                    {!isRoundCollapsed && (
+                      <div className="space-y-3 pl-2">
+                        {roundEvents.map(({ event, purchases: evPurchases }) => {
+                          const parsed = getParsedEvent(event);
+                          const flag1 = getFlag(parsed.team1);
+                          const flag2 = getFlag(parsed.team2);
+                          const team1 = parsed.team1 || event.home_team;
+                          const team2 = parsed.team2 || event.away_team;
+                          const matchLabel = parsed.matchNum ? `M${parsed.matchNum}` : null;
+                          const totalCostEv = evPurchases.reduce((s, p) => s + (p.total_cost_gbp || p.quantity * p.unit_cost), 0);
+                          const totalQty = evPurchases.reduce((s, p) => s + p.quantity, 0);
+                          const eventKey = event.id;
+                          const isCollapsed = collapsedEvents.has(`p-${eventKey}`);
+
+                          // Group by supplier within event
+                          const bySupplier = new Map<string, Purchase[]>();
+                          evPurchases.forEach(p => {
+                            if (!bySupplier.has(p.supplier_id)) bySupplier.set(p.supplier_id, []);
+                            bySupplier.get(p.supplier_id)!.push(p);
+                          });
+                          const supplierEntries = [...bySupplier.entries()].sort((a, b) =>
+                            (supplierMap[a[0]]?.name || "").localeCompare(supplierMap[b[0]]?.name || "")
+                          );
+
+                          return (
+                            <div key={eventKey} className="rounded-xl border bg-card overflow-hidden shadow-sm">
+                              <button onClick={() => toggleEvent(`p-${eventKey}`)}
+                                className="w-full flex items-center justify-between px-5 py-3 text-left transition-colors hover:bg-muted/40">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  {isCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {matchLabel && <Badge className="bg-primary/20 text-primary text-[10px] font-bold border-primary/30">{matchLabel}</Badge>}
+                                      <span className="font-bold text-base">
+                                        {flag1 && <span className="mr-1">{flag1}</span>}{team1}
+                                        <span className="text-muted-foreground font-normal mx-2">vs</span>
+                                        {flag2 && <span className="mr-1">{flag2}</span>}{team2}
+                                      </span>
                                     </div>
-                                  </TableCell>
-                                  <TableCell className="py-2 text-muted-foreground truncate max-w-[150px]">{p.notes || "—"}</TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
+                                    <p className="text-xs text-muted-foreground mt-0.5">{format(new Date(event.event_date), "EEE dd MMM yyyy, HH:mm")}{event.venue && ` · ${event.venue}`}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-4 shrink-0">
+                                  <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Suppliers</p><p className="text-sm font-mono font-bold">{supplierEntries.length}</p></div>
+                                  <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tickets</p><p className="text-sm font-mono font-bold">{totalQty}</p></div>
+                                  <div className="text-center"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total Cost</p><p className="text-sm font-mono font-bold">{fmt(totalCostEv)}</p></div>
+                                </div>
+                              </button>
+                              {!isCollapsed && (
+                                <div className="border-t">
+                                  {supplierEntries.map(([suppId, suppPurchases], sIdx) => {
+                                    const supName = supplierMap[suppId]?.name || "Unknown";
+                                    const supQty = suppPurchases.reduce((s, p) => s + p.quantity, 0);
+                                    const supCost = suppPurchases.reduce((s, p) => s + (p.total_cost_gbp || p.quantity * p.unit_cost), 0);
+                                    const supKey = `${eventKey}__${suppId}`;
+                                    const isSupCollapsed = collapsedCategories.has(supKey);
+                                    const supGradient = GRADIENT_PALETTE[sIdx % GRADIENT_PALETTE.length];
+
+                                    return (
+                                      <div key={supKey}>
+                                        {/* Supplier sub-header */}
+                                        {supplierEntries.length > 1 && (
+                                          <button onClick={() => toggleCategory(supKey)}
+                                            className={cn("w-full flex items-center justify-between px-5 py-2 bg-gradient-to-r text-white text-sm transition-all hover:brightness-110", supGradient)}>
+                                            <div className="flex items-center gap-2">
+                                              {isSupCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                              <Users className="h-3.5 w-3.5" />
+                                              <span className="font-bold tracking-wide">{supName}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                              <span className="text-xs font-mono">{suppPurchases.length} purchase{suppPurchases.length !== 1 ? "s" : ""}</span>
+                                              <span className="text-xs font-mono">{supQty} ticket{supQty !== 1 ? "s" : ""}</span>
+                                              <span className="text-xs font-mono font-bold">{fmt(supCost)}</span>
+                                            </div>
+                                          </button>
+                                        )}
+                                        {!isSupCollapsed && (
+                                          <div className="overflow-hidden">
+                                            <Table>
+                                              <TableHeader>
+                                                <TableRow>
+                                                  {supplierEntries.length <= 1 && <TableHead className="text-[10px] uppercase tracking-wider">Supplier</TableHead>}
+                                                  <TableHead className="text-[10px] uppercase tracking-wider">Category</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider text-center">Qty</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider text-right">Unit Cost</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider text-right">Total</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider text-center">Paid</TableHead>
+                                                  <TableHead className="text-[10px] uppercase tracking-wider">Notes</TableHead>
+                                                </TableRow>
+                                              </TableHeader>
+                                              <TableBody>
+                                                {suppPurchases.map((p, idx) => {
+                                                  const sym = currSym(p.currency);
+                                                  return (
+                                                    <TableRow key={p.id} className={cn("text-xs h-10", orderRowColors[idx % orderRowColors.length])}>
+                                                      {supplierEntries.length <= 1 && (
+                                                        <TableCell className="py-2">
+                                                          <Badge variant="outline" className="text-[10px] bg-muted font-medium">{supName}</Badge>
+                                                        </TableCell>
+                                                      )}
+                                                      <TableCell className="py-2">{p.category}</TableCell>
+                                                      <TableCell className="py-2 text-center font-mono font-bold">{p.quantity}</TableCell>
+                                                      <TableCell className="py-2 text-right font-mono">
+                                                        {p.currency !== "GBP" && <Badge variant="outline" className="text-[9px] mr-1 px-1 py-0 font-mono">{p.currency}</Badge>}
+                                                        {sym}{p.unit_cost.toFixed(2)}
+                                                      </TableCell>
+                                                      <TableCell className="py-2 text-right font-mono font-bold">
+                                                        {p.currency !== "GBP" && <Badge variant="outline" className="text-[9px] mr-1 px-1 py-0 font-mono">{p.currency}</Badge>}
+                                                        {sym}{(p.quantity * p.unit_cost).toFixed(2)}
+                                                      </TableCell>
+                                                      <TableCell className="py-2 text-center">
+                                                        <div className="flex flex-col items-center gap-0.5">
+                                                          {p.supplier_paid ? (
+                                                            <Switch checked={true} onCheckedChange={() => toggleSupplierPaid(p.id, true)} className="scale-75" />
+                                                          ) : (
+                                                            <Popover open={paidConfirm === p.id} onOpenChange={open => setPaidConfirm(open ? p.id : null)}>
+                                                              <PopoverTrigger asChild>
+                                                                <div><Switch checked={false} onCheckedChange={() => setPaidConfirm(p.id)} className="scale-75" /></div>
+                                                              </PopoverTrigger>
+                                                              <PopoverContent className="w-56 p-3" align="center">
+                                                                <p className="text-sm font-medium mb-1">Mark as paid?</p>
+                                                                <p className="text-xs text-muted-foreground mb-3">This cannot be undone.</p>
+                                                                <div className="flex gap-2">
+                                                                  <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={() => setPaidConfirm(null)}>Cancel</Button>
+                                                                  <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => toggleSupplierPaid(p.id, false)}>Confirm</Button>
+                                                                </div>
+                                                              </PopoverContent>
+                                                            </Popover>
+                                                          )}
+                                                          {paidTimestamps[p.id] && <span className="text-[9px] text-muted-foreground">Paid {paidTimestamps[p.id]}</span>}
+                                                        </div>
+                                                      </TableCell>
+                                                      <TableCell className="py-2 text-muted-foreground truncate max-w-[150px]">{p.notes || "—"}</TableCell>
+                                                    </TableRow>
+                                                  );
+                                                })}
+                                              </TableBody>
+                                            </Table>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
