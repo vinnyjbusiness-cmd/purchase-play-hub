@@ -131,12 +131,11 @@ function parseEventTeams(homeTeam: string, awayTeam: string): { team1: string; t
 }
 
 function getRoundFromMatchNum(num: number): string {
-  if (num <= 48) return "Group Stage";
-  if (num <= 56) return "3rd Place Deciders";
-  if (num <= 64) return "Round of 32";
-  if (num <= 80) return "Round of 16";
-  if (num <= 88) return "Quarter-Finals";
-  if (num <= 92) return "Semi-Finals";
+  if (num <= 72) return "Group Stage";
+  if (num <= 88) return "Round of 32";
+  if (num <= 96) return "Round of 16";
+  if (num <= 100) return "Quarter-Finals";
+  if (num <= 102) return "Semi-Finals";
   if (num === 103) return "3rd Place Play-off";
   if (num === 104) return "Final";
   return "Knockout Stage";
