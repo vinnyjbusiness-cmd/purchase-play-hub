@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   X, Clock, Ticket, CheckCircle2, AlertTriangle, Package,
-  Send, Phone, MapPin, CalendarClock, Eye,
+  Send, Phone, MapPin, CalendarClock, Eye, Plus, Boxes, Users, Inbox,
 } from "lucide-react";
 import { format, differenceInSeconds } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -160,7 +160,8 @@ export default function WarRoom() {
             </div>
             {/* Event Picker */}
             <Select value={selectedEventId || ""} onValueChange={setSelectedEventId}>
-              <SelectTrigger className="w-[360px] h-8 text-xs">
+              <SelectTrigger className="w-[400px] h-10 text-sm font-semibold border-2 border-primary/40 bg-primary/5 rounded-lg gap-2">
+                <CalendarClock className="h-4 w-4 text-primary flex-shrink-0" />
                 <SelectValue placeholder="Select event..." />
               </SelectTrigger>
               <SelectContent>
@@ -179,7 +180,8 @@ export default function WarRoom() {
       </div>
 
       {event && (
-        <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-8 min-h-[calc(100vh-56px)] flex flex-col">
+          <div className="flex-1 space-y-8">
           {/* Event Hero */}
           <div className="text-center space-y-3 animate-fade-in">
             <div className="flex items-center justify-center gap-2">
@@ -318,14 +320,63 @@ export default function WarRoom() {
             </div>
           )}
 
-          {/* All Clear State */}
-          {pending === 0 && awaitingDelivery.length === 0 && (
+          {/* Quick Actions Panel */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Add Order", icon: Plus, onClick: () => navigate(`/orders`) },
+              { label: "View Inventory", icon: Boxes, onClick: () => navigate(`/inventory`) },
+              { label: "Contact Supplier", icon: Users, onClick: () => navigate(`/suppliers`) },
+            ].map(action => (
+              <button
+                key={action.label}
+                onClick={action.onClick}
+                className="flex items-center gap-3 rounded-xl border bg-card p-4 hover:bg-muted/50 transition-colors text-left"
+              >
+                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <action.icon className="h-4 w-4 text-primary" />
+                </div>
+                <span className="text-sm font-medium">{action.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Pending Orders Warning */}
+          {pending > 0 && (
+            <div className="rounded-xl border border-warning/30 bg-warning/5 p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-warning" />
+                <div>
+                  <p className="text-sm font-semibold text-warning">{pending} order{pending !== 1 ? "s" : ""} need{pending === 1 ? "s" : ""} attention</p>
+                  <p className="text-xs text-muted-foreground">Pending orders require fulfilment action</p>
+                </div>
+              </div>
+              <Button size="sm" variant="outline" className="border-warning/30 text-warning hover:bg-warning/10" onClick={() => navigate("/orders")}>
+                View Pending
+              </Button>
+            </div>
+          )}
+
+          {/* Empty State — no orders at all */}
+          {totalOrders === 0 && (
+            <div className="rounded-xl border border-border bg-card p-8 text-center">
+              <Inbox className="h-12 w-12 text-muted-foreground/40 mx-auto mb-3" />
+              <h2 className="text-xl font-bold">No orders yet for this match</h2>
+              <p className="text-sm text-muted-foreground mt-1 mb-4">Get started by adding your first order for this event.</p>
+              <Button onClick={() => navigate("/orders")}>
+                <Plus className="h-4 w-4 mr-2" /> Add First Order
+              </Button>
+            </div>
+          )}
+
+          {/* All Clear State — orders exist and all fulfilled/delivered */}
+          {totalOrders > 0 && pending === 0 && awaitingDelivery.length === 0 && (
             <div className="rounded-xl border border-success/30 bg-success/5 p-8 text-center">
               <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-3" />
               <h2 className="text-xl font-bold text-success">All Clear</h2>
               <p className="text-sm text-muted-foreground mt-1">All orders are fulfilled and delivered. You're ready for game day.</p>
             </div>
           )}
+          </div>
         </div>
       )}
 
