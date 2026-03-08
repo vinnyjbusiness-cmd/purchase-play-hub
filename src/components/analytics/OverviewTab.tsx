@@ -266,29 +266,21 @@ export default function OverviewTab({ events, orders, purchases, groupedIds, pla
           ) : (
             <>
               <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie
-                    data={platformBreakdown}
-                    dataKey="revenue"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={90}
-                    innerRadius={50}
-                    paddingAngle={2}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    labelLine={{ stroke: "hsl(var(--muted-foreground))", strokeWidth: 1 }}
-                    fontSize={10}
-                  >
-                    {platformBreakdown.map((p, i) => (
-                      <Cell key={p.name} fill={p.color} />
-                    ))}
-                  </Pie>
+                <BarChart data={platformBreakdown} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `£${v}`} />
                   <Tooltip
                     contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
                     formatter={(value: number) => fmt(value)}
                   />
-                </PieChart>
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="revenue" name="Revenue" radius={[4, 4, 0, 0]}>
+                    {platformBreakdown.map((p) => (
+                      <Cell key={p.name} fill={p.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
               <Table>
                 <TableHeader>
