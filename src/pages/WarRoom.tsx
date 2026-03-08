@@ -160,7 +160,8 @@ export default function WarRoom() {
             </div>
             {/* Event Picker */}
             <Select value={selectedEventId || ""} onValueChange={setSelectedEventId}>
-              <SelectTrigger className="w-[360px] h-8 text-xs">
+              <SelectTrigger className="w-[400px] h-10 text-sm font-semibold border-2 border-primary/40 bg-primary/5 rounded-lg gap-2">
+                <CalendarClock className="h-4 w-4 text-primary flex-shrink-0" />
                 <SelectValue placeholder="Select event..." />
               </SelectTrigger>
               <SelectContent>
