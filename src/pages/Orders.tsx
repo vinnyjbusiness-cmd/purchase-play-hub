@@ -597,11 +597,7 @@ export default function Orders() {
         {grouped.map((group, groupIndex) => {
           const eventKey = group.eventIds[0];
           const isExpanded = expandedEvents.has(eventKey);
-          const totalQty = group.orders.reduce((s, o) => s + o.quantity, 0);
-          const totalValue = group.orders.reduce((s, o) => s + (Number(o.sale_price) * o.quantity), 0);
-          const deliveredCount = group.orders.filter(o => o.status === "delivered").length;
-          const totalCost = group.orders.reduce((s, o) => s + (orderCosts[o.id] || 0), 0);
-          const eventPL = totalValue - totalCost;
+           const totalQty = group.orders.reduce((s, o) => s + o.quantity, 0);
           const totalInventory = group.eventIds.reduce((s, eid) => s + (eventInventoryCounts[eid] || 0), 0);
           const bgClass = EVENT_PALETTE[groupIndex % EVENT_PALETTE.length];
 
