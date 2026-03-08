@@ -3,10 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   ArrowLeft, Package, ShoppingCart, TrendingUp, Percent, Ticket,
-  Users, ChevronRight, DollarSign, AlertTriangle, CheckCircle2,
+  Users, ChevronRight, ChevronDown, DollarSign, AlertTriangle, CheckCircle2, Link2, Unlink,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -48,6 +48,12 @@ interface Order {
   block: string | null;
 }
 
+interface OrderLine {
+  id: string;
+  order_id: string;
+  inventory_id: string;
+}
+
 interface EventInfo {
   id: string; match_code: string; home_team: string; away_team: string;
   event_date: string; competition: string; venue?: string | null;
@@ -55,22 +61,12 @@ interface EventInfo {
 interface SupplierInfo { id: string; name: string; }
 interface PlatformInfo { id: string; name: string; }
 
-function matchesClub(event: EventInfo, clubValue: string): boolean {
-  if (clubValue !== "world-cup" && event.competition.toLowerCase().includes("world cup")) return false;
-  if (clubValue === "all") return true;
-  const clubLabel = CLUBS.find(c => c.value === clubValue)?.label.toLowerCase() || "";
-  if (clubValue === "world-cup") return event.competition.toLowerCase().includes("world cup");
-  return (
-    event.home_team.toLowerCase().includes(clubLabel.split(" (")[0].toLowerCase()) ||
-    event.away_team.toLowerCase().includes(clubLabel.split(" (")[0].toLowerCase())
-  );
-}
-
 const fmt = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
 
 export default function Finance() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [orderLines, setOrderLines] = useState<OrderLine[]>([]);
   const [events, setEvents] = useState<EventInfo[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierInfo[]>([]);
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
@@ -81,12 +77,14 @@ export default function Finance() {
     Promise.all([
       supabase.from("purchases").select("id,supplier_order_id,quantity,unit_cost,total_cost,total_cost_gbp,currency,purchase_date,supplier_paid,notes,category,section,event_id,supplier_id"),
       supabase.from("orders").select("id,order_ref,buyer_name,sale_price,fees,net_received,quantity,order_date,payment_received,status,event_id,platform_id,category,block"),
+      supabase.from("order_lines").select("id,order_id,inventory_id"),
       supabase.from("events").select("id,match_code,home_team,away_team,event_date,competition,venue"),
       supabase.from("suppliers").select("id,name"),
       supabase.from("platforms").select("id,name"),
-    ]).then(([purch, ord, ev, sup, plat]) => {
+    ]).then(([purch, ord, ol, ev, sup, plat]) => {
       setPurchases(purch.data || []);
       setOrders(ord.data || []);
+      setOrderLines(ol.data || []);
       setEvents(ev.data || []);
       setSuppliers(sup.data || []);
       setPlatforms(plat.data || []);
@@ -96,6 +94,16 @@ export default function Finance() {
   const supplierMap = useMemo(() => Object.fromEntries(suppliers.map(s => [s.id, s])), [suppliers]);
   const platformMap = useMemo(() => Object.fromEntries(platforms.map(p => [p.id, p])), [platforms]);
   const { unique: dedupedEvents, groupedIds } = useMemo(() => deduplicateEvents(events), [events]);
+
+  // order_lines grouped by order_id
+  const linesByOrder = useMemo(() => {
+    const map = new Map<string, OrderLine[]>();
+    orderLines.forEach(ol => {
+      if (!map.has(ol.order_id)) map.set(ol.order_id, []);
+      map.get(ol.order_id)!.push(ol);
+    });
+    return map;
+  }, [orderLines]);
 
   const activeClubs = useMemo(() => {
     return CLUBS.filter(club => {
@@ -130,7 +138,7 @@ export default function Finance() {
     };
   }, [selectedClub, purchases, orders, dedupedEvents, groupedIds]);
 
-  const totalRevenue = filteredData.orders.reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
+  const totalRevenue = filteredData.orders.reduce((s, o) => s + (o.sale_price * o.quantity) - o.fees, 0);
   const totalCost = filteredData.purchases.reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
   const totalProfit = totalRevenue - totalCost;
 
@@ -141,10 +149,12 @@ export default function Finance() {
         const evPurchases = filteredData.purchases.filter(p => allIds.includes(p.event_id));
         const evOrders = filteredData.orders.filter(o => allIds.includes(o.event_id));
         const cost = evPurchases.reduce((s, p) => s + (p.total_cost_gbp || (p.quantity * p.unit_cost)), 0);
-        const revenue = evOrders.reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
+        const grossRevenue = evOrders.reduce((s, o) => s + o.sale_price * o.quantity, 0);
+        const totalFees = evOrders.reduce((s, o) => s + o.fees, 0);
+        const revenue = grossRevenue - totalFees;
         const ticketsBought = evPurchases.reduce((s, p) => s + p.quantity, 0);
         const ticketsSold = evOrders.reduce((s, o) => s + o.quantity, 0);
-        return { ev, evPurchases, evOrders, cost, revenue, profit: revenue - cost, ticketsBought, ticketsSold };
+        return { ev, evPurchases, evOrders, cost, revenue, grossRevenue, totalFees, profit: revenue - cost, ticketsBought, ticketsSold };
       })
       .filter(e => e.cost > 0 || e.revenue > 0)
       .sort((a, b) => new Date(a.ev.event_date).getTime() - new Date(b.ev.event_date).getTime());
@@ -171,12 +181,10 @@ export default function Finance() {
   }, [selectedEventId, eventBreakdown]);
 
   if (selectedEvent) {
-    const { ev, evPurchases, evOrders, cost, revenue, profit, ticketsBought, ticketsSold } = selectedEvent;
+    const { ev, evPurchases, evOrders, cost, revenue, grossRevenue, totalFees, profit, ticketsBought, ticketsSold } = selectedEvent;
     const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
     const unpaidCost = evPurchases.filter(p => !p.supplier_paid).reduce((s, p) => s + (p.total_cost_gbp || p.quantity * p.unit_cost), 0);
-    const pendingRevenue = evOrders.filter(o => !o.payment_received).reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0);
-    const totalFees = evOrders.reduce((s, o) => s + o.fees, 0);
-    const grossRevenue = evOrders.reduce((s, o) => s + o.sale_price * o.quantity, 0);
+    const pendingRevenue = evOrders.filter(o => !o.payment_received).reduce((s, o) => s + (o.sale_price * o.quantity) - o.fees, 0);
 
     // Group purchases by supplier
     const purchasesBySupplier = new Map<string, Purchase[]>();
@@ -208,12 +216,12 @@ export default function Finance() {
         name: platId === "direct" ? "Direct / WhatsApp" : (platformMap[platId]?.name || "Unknown"),
         orders: oList,
         totalQty: oList.reduce((s, o) => s + o.quantity, 0),
-        totalRevenue: oList.reduce((s, o) => s + (o.net_received || o.sale_price - o.fees), 0),
         grossRevenue: oList.reduce((s, o) => s + o.sale_price * o.quantity, 0),
         totalFees: oList.reduce((s, o) => s + o.fees, 0),
+        netRevenue: oList.reduce((s, o) => s + (o.sale_price * o.quantity) - o.fees, 0),
         receivedCount: oList.filter(o => o.payment_received).length,
       }))
-      .sort((a, b) => b.totalRevenue - a.totalRevenue);
+      .sort((a, b) => b.grossRevenue - a.grossRevenue);
 
     return (
       <div className="flex flex-col h-full animate-fade-in">
@@ -279,141 +287,175 @@ export default function Finance() {
             </div>
           )}
 
-          {/* ── PURCHASES BY SUPPLIER ── */}
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-              <Package className="h-4 w-4" /> Purchases — {ticketsBought} tickets · {fmt(cost)}
-            </h2>
-            {supplierGroups.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No purchases for this event.</p>
-            ) : (
-              <div className="space-y-3">
-                {supplierGroups.map(sg => (
-                  <div key={sg.name} className="rounded-xl border bg-card overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-3 bg-muted/40">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-semibold text-sm">{sg.name}</span>
-                        <Badge variant="outline" className="text-[10px]">{sg.totalQty} ticket{sg.totalQty !== 1 ? "s" : ""}</Badge>
+          {/* ── PURCHASES BY SUPPLIER (COLLAPSIBLE) ── */}
+          <Collapsible defaultOpen>
+            <CollapsibleTrigger className="w-full flex items-center justify-between group cursor-pointer">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <Package className="h-4 w-4" /> Purchases — {ticketsBought} tickets · {fmt(cost)}
+              </h2>
+              <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3">
+              {supplierGroups.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No purchases for this event.</p>
+              ) : (
+                <div className="space-y-3">
+                  {supplierGroups.map(sg => (
+                    <div key={sg.name} className="rounded-xl border bg-card overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-3 bg-muted/40">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-semibold text-sm">{sg.name}</span>
+                          <Badge variant="outline" className="text-[10px]">{sg.totalQty} ticket{sg.totalQty !== 1 ? "s" : ""}</Badge>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-bold text-sm">{fmt(sg.totalCost)}</span>
+                          {sg.allPaid ? (
+                            <Badge className="bg-success/10 text-success border-success/20 text-[10px]">
+                              <CheckCircle2 className="h-3 w-3 mr-1" /> All Paid
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px]">
+                              {sg.paidCount}/{sg.purchases.length} Paid
+                            </Badge>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono font-bold text-sm">{fmt(sg.totalCost)}</span>
-                        {sg.allPaid ? (
-                          <Badge className="bg-success/10 text-success border-success/20 text-[10px]">
-                            <CheckCircle2 className="h-3 w-3 mr-1" /> All Paid
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px]">
-                            {sg.paidCount}/{sg.purchases.length} Paid
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="divide-y">
-                      {sg.purchases.map(p => {
-                        const pCost = p.total_cost_gbp || (p.quantity * p.unit_cost);
-                        return (
-                          <div key={p.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                            <div className="flex items-center gap-3">
-                              <span className="font-mono font-bold text-xs bg-muted rounded px-1.5 py-0.5">{p.quantity}x</span>
-                              <span>{p.category}</span>
-                              {p.section && <span className="text-muted-foreground text-xs">· {p.section}</span>}
-                              {p.currency !== "GBP" && (
-                                <Badge variant="outline" className="text-[9px] font-mono px-1 py-0">{p.currency}</Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="font-mono font-medium">{fmt(pCost)}</span>
-                              <div className="flex items-center gap-1.5">
-                                <span className={cn("text-[10px] font-medium", p.supplier_paid ? "text-success" : "text-destructive")}>
-                                  {p.supplier_paid ? "Paid" : "Unpaid"}
-                                </span>
-                                <Switch
-                                  checked={p.supplier_paid}
-                                  onCheckedChange={() => toggleSupplierPaid(p.id, p.supplier_paid)}
-                                  className="scale-75"
-                                />
+                      <div className="divide-y">
+                        {sg.purchases.map(p => {
+                          const pCost = p.total_cost_gbp || (p.quantity * p.unit_cost);
+                          return (
+                            <div key={p.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="font-mono font-bold text-xs bg-muted rounded px-1.5 py-0.5">{p.quantity}x</span>
+                                <span className="truncate">{p.category}</span>
+                                {p.section && <span className="text-muted-foreground text-xs">· {p.section}</span>}
+                                <span className="text-muted-foreground text-xs font-mono">@ {fmt(p.unit_cost)} each</span>
+                                {p.currency !== "GBP" && (
+                                  <Badge variant="outline" className="text-[9px] font-mono px-1 py-0">{p.currency}</Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
+                                <span className="font-mono font-medium">{fmt(pCost)}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={cn("text-[10px] font-medium", p.supplier_paid ? "text-success" : "text-destructive")}>
+                                    {p.supplier_paid ? "Paid" : "Unpaid"}
+                                  </span>
+                                  <Switch
+                                    checked={p.supplier_paid}
+                                    onCheckedChange={() => toggleSupplierPaid(p.id, p.supplier_paid)}
+                                    className="scale-75"
+                                  />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
 
-          {/* ── SALES BY PLATFORM ── */}
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4" /> Sales — {ticketsSold} tickets · {fmt(revenue)} net
-            </h2>
-            {platformGroups.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No sales for this event.</p>
-            ) : (
-              <div className="space-y-3">
-                {platformGroups.map(pg => (
-                  <div key={pg.name} className="rounded-xl border bg-card overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-3 bg-muted/40">
-                      <div className="flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-semibold text-sm">{pg.name}</span>
-                        <Badge variant="outline" className="text-[10px]">{pg.totalQty} ticket{pg.totalQty !== 1 ? "s" : ""}</Badge>
+          {/* ── SALES BY PLATFORM (COLLAPSIBLE) ── */}
+          <Collapsible defaultOpen>
+            <CollapsibleTrigger className="w-full flex items-center justify-between group cursor-pointer">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <ShoppingCart className="h-4 w-4" /> Sales — {ticketsSold} tickets · {fmt(grossRevenue)} gross
+              </h2>
+              <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3">
+              {platformGroups.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No sales for this event.</p>
+              ) : (
+                <div className="space-y-3">
+                  {platformGroups.map(pg => (
+                    <div key={pg.name} className="rounded-xl border bg-card overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-3 bg-muted/40">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-semibold text-sm">{pg.name}</span>
+                          <Badge variant="outline" className="text-[10px]">{pg.totalQty} ticket{pg.totalQty !== 1 ? "s" : ""}</Badge>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <span className="font-mono font-bold text-sm">{fmt(pg.grossRevenue)}</span>
+                            {pg.totalFees > 0 && (
+                              <span className="text-[10px] text-muted-foreground ml-2">Net: {fmt(pg.netRevenue)}</span>
+                            )}
+                          </div>
+                          <Badge className={cn("text-[10px]",
+                            pg.receivedCount === pg.orders.length
+                              ? "bg-success/10 text-success border-success/20"
+                              : "bg-warning/10 text-warning border-warning/20"
+                          )}>
+                            {pg.receivedCount === pg.orders.length
+                              ? <><CheckCircle2 className="h-3 w-3 mr-1" /> All Received</>
+                              : `${pg.receivedCount}/${pg.orders.length} Received`
+                            }
+                          </Badge>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        {pg.totalFees > 0 && (
-                          <span className="text-[10px] text-muted-foreground">Fees: {fmt(pg.totalFees)}</span>
-                        )}
-                        <span className="font-mono font-bold text-sm">{fmt(pg.totalRevenue)}</span>
-                        <Badge className={cn("text-[10px]",
-                          pg.receivedCount === pg.orders.length
-                            ? "bg-success/10 text-success border-success/20"
-                            : "bg-warning/10 text-warning border-warning/20"
-                        )}>
-                          {pg.receivedCount === pg.orders.length
-                            ? <><CheckCircle2 className="h-3 w-3 mr-1" /> All Received</>
-                            : `${pg.receivedCount}/${pg.orders.length} Received`
-                          }
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="divide-y">
-                      {pg.orders.map(o => {
-                        const net = o.net_received || o.sale_price - o.fees;
-                        return (
-                          <div key={o.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                            <div className="flex items-center gap-3">
-                              <span className="font-mono font-bold text-xs bg-muted rounded px-1.5 py-0.5">{o.quantity}x</span>
-                              <span>{o.category}</span>
-                              {o.block && <span className="text-muted-foreground text-xs">· {o.block}</span>}
-                              {o.buyer_name && <span className="text-muted-foreground text-xs">({o.buyer_name})</span>}
-                              {o.order_ref && <span className="text-muted-foreground text-[10px] font-mono">#{o.order_ref}</span>}
-                            </div>
-                            <div className="flex items-center gap-3">
-                              {o.fees > 0 && <span className="text-[10px] text-muted-foreground">-{fmt(o.fees)} fees</span>}
-                              <span className="font-mono font-medium">{fmt(net)}</span>
-                              <div className="flex items-center gap-1.5">
-                                <span className={cn("text-[10px] font-medium", o.payment_received ? "text-success" : "text-warning")}>
-                                  {o.payment_received ? "Received" : "Pending"}
-                                </span>
-                                <Switch
-                                  checked={o.payment_received}
-                                  onCheckedChange={() => togglePaymentReceived(o.id, o.payment_received)}
-                                  className="scale-75"
-                                />
+                      <div className="divide-y">
+                        {pg.orders.map(o => {
+                          const gross = o.sale_price * o.quantity;
+                          const net = gross - o.fees;
+                          const assignedLines = linesByOrder.get(o.id) || [];
+                          const assignedCount = assignedLines.length;
+                          const fullyAssigned = assignedCount >= o.quantity;
+                          return (
+                            <div key={o.id} className="px-4 py-2.5 text-sm">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3 min-w-0 flex-wrap">
+                                  <span className="font-mono font-bold text-xs bg-muted rounded px-1.5 py-0.5">{o.quantity}x</span>
+                                  <span className="truncate">{o.category}</span>
+                                  {o.block && <span className="text-muted-foreground text-xs">· {o.block}</span>}
+                                  <span className="text-muted-foreground text-xs font-mono">@ {fmt(o.sale_price)} each</span>
+                                  {o.order_ref && <span className="text-muted-foreground text-[10px] font-mono">#{o.order_ref}</span>}
+                                  {o.buyer_name && <span className="text-muted-foreground text-xs">({o.buyer_name})</span>}
+                                </div>
+                                <div className="flex items-center gap-3 shrink-0">
+                                  <div className="text-right">
+                                    <span className="font-mono font-medium">{fmt(gross)}</span>
+                                    {o.fees > 0 && <span className="text-[10px] text-muted-foreground ml-1.5">(-{fmt(o.fees)})</span>}
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={cn("text-[10px] font-medium", o.payment_received ? "text-success" : "text-warning")}>
+                                      {o.payment_received ? "Received" : "Pending"}
+                                    </span>
+                                    <Switch
+                                      checked={o.payment_received}
+                                      onCheckedChange={() => togglePaymentReceived(o.id, o.payment_received)}
+                                      className="scale-75"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                              {/* Assignment status */}
+                              <div className="mt-1.5 flex items-center gap-1.5">
+                                {fullyAssigned ? (
+                                  <Badge variant="outline" className="text-[10px] bg-success/5 text-success border-success/20 gap-1">
+                                    <Link2 className="h-3 w-3" /> {assignedCount}/{o.quantity} Assigned
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-[10px] bg-warning/5 text-warning border-warning/20 gap-1">
+                                    <Unlink className="h-3 w-3" /> {assignedCount}/{o.quantity} Assigned
+                                  </Badge>
+                                )}
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
 
           {/* ── P&L WATERFALL ── */}
           <div className="rounded-xl border bg-card p-5">
