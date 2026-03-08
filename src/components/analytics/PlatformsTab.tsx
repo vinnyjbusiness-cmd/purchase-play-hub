@@ -21,6 +21,11 @@ interface Props {
 
 const fmt = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
 
+const PLATFORM_COLORS = [
+  "hsl(220, 70%, 55%)", "hsl(142, 60%, 40%)", "hsl(280, 60%, 55%)",
+  "hsl(35, 90%, 55%)", "hsl(160, 50%, 45%)", "hsl(0, 62%, 50%)",
+];
+
 export default function PlatformsTab({ platforms, orders, events, groupedIds }: Props) {
   const [activeTab, setActiveTab] = useState(platforms.length > 0 ? platforms[0].id : "");
 
