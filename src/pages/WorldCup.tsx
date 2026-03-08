@@ -1517,6 +1517,34 @@ export default function WorldCup() {
         {/* ── INVENTORY TAB ── */}
         {tab === "inventory" && (
           <div className="p-6 space-y-6">
+            {/* KPI Summary Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="rounded-xl border bg-card p-4 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Total Stock</p>
+                <p className="text-xl font-bold font-mono mt-1">{invKPIs.totalGot}</p>
+              </div>
+              <div className="rounded-xl border bg-card p-4 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Total Sold</p>
+                <p className="text-xl font-bold font-mono text-primary mt-1">{invKPIs.totalSold}</p>
+              </div>
+              <div className="rounded-xl border bg-card p-4 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Available</p>
+                <p className="text-xl font-bold font-mono text-success mt-1">{invKPIs.totalAvailable}</p>
+              </div>
+              <div className={cn("rounded-xl border p-4 text-center", invKPIs.totalNeed > 0 ? "bg-destructive/5 border-destructive/20" : "bg-success/5 border-success/20")}>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Needed</p>
+                <p className={cn("text-xl font-bold font-mono mt-1", invKPIs.totalNeed > 0 ? "text-destructive" : "text-success")}>{invKPIs.totalNeed}</p>
+              </div>
+              <div className="rounded-xl border bg-success/5 border-success/20 p-4 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Fully Covered</p>
+                <p className="text-xl font-bold font-mono text-success mt-1">{invKPIs.fullyCovered}</p>
+              </div>
+              <div className={cn("rounded-xl border p-4 text-center", invKPIs.short > 0 ? "bg-destructive/5 border-destructive/20" : "bg-card")}>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Short</p>
+                <p className={cn("text-xl font-bold font-mono mt-1", invKPIs.short > 0 ? "text-destructive" : "text-muted-foreground")}>{invKPIs.short}</p>
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-end gap-3">
               <div className="relative flex-1 min-w-[180px] max-w-xs space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">Search</label>
@@ -1528,59 +1556,131 @@ export default function WorldCup() {
               <FilterSelect label="Round" value={filterRound} onValueChange={setFilterRound} options={roundOptions} />
               <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
               <FilterSelect label="Stadium" value={filterVenue} onValueChange={setFilterVenue} options={venueOptions} />
+              <ToggleGroup type="single" value={invViewMode} onValueChange={(v) => { if (v) setInvViewMode(v as "all" | "needs"); }} variant="outline" size="sm">
+                <ToggleGroupItem value="all" className="text-xs h-9 px-3">All Matches</ToggleGroupItem>
+                <ToggleGroupItem value="needs" className="text-xs h-9 px-3 gap-1">
+                  {needsOnlyMatches.length > 0 && <AlertTriangle className="h-3 w-3 text-destructive" />}
+                  Needs Only{needsOnlyMatches.length > 0 && ` (${needsOnlyMatches.length})`}
+                </ToggleGroupItem>
+              </ToggleGroup>
             </div>
             <div className="flex items-center justify-between">
               <p className="text-muted-foreground text-sm">{filteredInv.length} ticket{filteredInv.length !== 1 ? "s" : ""} across {groupedInv.length} event{groupedInv.length !== 1 ? "s" : ""}</p>
               <Button onClick={() => setShowAddInv(true)}><Plus className="h-4 w-4 mr-1" /> Add Inventory</Button>
             </div>
 
-            {/* Round sub-groups like main inventory */}
-            <div className="rounded-xl border-2 border-border/60 overflow-hidden">
-              <div className="bg-gradient-to-br from-emerald-600/90 to-teal-800/90 text-white px-5 py-3.5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest font-medium text-white/60">Inventory</p>
-                    <p className="text-lg font-bold mt-0.5">World Cup 2026</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-center px-3 py-1 rounded-md bg-white/10"><p className="text-sm font-bold font-mono">{filteredInv.length}</p><p className="text-[9px] uppercase tracking-widest text-white/60">Tickets</p></div>
-                    <div className="text-center px-3 py-1 rounded-md bg-white/10"><p className="text-sm font-bold font-mono">{groupedInv.length}</p><p className="text-[9px] uppercase tracking-widest text-white/60">Events</p></div>
-                    {(() => { const avail = filteredInv.filter(i => i.status === "available").length; return avail > 0 ? <Badge variant="outline" className="text-[10px] font-bold uppercase bg-white/10 text-white border-white/20">{avail} avail</Badge> : null; })()}
-                  </div>
-                </div>
-              </div>
-              <div className="bg-card p-3 space-y-4">
-                {invRoundGroups.length === 0 && <div className="p-12 text-center text-muted-foreground">No World Cup inventory found</div>}
-                {invRoundGroups.map(([roundName, roundEvents]) => {
-                  const roundKey = `wc-inv__${roundName}`;
-                  const isRoundCollapsed = collapsedInvRounds.has(roundKey);
-                  const roundTickets = roundEvents.reduce((s, g) => s + g.items.length, 0);
-                  const isGroupStage = roundName.startsWith("Group ");
-                  const roundGradient = isGroupStage ? "from-emerald-500/60 to-emerald-700/60" : (WC_ROUND_GRADIENTS[roundName] || "from-slate-500/60 to-slate-700/60");
-
+            {/* "Needs Only" flat view */}
+            {invViewMode === "needs" && (
+              <div className="space-y-3">
+                {needsOnlyMatches.length === 0 && <div className="rounded-lg border bg-success/5 border-success/20 p-12 text-center text-success font-semibold">✓ All matches fully covered — no stock needed</div>}
+                {needsOnlyMatches.map(ev => {
+                  const m = matchStockMetrics[ev.id] || { got: 0, sold: 0, need: 0, available: 0 };
+                  const parsed = getParsedEvent(ev);
+                  const flag1 = getFlag(parsed.team1);
+                  const flag2 = getFlag(parsed.team2);
+                  const matchLabel = parsed.matchNum ? `M${parsed.matchNum}` : null;
                   return (
-                    <div key={roundKey} className="rounded-lg border border-border/50 overflow-hidden">
-                      <button onClick={() => toggleInvRound(roundKey)}
-                        className={cn("w-full bg-gradient-to-r text-white px-4 py-2.5 text-left transition-all hover:brightness-110", roundGradient)}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <p className="text-sm font-bold">{roundName}</p>
-                            <Badge variant="outline" className="text-[10px] font-bold bg-white/10 text-white border-white/20">{roundTickets} ticket{roundTickets !== 1 ? "s" : ""}</Badge>
-                            <Badge variant="outline" className="text-[10px] bg-white/10 text-white border-white/20">{roundEvents.length} match{roundEvents.length !== 1 ? "es" : ""}</Badge>
+                    <div key={ev.id} className="rounded-xl border-2 border-destructive/20 bg-destructive/5 overflow-hidden">
+                      <div className="px-5 py-4 flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {matchLabel && <Badge className="bg-primary/20 text-primary text-[10px] font-bold border-primary/30">{matchLabel}</Badge>}
+                            <span className="font-bold text-base">
+                              {flag1 && <span className="mr-1">{flag1}</span>}{parsed.team1}
+                              <span className="text-muted-foreground font-normal mx-2">vs</span>
+                              {flag2 && <span className="mr-1">{flag2}</span>}{parsed.team2}
+                            </span>
                           </div>
-                          {isRoundCollapsed ? <ChevronRight className="h-4 w-4 text-white/60" /> : <ChevronDown className="h-4 w-4 text-white/60" />}
+                          <p className="text-xs text-muted-foreground mt-0.5">{format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}{ev.venue && ` · ${ev.venue}`}</p>
                         </div>
-                      </button>
-                      {!isRoundCollapsed && (
-                        <div className="space-y-3 p-3">
-                          {roundEvents.map(g => renderInvEventCard(g))}
+                        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                          <div className="text-center px-2.5 py-1.5 rounded-md bg-foreground/10">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Got</p>
+                            <p className="text-sm font-bold font-mono">{m.got}</p>
+                          </div>
+                          <div className="text-center px-2.5 py-1.5 rounded-md bg-primary/10">
+                            <p className="text-[10px] uppercase tracking-wider text-primary">Sold</p>
+                            <p className="text-sm font-bold font-mono text-primary">{m.sold}</p>
+                          </div>
+                          <div className="text-center px-3 py-1.5 rounded-md bg-destructive/15 border border-destructive/30">
+                            <p className="text-[10px] uppercase tracking-wider text-destructive font-bold">NEED</p>
+                            <p className="text-lg font-black font-mono text-destructive">{m.need}</p>
+                          </div>
+                          <AddPurchaseDialog onCreated={load} defaultClub="world-cup" />
                         </div>
-                      )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            )}
+
+            {/* "All Matches" grouped view */}
+            {invViewMode === "all" && (
+              <div className="rounded-xl border-2 border-border/60 overflow-hidden">
+                <div className="bg-gradient-to-br from-emerald-600/90 to-teal-800/90 text-white px-5 py-3.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest font-medium text-white/60">Inventory</p>
+                      <p className="text-lg font-bold mt-0.5">World Cup 2026</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-center px-3 py-1 rounded-md bg-white/10"><p className="text-sm font-bold font-mono">{filteredInv.length}</p><p className="text-[9px] uppercase tracking-widest text-white/60">Tickets</p></div>
+                      <div className="text-center px-3 py-1 rounded-md bg-white/10"><p className="text-sm font-bold font-mono">{groupedInv.length}</p><p className="text-[9px] uppercase tracking-widest text-white/60">Events</p></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-card p-3 space-y-4">
+                  {invRoundGroups.length === 0 && <div className="p-12 text-center text-muted-foreground">No World Cup inventory found</div>}
+                  {invRoundGroups.map(([roundName, roundEvents]) => {
+                    const roundKey = `wc-inv__${roundName}`;
+                    const isRoundCollapsed = collapsedInvRounds.has(roundKey);
+                    const roundTickets = roundEvents.reduce((s, g) => s + g.items.length, 0);
+                    const isGroupStage = roundName.startsWith("Group ");
+
+                    // Calculate round-level needs
+                    const roundNeed = roundEvents.reduce((s, g) => s + (matchStockMetrics[g.eventId]?.need || 0), 0);
+                    const roundHasActivity = roundEvents.some(g => {
+                      const m = matchStockMetrics[g.eventId];
+                      return m && (m.got > 0 || m.sold > 0);
+                    });
+                    const allCovered = roundHasActivity && roundNeed === 0;
+                    const someNeed = roundNeed > 0;
+
+                    const roundGradient = !roundHasActivity
+                      ? "from-muted-foreground/30 to-muted-foreground/40"
+                      : someNeed
+                        ? "from-amber-500/70 to-orange-600/70"
+                        : isGroupStage
+                          ? "from-emerald-500/60 to-emerald-700/60"
+                          : (WC_ROUND_GRADIENTS[roundName] || "from-slate-500/60 to-slate-700/60");
+
+                    return (
+                      <div key={roundKey} className="rounded-lg border border-border/50 overflow-hidden">
+                        <button onClick={() => toggleInvRound(roundKey)}
+                          className={cn("w-full bg-gradient-to-r text-white px-4 py-2.5 text-left transition-all hover:brightness-110", roundGradient)}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-wrap">
+                              {isRoundCollapsed ? <ChevronRight className="h-4 w-4 text-white/60" /> : <ChevronDown className="h-4 w-4 text-white/60" />}
+                              <p className="text-sm font-bold">{roundName}</p>
+                              <Badge variant="outline" className="text-[10px] font-bold bg-white/10 text-white border-white/20">{roundTickets} ticket{roundTickets !== 1 ? "s" : ""}</Badge>
+                              <Badge variant="outline" className="text-[10px] bg-white/10 text-white border-white/20">{roundEvents.length} match{roundEvents.length !== 1 ? "es" : ""}</Badge>
+                              {someNeed && <Badge className="text-[10px] font-bold bg-destructive/80 text-white border-0">{roundNeed} needed</Badge>}
+                              {allCovered && <Badge className="text-[10px] font-bold bg-success/80 text-white border-0">✓ Covered</Badge>}
+                            </div>
+                          </div>
+                        </button>
+                        {!isRoundCollapsed && (
+                          <div className="space-y-3 p-3">
+                            {roundEvents.map(g => renderInvEventCard(g))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
