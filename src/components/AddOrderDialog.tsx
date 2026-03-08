@@ -40,7 +40,7 @@ export default function AddOrderDialog({ onCreated, defaultClub }: Props) {
 
   const [form, setForm] = useState({
     platform_id: "",
-    club: "",
+    club: defaultClub || "",
     event_id: "",
     order_ref: "",
     contact_id: "",
