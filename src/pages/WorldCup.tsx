@@ -1175,7 +1175,7 @@ export default function WorldCup() {
             </div>
             <div className="flex items-center justify-between">
               <p className="text-muted-foreground text-sm">{filteredPurchases.length} purchase{filteredPurchases.length !== 1 ? "s" : ""} across {purchasesByEvent.length} event{purchasesByEvent.length !== 1 ? "s" : ""}</p>
-              <AddPurchaseDialog onCreated={load} />
+              <AddPurchaseDialog onCreated={load} defaultClub="world-cup" />
             </div>
 
             <div className="space-y-3">
