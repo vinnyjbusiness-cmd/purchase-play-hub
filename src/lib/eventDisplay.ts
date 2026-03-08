@@ -1,16 +1,18 @@
 /**
  * Utility for displaying event names with match numbers.
- * World Cup events with match_code like "WC2026-M73" will show "Match 73 — Team A vs Team B"
+ * World Cup events have match_code like "#M73---(..." or "WC2026-M73"
  */
 
 export function getMatchNumber(matchCode: string | undefined | null): string | null {
   if (!matchCode) return null;
-  const m = matchCode.match(/^WC2026-M(\d+)$/);
+  // Handle both formats: "WC2026-M73" and "#M73---(..."
+  const m = matchCode.match(/^(?:WC2026-M|#M)(\d+)/);
   return m ? m[1] : null;
 }
 
 export function isWorldCupMatchCode(matchCode: string | undefined | null): boolean {
-  return !!matchCode && matchCode.startsWith("WC2026-");
+  if (!matchCode) return false;
+  return matchCode.startsWith("WC2026-") || matchCode.startsWith("#M");
 }
 
 /**

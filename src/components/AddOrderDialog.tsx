@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { formatEventLabel } from "@/lib/eventDisplay";
+import { formatEventLabel, getMatchNumber } from "@/lib/eventDisplay";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -62,8 +62,12 @@ export default function AddOrderDialog({ onCreated }: Props) {
     const matched = events.filter((e) => {
       if (!form.club) return false;
       if (form.club === "world-cup") {
-        // Only show proper WC2026-M## events, deduplicated by match_code
-        return e.match_code && /^WC2026-M\d+$/.test(e.match_code);
+        // Only show WC events with match numbers 1-104
+        if (!e.match_code) return false;
+        const m = e.match_code.match(/^(?:WC2026-M|#M)(\d+)/);
+        if (!m) return false;
+        const num = parseInt(m[1]);
+        return num >= 1 && num <= 104;
       }
       const clubLabel = CLUBS.find((c) => c.value === form.club)?.label || "";
       const clubName = clubLabel.split(" (")[0].toLowerCase();
@@ -73,8 +77,8 @@ export default function AddOrderDialog({ onCreated }: Props) {
     if (form.club === "world-cup") {
       // Sort by match number
       return deduped.sort((a, b) => {
-        const numA = parseInt(a.match_code?.replace("WC2026-M", "") || "0");
-        const numB = parseInt(b.match_code?.replace("WC2026-M", "") || "0");
+        const numA = parseInt((a.match_code?.match(/^(?:WC2026-M|#M)(\d+)/)?.[1]) || "0");
+        const numB = parseInt((b.match_code?.match(/^(?:WC2026-M|#M)(\d+)/)?.[1]) || "0");
         return numA - numB;
       });
     }
@@ -157,6 +161,21 @@ export default function AddOrderDialog({ onCreated }: Props) {
 
   const selectedContact = contacts.find((c) => c.id === form.contact_id);
 
+  // Helper to clean WC event names for display
+  const cleanEventLabel = (e: typeof events[number]) => {
+    const matchNum = getMatchNumber(e.match_code);
+    if (matchNum && e.home_team.startsWith("#M")) {
+      const homeMatch = e.home_team.match(/^#M\d+\s*-\s*\((?:Group\s+\w+\s*-\s*)?(.+)$/);
+      const awayMatch = e.away_team.match(/^(.+?)\)\s*Football World Cup/);
+      const cleanHome = homeMatch ? homeMatch[1].trim() : e.home_team;
+      const cleanAway = awayMatch ? awayMatch[1].trim() : e.away_team;
+      const d = new Date(e.event_date);
+      const dateStr = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
+      return `M${matchNum} — ${cleanHome} vs ${cleanAway} — ${dateStr}`;
+    }
+    return formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code);
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -204,7 +223,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
                     {form.event_id
                       ? (() => {
                           const ev = filteredEvents.find((e) => e.id === form.event_id);
-                          return ev ? formatEventLabel(ev.home_team, ev.away_team, ev.event_date, ev.match_code) : "Select event";
+                          return ev ? cleanEventLabel(ev) : "Select event";
                         })()
                       : (form.club ? "Search event..." : "Pick club first")}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -217,7 +236,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
                       <CommandEmpty>No event found.</CommandEmpty>
                       <CommandGroup>
                         {filteredEvents.map((e) => {
-                          const label = formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code);
+                          const label = cleanEventLabel(e);
                           return (
                             <CommandItem
                               key={e.id}

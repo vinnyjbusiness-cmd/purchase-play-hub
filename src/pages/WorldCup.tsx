@@ -110,21 +110,45 @@ function getFlag(name: string): string {
   return countryFlags[name.toLowerCase().trim()] || "";
 }
 
-function parseEventTeams(homeTeam: string, awayTeam: string): { team1: string; team2: string; matchNum: string | null; round: string } {
+function parseEventTeams(homeTeam: string, awayTeam: string, matchCode?: string): { team1: string; team2: string; matchNum: string | null; round: string } {
   let team1 = homeTeam;
   let team2 = awayTeam;
   let matchNum: string | null = null;
   let round = "Group Stage";
 
-  const importMatch = homeTeam.match(/^#M(\d+)\s*-\s*\(([^)]*?)\s*-\s*(.+)$/);
+  // Format: "#M74 - (1E vs 3A/B/C/D/F) Football World Cup 2026 - Round of 32"
+  // or "#M2 - (Group A - South Korea vs Denmark...) Football World Cup 2026 - Group Stage"
+  const importMatch = homeTeam.match(/^#M(\d+)\s*-\s*\((.+)$/);
   if (importMatch) {
     matchNum = importMatch[1];
-    team1 = importMatch[3].trim();
+    const remainder = importMatch[2];
+
+    // Group stage format: "(Group A - South Korea"
+    const groupMatch = remainder.match(/^Group\s+\w+\s*-\s*(.+)$/);
+    if (groupMatch) {
+      team1 = groupMatch[1].trim();
+    } else {
+      // Knockout format: "(1E" or "(Winner Group A"
+      team1 = remainder.trim();
+    }
+
+    // Away team: "Argentina) Football World Cup 2026 - Group Stage" or just "Argentina"
     const awayMatch = awayTeam.match(/^(.+?)\)\s*Football World Cup 2026\s*-\s*(.+)$/);
     if (awayMatch) {
       team2 = awayMatch[1].trim();
       round = awayMatch[2].trim();
     }
+  }
+
+  // Extract match number from match_code if not found in team names
+  if (!matchNum && matchCode) {
+    const m = matchCode.match(/^#M(\d+)/);
+    if (m) matchNum = m[1];
+  }
+
+  // Always derive round from match number for consistency
+  if (matchNum) {
+    round = getRoundFromMatchNum(parseInt(matchNum));
   }
 
   return { team1, team2, matchNum, round };
@@ -143,7 +167,8 @@ function getRoundFromMatchNum(num: number): string {
 
 function getWCRound(matchCode: string | null | undefined): string {
   if (!matchCode) return "Other";
-  const m = matchCode.match(/^WC2026-M(\d+)$/);
+  // Handle both "#M74---(..." and "WC2026-M74"
+  const m = matchCode.match(/^(?:#M|WC2026-M)(\d+)/);
   if (!m) return "Other";
   const n = parseInt(m[1], 10);
   if (n <= 72) {
@@ -243,15 +268,14 @@ function groupByQuantity(items: InventoryItem[]) {
 }
 
 function getParsedEvent(ev: { home_team: string; away_team: string; match_code: string; venue?: string | null }) {
-  const parsed = parseEventTeams(ev.home_team, ev.away_team);
+  const parsed = parseEventTeams(ev.home_team, ev.away_team, ev.match_code);
+  // If matchNum still not found, try match_code with WC2026 format
   if (!parsed.matchNum) {
-    const m = ev.match_code.match(/WC2026-M(\d+)/);
+    const m = ev.match_code.match(/(?:WC2026-M|#M)(\d+)/);
     if (m) {
       parsed.matchNum = m[1];
       parsed.round = getRoundFromMatchNum(parseInt(m[1]));
     }
-  } else {
-    parsed.round = getRoundFromMatchNum(parseInt(parsed.matchNum));
   }
   return parsed;
 }
