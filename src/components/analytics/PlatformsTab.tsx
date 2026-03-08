@@ -43,9 +43,73 @@ export default function PlatformsTab({ platforms, orders, events, groupedIds }: 
     return <div className="mt-4 text-muted-foreground text-center py-12">No platforms configured</div>;
   }
 
+  // Cross-platform summary for overview charts
+  const platformSummary = useMemo(() => {
+    return platforms.map((p, i) => {
+      const pOrders = orders.filter(o => o.platform_id === p.id && o.status !== "cancelled" && o.status !== "refunded");
+      const revenue = pOrders.reduce((s, o) => s + Number(o.sale_price || 0), 0);
+      const tickets = pOrders.reduce((s, o) => s + o.quantity, 0);
+      const fees = pOrders.reduce((s, o) => s + Number(o.fees || 0), 0);
+      const net = revenue - fees;
+      return { name: p.name, revenue, tickets, fees, net, color: PLATFORM_COLORS[i % PLATFORM_COLORS.length] };
+    }).filter(p => p.revenue > 0 || p.tickets > 0);
+  }, [platforms, orders]);
+
   return (
     <div className="space-y-6 mt-4">
       <p className="text-muted-foreground text-sm">{platforms.length} platform{platforms.length !== 1 ? "s" : ""} configured</p>
+
+      {/* Cross-platform comparison charts */}
+      {platformSummary.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold mb-3">Revenue by Platform</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <PieChart>
+                <Pie
+                  data={platformSummary}
+                  dataKey="revenue"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={95}
+                  innerRadius={55}
+                  paddingAngle={2}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  labelLine={{ stroke: "hsl(var(--muted-foreground))", strokeWidth: 1 }}
+                  fontSize={10}
+                >
+                  {platformSummary.map((p) => (
+                    <Cell key={p.name} fill={p.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                  formatter={(value: number) => fmt(value)}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold mb-3">Revenue vs Fees vs Net</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={platformSummary} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `£${v}`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                  formatter={(value: number) => fmt(value)}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="revenue" name="Revenue" fill="hsl(220, 70%, 55%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="fees" name="Fees" fill="hsl(0, 62%, 50%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="net" name="Net" fill="hsl(142, 60%, 40%)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex-wrap h-auto gap-1">
