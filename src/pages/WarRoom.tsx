@@ -65,7 +65,18 @@ export default function WarRoom() {
   // Deduplicated upcoming events
   const { unique: dedupedEvents, groupedIds } = useMemo(() => {
     const now = new Date();
-    const future = allEvents.filter(e => new Date(e.event_date) > now);
+    const future = allEvents.filter(e => {
+      if (new Date(e.event_date) <= now) return false;
+      // WC events: only M1-M104
+      if (isWorldCupMatchCode(e.match_code)) {
+        const num = parseInt(getMatchNumber(e.match_code) || "0");
+        return num >= 1 && num <= 104;
+      }
+      // Club events: only Liverpool, Arsenal, Man Utd
+      const h = e.home_team.toLowerCase();
+      const a = e.away_team.toLowerCase();
+      return FOCUS_CLUBS.some(club => h.includes(club) || a.includes(club));
+    });
     return deduplicateEvents(future);
   }, [allEvents]);
 
