@@ -1012,7 +1012,7 @@ export default function WorldCup() {
             </div>
             <div className="flex items-center justify-between">
               <p className="text-muted-foreground text-sm">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} across {groupedByRound.reduce((s, r) => s + r.events.length, 0)} game{groupedByRound.reduce((s, r) => s + r.events.length, 0) !== 1 ? "s" : ""}</p>
-              <AddOrderDialog onCreated={load} />
+              <AddOrderDialog onCreated={load} defaultClub="world-cup" />
             </div>
 
             <div className="space-y-4">
