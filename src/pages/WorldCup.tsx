@@ -1401,7 +1401,7 @@ export default function WorldCup() {
       <OrderDetailSheet orderId={selectedOrderId} onClose={() => setSelectedOrderId(null)} onUpdated={load} />
       {assignOrder && <AssignPurchaseDialog orderId={assignOrder.id} eventId={assignOrder.event_id} orderCategory={assignOrder.category} orderQuantity={assignOrder.quantity} onClose={() => setAssignOrder(null)} onAssigned={() => { setAssignOrder(null); load(); }} />}
       {editOrder && <EditOrderDialog order={editOrder} onClose={() => setEditOrder(null)} onUpdated={() => { setEditOrder(null); load(); }} />}
-      {showAddInv && <AddInventoryDialog onClose={() => setShowAddInv(false)} onCreated={() => { setShowAddInv(false); load(); }} />}
+      {showAddInv && <AddInventoryDialog onClose={() => setShowAddInv(false)} onCreated={() => { setShowAddInv(false); load(); }} defaultVenue="world-cup" />}
       <InventoryDetailSheet inventoryId={selectedInvId} onClose={() => setSelectedInvId(null)} onUpdated={load} />
     </div>
   );
