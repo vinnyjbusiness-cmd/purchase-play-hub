@@ -65,29 +65,20 @@ export default function PlatformsTab({ platforms, orders, events, groupedIds }: 
           <div className="rounded-lg border bg-card p-4">
             <h3 className="text-sm font-semibold mb-3">Revenue by Platform</h3>
             <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie
-                  data={platformSummary}
-                  dataKey="revenue"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={95}
-                  innerRadius={55}
-                  paddingAngle={2}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  labelLine={{ stroke: "hsl(var(--muted-foreground))", strokeWidth: 1 }}
-                  fontSize={10}
-                >
-                  {platformSummary.map((p) => (
-                    <Cell key={p.name} fill={p.color} />
-                  ))}
-                </Pie>
+              <BarChart data={platformSummary} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `£${v}`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
                   formatter={(value: number) => fmt(value)}
                 />
-              </PieChart>
+                <Bar dataKey="revenue" name="Revenue" radius={[4, 4, 0, 0]}>
+                  {platformSummary.map((p) => (
+                    <Cell key={p.name} fill={p.color} />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </div>
           <div className="rounded-lg border bg-card p-4">
