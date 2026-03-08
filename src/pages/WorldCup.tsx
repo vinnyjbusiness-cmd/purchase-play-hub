@@ -1055,20 +1055,51 @@ export default function WorldCup() {
         {/* ── ORDERS TAB ── */}
         {tab === "orders" && (
           <div className="p-6 space-y-5">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="relative flex-1 min-w-[180px] max-w-xs space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Search</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search orders..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 min-w-[180px] max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search orders..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+              </div>
+              <Sheet open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2">
+                    <Filter className="h-4 w-4" />
+                    Filters
+                    {activeFilterCount > 0 && <Badge className="h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-primary text-primary-foreground">{activeFilterCount}</Badge>}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[320px] sm:w-[360px]">
+                  <SheetHeader>
+                    <SheetTitle>Filters</SheetTitle>
+                  </SheetHeader>
+                  <div className="space-y-5 mt-6">
+                    <FilterSelect label="Round" value={filterRound} onValueChange={setFilterRound} options={roundOptions} />
+                    <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
+                    <FilterSelect label="Stadium" value={filterVenue} onValueChange={setFilterVenue} options={venueOptions} />
+                    <FilterSelect label="Event" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
+                    <FilterSelect label="Platform" value={filterPlatform} onValueChange={setFilterPlatform} options={platformOptions} />
+                    {activeFilterCount > 0 && (
+                      <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-xs text-muted-foreground">Clear all filters</Button>
+                    )}
+                  </div>
+                </SheetContent>
+              </Sheet>
+              {activeFilterCount > 0 && <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-xs text-muted-foreground h-9">Clear filters</Button>}
+            </div>
+
+            {/* Bulk Actions Toolbar */}
+            {selectedOrderIds.size > 0 && (
+              <div className="flex items-center gap-3 rounded-lg border bg-primary/5 border-primary/20 px-4 py-2.5 animate-fade-in">
+                <span className="text-sm font-medium">{selectedOrderIds.size} selected</span>
+                <div className="flex items-center gap-2 ml-auto">
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={handleBulkFulfill}><CheckCircle2 className="h-3.5 w-3.5" />Mark Fulfilled</Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={handleBulkExport}><Download className="h-3.5 w-3.5" />Export Selected</Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 text-destructive hover:text-destructive" onClick={handleBulkDelete}><Trash2 className="h-3.5 w-3.5" />Delete Selected</Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={clearSelection}>Cancel</Button>
                 </div>
               </div>
-              <FilterSelect label="Round" value={filterRound} onValueChange={setFilterRound} options={roundOptions} />
-              <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
-              <FilterSelect label="Stadium" value={filterVenue} onValueChange={setFilterVenue} options={venueOptions} />
-              <FilterSelect label="Event" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
-              <FilterSelect label="Platform" value={filterPlatform} onValueChange={setFilterPlatform} options={platformOptions} />
-            </div>
+            )}
+
             <div className="flex items-center justify-between">
               <p className="text-muted-foreground text-sm">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} across {groupedByRound.reduce((s, r) => s + r.events.length, 0)} game{groupedByRound.reduce((s, r) => s + r.events.length, 0) !== 1 ? "s" : ""}</p>
               <AddOrderDialog onCreated={load} defaultClub="world-cup" />
