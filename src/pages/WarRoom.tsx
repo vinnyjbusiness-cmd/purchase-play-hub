@@ -182,7 +182,12 @@ export default function WarRoom() {
         <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
           {/* Event Hero */}
           <div className="text-center space-y-3 animate-fade-in">
-            <Badge variant="outline" className="text-xs">{event.competition}</Badge>
+            <div className="flex items-center justify-center gap-2">
+              <Badge variant="outline" className="text-xs">{event.competition}</Badge>
+              {getMatchNumber(event.match_code) && (
+                <Badge className="text-xs bg-primary/20 text-primary border-primary/30">M{getMatchNumber(event.match_code)}</Badge>
+              )}
+            </div>
             <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
               {event.home_team} vs {event.away_team}
             </h1>
