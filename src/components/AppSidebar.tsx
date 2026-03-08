@@ -34,6 +34,7 @@ const ADMIN_ITEMS = [
   { to: "/todos", icon: ListTodo, label: "To-Do List" },
   { to: "/activity", icon: ClipboardList, label: "Activity Log" },
   { to: "/vault-passwords", icon: KeyRound, label: "Password Vault" },
+  { to: "/templates", icon: FileText, label: "Templates" },
 ];
 
 // All paths that are inside dropdowns (for hiding from main list)
