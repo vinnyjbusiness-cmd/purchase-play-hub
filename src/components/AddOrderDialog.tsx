@@ -236,7 +236,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
                       <CommandEmpty>No event found.</CommandEmpty>
                       <CommandGroup>
                         {filteredEvents.map((e) => {
-                          const label = formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code);
+                          const label = cleanEventLabel(e);
                           return (
                             <CommandItem
                               key={e.id}
