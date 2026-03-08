@@ -957,8 +957,6 @@ export default function WorldCup() {
 
   const renderInvEventCard = (group: typeof groupedInv[number]) => {
     const total = group.items.length;
-    const available = group.items.filter(i => i.status === "available").length;
-    const sold = group.items.filter(i => i.status === "sold").length;
     const assigned = group.items.filter(i => assignedInvSet.has(i.id)).length;
     const isExpanded = expandedEvent === group.eventId;
     const eventDate = group.event?.event_date ? new Date(group.event.event_date) : null;
@@ -969,6 +967,9 @@ export default function WorldCup() {
     const team2 = parsed?.team2 || group.event?.away_team || "Unknown";
     const matchLabel = parsed?.matchNum ? `M${parsed.matchNum}` : null;
 
+    const metrics = matchStockMetrics[group.eventId] || { got: 0, sold: 0, need: 0, available: 0 };
+    const isZeroActivity = metrics.got === 0 && metrics.sold === 0;
+
     const availableItems = group.items.filter(i => i.status === "available");
     const qtyGroups = groupByQuantity(availableItems);
     const singles = qtyGroups.filter(g => g.qty === 1).length;
@@ -976,7 +977,7 @@ export default function WorldCup() {
     const quadsPlus = qtyGroups.filter(g => g.qty >= 4).length;
 
     return (
-      <div key={group.eventId} className="rounded-xl border bg-card overflow-hidden shadow-sm">
+      <div key={group.eventId} className={cn("rounded-xl border bg-card overflow-hidden shadow-sm transition-opacity", isZeroActivity && "opacity-40")}>
         <button onClick={() => setExpandedEvent(isExpanded ? null : group.eventId)}
           className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/40">
           <div className="flex items-center gap-4">
@@ -999,12 +1000,22 @@ export default function WorldCup() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2">
-              <div className="text-center px-3 py-1 rounded-md bg-muted/60"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</p><p className="text-sm font-bold font-mono">{total}</p></div>
-              {available > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">{available} avail</Badge>}
-              {sold > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-primary/10 text-primary border-primary/20">{sold} sold</Badge>}
-              <TooltipProvider><Tooltip><TooltipTrigger asChild><div className="text-center px-3 py-1 rounded-md bg-muted/60 cursor-help"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Assigned</p><p className="text-sm font-bold font-mono">{assigned}/{total}</p></div></TooltipTrigger><TooltipContent><p className="text-xs">{assigned} of {total} tickets assigned to orders</p></TooltipContent></Tooltip></TooltipProvider>
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* GOT / SOLD / NEED boxes */}
+            <div className="text-center px-2.5 py-1.5 rounded-md bg-foreground/10">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Got</p>
+              <p className="text-sm font-bold font-mono">{metrics.got}</p>
+            </div>
+            <div className="text-center px-2.5 py-1.5 rounded-md bg-primary/10">
+              <p className="text-[10px] uppercase tracking-wider text-primary">Sold</p>
+              <p className="text-sm font-bold font-mono text-primary">{metrics.sold}</p>
+            </div>
+            <div className={cn("text-center px-2.5 py-1.5 rounded-md", metrics.need === 0 ? "bg-success/10" : metrics.need <= 3 ? "bg-warning/10" : "bg-destructive/10")}>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Need</p>
+              <p className={cn("text-sm font-bold font-mono flex items-center justify-center gap-0.5",
+                metrics.need === 0 ? "text-success" : metrics.need <= 3 ? "text-warning" : "text-destructive font-black")}>
+                {metrics.need === 0 && <Check className="h-3 w-3" />}{metrics.need}
+              </p>
             </div>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               onClick={async e => {
@@ -1032,7 +1043,9 @@ export default function WorldCup() {
                 </h2>
                 {eventDate && <p className="text-xs tracking-widest text-muted-foreground uppercase font-mono">{format(eventDate, "dd MMMM yyyy")} · {format(eventDate, "HH:mm")}{group.event?.venue && <> · {group.event.venue}</>}</p>}
                 <div className="inline-flex items-center gap-6 border rounded-lg px-6 py-3 bg-card mt-2">
-                  <div className="text-center"><p className="text-lg font-bold text-primary font-mono">{total}</p><p className="text-[10px] uppercase tracking-widest text-muted-foreground">Total</p></div>
+                  <div className="text-center"><p className="text-lg font-bold font-mono">{metrics.got}</p><p className="text-[10px] uppercase tracking-widest text-muted-foreground">Got</p></div>
+                  <div className="text-center"><p className="text-lg font-bold text-primary font-mono">{metrics.sold}</p><p className="text-[10px] uppercase tracking-widest text-muted-foreground">Sold</p></div>
+                  <div className="text-center"><p className={cn("text-lg font-bold font-mono", metrics.need === 0 ? "text-success" : "text-destructive")}>{metrics.need}</p><p className="text-[10px] uppercase tracking-widest text-muted-foreground">Need</p></div>
                   <div className="text-center"><p className="text-lg font-bold text-primary font-mono">{assigned}</p><p className="text-[10px] uppercase tracking-widest text-muted-foreground">Assigned</p></div>
                 </div>
               </div>
