@@ -19,6 +19,7 @@ import InlineAddContact from "@/components/InlineAddContact";
 
 interface Props {
   onCreated: () => void;
+  defaultClub?: string;
 }
 
 interface ContactRow {
@@ -28,7 +29,7 @@ interface ContactRow {
   contact_email: string | null;
 }
 
-export default function AddOrderDialog({ onCreated }: Props) {
+export default function AddOrderDialog({ onCreated, defaultClub }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [platforms, setPlatforms] = useState<{ id: string; name: string }[]>([]);
@@ -39,7 +40,7 @@ export default function AddOrderDialog({ onCreated }: Props) {
 
   const [form, setForm] = useState({
     platform_id: "",
-    club: "",
+    club: defaultClub || "",
     event_id: "",
     order_ref: "",
     contact_id: "",
@@ -208,12 +209,16 @@ export default function AddOrderDialog({ onCreated }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Club *</Label>
-              <Select value={form.club} onValueChange={(v) => setForm({ ...form, club: v })}>
-                <SelectTrigger><SelectValue placeholder="Select club" /></SelectTrigger>
-                <SelectContent>
-                  {CLUBS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {defaultClub ? (
+                <Input value={CLUBS.find(c => c.value === defaultClub)?.label || defaultClub} disabled className="bg-muted" />
+              ) : (
+                <Select value={form.club} onValueChange={(v) => setForm({ ...form, club: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select club" /></SelectTrigger>
+                  <SelectContent>
+                    {CLUBS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Event *</Label>

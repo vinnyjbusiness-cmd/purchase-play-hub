@@ -18,6 +18,7 @@ import InlineAddContact from "@/components/InlineAddContact";
 
 interface Props {
   onCreated: () => void;
+  defaultClub?: string;
 }
 
 interface EventRow {
@@ -37,7 +38,7 @@ interface SupplierRow {
   contact_phone: string | null;
 }
 
-export default function AddPurchaseDialog({ onCreated }: Props) {
+export default function AddPurchaseDialog({ onCreated, defaultClub }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -46,7 +47,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
   const [showAddContact, setShowAddContact] = useState(false);
 
   const [form, setForm] = useState({
-    club: "",
+    club: defaultClub || "",
     event_id: "",
     supplier_id: "",
     supplier_name: "",
@@ -99,7 +100,7 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
 
   const resetForm = () => {
     setForm({
-      club: "", event_id: "", supplier_id: "", supplier_name: "", supplier_number: "",
+      club: defaultClub || "", event_id: "", supplier_id: "", supplier_name: "", supplier_number: "",
       category_type: "", section: "", block: "", hospitality_option: "",
       currency: "GBP", quantity: "1", unit_cost: "", split_type: "", notes: "",
     });
@@ -203,14 +204,18 @@ export default function AddPurchaseDialog({ onCreated }: Props) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Club / Tournament *</Label>
-              <Select value={form.club} onValueChange={(v) => set("club", v)}>
-                <SelectTrigger><SelectValue placeholder="Select club" /></SelectTrigger>
-                <SelectContent>
-                  {CLUBS.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {defaultClub ? (
+                <Input value={CLUBS.find(c => c.value === defaultClub)?.label || defaultClub} disabled className="bg-muted" />
+              ) : (
+                <Select value={form.club} onValueChange={(v) => set("club", v)}>
+                  <SelectTrigger><SelectValue placeholder="Select club" /></SelectTrigger>
+                  <SelectContent>
+                    {CLUBS.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Event *</Label>

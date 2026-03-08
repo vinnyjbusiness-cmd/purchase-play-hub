@@ -18,6 +18,7 @@ import { ChevronDown, ChevronRight, LayoutGrid, Table2, Upload, X, Plus, FileSpr
 interface Props {
   onClose: () => void;
   onCreated: () => void;
+  defaultVenue?: string;
 }
 
 interface EventRow {
@@ -113,11 +114,11 @@ const createWCEventRow = (): WCEventRow => ({
 
 const WC_CATEGORIES = ["Category 1", "Category 2", "Category 3", "Category 4"];
 
-export default function AddInventoryDialog({ onClose, onCreated }: Props) {
+export default function AddInventoryDialog({ onClose, onCreated, defaultVenue }: Props) {
   const { orgId } = useOrg();
   const [events, setEvents] = useState<EventRow[]>([]);
   const [members, setMembers] = useState<MemberRow[]>([]);
-  const [venue, setVenue] = useState("");
+  const [venue, setVenue] = useState(defaultVenue || "");
   const [eventId, setEventId] = useState("");
   const [category, setCategory] = useState<"GA" | "HOSPO">("GA");
   const [section, setSection] = useState("");
@@ -591,12 +592,16 @@ export default function AddInventoryDialog({ onClose, onCreated }: Props) {
           {/* Venue Selector — always shown */}
           <div className="space-y-1.5">
             <Label className="text-xs">Club / Venue</Label>
-            <Select value={venue} onValueChange={(v) => { setVenue(v); setEventId(""); setSection(""); setBlock(""); }}>
-              <SelectTrigger className="h-9"><SelectValue placeholder="Select venue" /></SelectTrigger>
-              <SelectContent>
-                {VENUES.map(v => <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {defaultVenue ? (
+              <Input value={VENUES.find(v => v.value === defaultVenue)?.label || defaultVenue} disabled className="bg-muted h-9" />
+            ) : (
+              <Select value={venue} onValueChange={(v) => { setVenue(v); setEventId(""); setSection(""); setBlock(""); }}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select venue" /></SelectTrigger>
+                <SelectContent>
+                  {VENUES.map(v => <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* ═══════════════ WORLD CUP FLOW ═══════════════ */}
