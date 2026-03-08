@@ -114,11 +114,11 @@ const createWCEventRow = (): WCEventRow => ({
 
 const WC_CATEGORIES = ["Category 1", "Category 2", "Category 3", "Category 4"];
 
-export default function AddInventoryDialog({ onClose, onCreated }: Props) {
+export default function AddInventoryDialog({ onClose, onCreated, defaultVenue }: Props) {
   const { orgId } = useOrg();
   const [events, setEvents] = useState<EventRow[]>([]);
   const [members, setMembers] = useState<MemberRow[]>([]);
-  const [venue, setVenue] = useState("");
+  const [venue, setVenue] = useState(defaultVenue || "");
   const [eventId, setEventId] = useState("");
   const [category, setCategory] = useState<"GA" | "HOSPO">("GA");
   const [section, setSection] = useState("");
