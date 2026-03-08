@@ -180,7 +180,8 @@ export default function WarRoom() {
       </div>
 
       {event && (
-        <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-8 min-h-[calc(100vh-56px)] flex flex-col">
+          <div className="flex-1 space-y-8">
           {/* Event Hero */}
           <div className="text-center space-y-3 animate-fade-in">
             <div className="flex items-center justify-center gap-2">
