@@ -734,8 +734,11 @@ export default function WorldCup() {
     const isDelivered = o.delivery_status === "delivered" || o.delivery_status === "completed";
     return (
       <TableRow key={o.id}
-        className={cn("cursor-pointer text-xs h-10 transition-colors", colorClass, isDelivered ? "bg-success/8 hover:bg-success/15" : "hover:bg-muted/40")}
+        className={cn("cursor-pointer text-xs h-10 transition-colors", colorClass, isDelivered ? "bg-success/8 hover:bg-success/15" : "hover:bg-muted/40", selectedOrderIds.has(o.id) && "bg-primary/10")}
         onClick={() => setSelectedOrderId(o.id)}>
+        <TableCell className="py-2 w-[30px]" onClick={e => e.stopPropagation()}>
+          <Checkbox checked={selectedOrderIds.has(o.id)} onCheckedChange={() => toggleOrderSelect(o.id)} className="h-4 w-4" />
+        </TableCell>
         <TableCell className="font-mono font-bold text-xs py-2">{o.order_ref ? <CopyText text={o.order_ref} className="font-mono font-bold text-foreground text-xs" /> : "—"}</TableCell>
         <TableCell className="py-2">
           {(() => {
