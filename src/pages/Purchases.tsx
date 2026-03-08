@@ -30,7 +30,7 @@ interface Purchase {
   event_id: string;
   split_type: string | null;
   suppliers: { name: string; contact_name: string | null; contact_phone: string | null } | null;
-  events: { match_code: string; home_team: string; away_team: string; event_date: string } | null;
+  events: { match_code: string; home_team: string; away_team: string; event_date: string; competition: string } | null;
 }
 
 const currSym = (c: string) => (c === "USD" ? "$" : c === "EUR" ? "€" : "£");
