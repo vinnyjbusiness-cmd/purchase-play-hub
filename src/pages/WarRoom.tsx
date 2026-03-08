@@ -156,17 +156,17 @@ export default function WarRoom() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="h-3 w-3 rounded-full bg-destructive animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-widest text-destructive">War Room</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-destructive">Focus Room</span>
             </div>
             {/* Event Picker */}
             <Select value={selectedEventId || ""} onValueChange={setSelectedEventId}>
-              <SelectTrigger className="w-[320px] h-8 text-xs">
+              <SelectTrigger className="w-[360px] h-8 text-xs">
                 <SelectValue placeholder="Select event..." />
               </SelectTrigger>
               <SelectContent>
                 {dedupedEvents.map(ev => (
                   <SelectItem key={ev.id} value={ev.id} className="text-xs">
-                    {ev.home_team} vs {ev.away_team} — {format(new Date(ev.event_date), "dd MMM")}
+                    {formatEventLabel(ev.home_team, ev.away_team, ev.event_date, ev.match_code)}
                   </SelectItem>
                 ))}
               </SelectContent>
