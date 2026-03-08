@@ -1379,6 +1379,14 @@ export default function WorldCup() {
         {tab === "finance" && (
           <div className="p-6 space-y-6">
             <div className="flex flex-wrap items-end gap-3 mb-2">
+              <FilterSelect label="Round" value={financeRoundFilter} onValueChange={setFinanceRoundFilter} options={[
+                { value: "Group Stage", label: "Group Stage" },
+                { value: "Round of 32", label: "Round of 32" },
+                { value: "Round of 16", label: "Round of 16" },
+                { value: "Quarter-Finals", label: "Quarter-Finals" },
+                { value: "Semi-Finals", label: "Semi-Finals" },
+                { value: "Final", label: "Final" },
+              ]} />
               <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
             </div>
             <p className="text-muted-foreground text-sm">Financial overview{countryFilter !== "all" ? ` — ${countryFilter.replace(/\b\w/g, c => c.toUpperCase())}` : " across all World Cup fixtures"}</p>
