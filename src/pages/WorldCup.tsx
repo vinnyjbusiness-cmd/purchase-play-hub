@@ -268,15 +268,14 @@ function groupByQuantity(items: InventoryItem[]) {
 }
 
 function getParsedEvent(ev: { home_team: string; away_team: string; match_code: string; venue?: string | null }) {
-  const parsed = parseEventTeams(ev.home_team, ev.away_team);
+  const parsed = parseEventTeams(ev.home_team, ev.away_team, ev.match_code);
+  // If matchNum still not found, try match_code with WC2026 format
   if (!parsed.matchNum) {
-    const m = ev.match_code.match(/WC2026-M(\d+)/);
+    const m = ev.match_code.match(/(?:WC2026-M|#M)(\d+)/);
     if (m) {
       parsed.matchNum = m[1];
       parsed.round = getRoundFromMatchNum(parseInt(m[1]));
     }
-  } else {
-    parsed.round = getRoundFromMatchNum(parseInt(parsed.matchNum));
   }
   return parsed;
 }
