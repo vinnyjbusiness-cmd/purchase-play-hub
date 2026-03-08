@@ -549,6 +549,49 @@ export default function WorldCup() {
 
   const isFullyAssigned = (order: Order) => { const info = assignments[order.id]; return info && info.linked_count >= order.quantity; };
 
+  const activeFilterCount = useMemo(() => {
+    let c = 0;
+    if (filterRound !== "all") c++;
+    if (filterCountry !== "all") c++;
+    if (filterVenue !== "all") c++;
+    if (filterEvent !== "all") c++;
+    if (filterPlatform !== "all") c++;
+    return c;
+  }, [filterRound, filterCountry, filterVenue, filterEvent, filterPlatform]);
+
+  const clearAllFilters = () => { setFilterRound("all"); setFilterCountry("all"); setFilterVenue("all"); setFilterEvent("all"); setFilterPlatform("all"); };
+
+  const toggleOrderSelect = (id: string) => setSelectedOrderIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const clearSelection = () => setSelectedOrderIds(new Set());
+
+  const handleBulkFulfill = async () => {
+    const ids = [...selectedOrderIds];
+    await supabase.from("orders").update({ status: "fulfilled" }).in("id", ids);
+    setOrders(prev => prev.map(o => ids.includes(o.id) ? { ...o, status: "fulfilled" } : o));
+    toast.success(`${ids.length} order${ids.length !== 1 ? "s" : ""} marked fulfilled`);
+    clearSelection();
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Delete ${selectedOrderIds.size} selected order(s)?`)) return;
+    const ids = [...selectedOrderIds];
+    await supabase.from("orders").delete().in("id", ids);
+    setOrders(prev => prev.filter(o => !ids.includes(o.id)));
+    toast.success(`${ids.length} order${ids.length !== 1 ? "s" : ""} deleted`);
+    clearSelection();
+  };
+
+  const handleBulkExport = () => {
+    const selected = orders.filter(o => selectedOrderIds.has(o.id));
+    const csv = ["Order Ref,Buyer,Qty,Sale Price,Status,Delivery", ...selected.map(o =>
+      `${o.order_ref || ""},${o.buyer_name || ""},${o.quantity},${o.sale_price},${o.status},${o.delivery_status || ""}`
+    )].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "wc-orders-export.csv"; a.click();
+    toast.success("Exported selected orders");
+  };
+
   const updateField = useCallback(async (orderId: string, field: string, value: any) => {
     await supabase.from("orders").update({ [field]: value }).eq("id", orderId);
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: value } : o));
@@ -570,6 +613,15 @@ export default function WorldCup() {
   const toggleRound = (round: string) => setCollapsedRounds(prev => { const n = new Set(prev); n.has(round) ? n.delete(round) : n.add(round); return n; });
   const toggleEvent = (key: string) => setCollapsedEvents(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const toggleCategory = (key: string) => setCollapsedCategories(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  const toggleSupplierPaid = async (id: string, val: boolean) => {
+    // Already handled via confirmation popover
+    await supabase.from("purchases").update({ supplier_paid: !val }).eq("id", id);
+    setPurchases(prev => prev.map(p => p.id === id ? { ...p, supplier_paid: !val } : p));
+    if (!val) setPaidTimestamps(prev => ({ ...prev, [id]: format(new Date(), "dd MMM HH:mm") }));
+    toast.success(!val ? "Marked as paid" : "Marked as unpaid");
+    setPaidConfirm(null);
+  };
 
   // ── FINANCE TAB ──
   const countryFilter = filterCountry;
