@@ -63,7 +63,7 @@ export function getPageDescription(key: string): string {
     vault: "Securely store and manage passwords for various platforms and services.",
     listings: "Manage ticket listings across multiple selling platforms.",
     finance: "PIN-protected financial overview — profit/loss, revenue breakdown, and transaction ledger.",
-    warroom: "Real-time operations dashboard for critical events and urgent actions.",
+    warroom: "Real-time operations dashboard for match-day focus and urgent actions.",
     worldcup: "Dedicated World Cup 2026 event management and tracking.",
     timeline: "Visual timeline of all events with key dates and milestones.",
     ijk: "IJK partnership account management, payments, and settlements.",

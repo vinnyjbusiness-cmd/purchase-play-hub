@@ -28,7 +28,7 @@ export default function MobileBottomNav() {
 
   const moreItems = isAdmin
     ? [
-        { to: "/warroom", icon: Siren, label: "War Room" },
+        { to: "/warroom", icon: Siren, label: "Focus Room" },
         { to: "/world-cup", icon: Globe, label: "World Cup" },
         { to: "/suppliers", icon: Truck, label: "Contacts" },
         { to: "/members", icon: Contact, label: "Members" },

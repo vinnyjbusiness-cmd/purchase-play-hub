@@ -83,7 +83,7 @@ export default function AppSidebar() {
   // Main nav items (top section, not in dropdowns)
   const mainNavItems = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-    { to: "/warroom", icon: Siren, label: "War Room" },
+    { to: "/warroom", icon: Siren, label: "Focus Room" },
     { to: "/world-cup", icon: Globe, label: "World Cup 2026" },
     { to: "/orders", icon: ShoppingCart, label: "Orders" },
     { to: "/listings", icon: Globe, label: "Listings" },
