@@ -66,13 +66,21 @@ export default function TrainingDashboard() {
 
     let assistantSoFar = "";
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        toast.error("You must be logged in to use the training chat.");
+        setIsStreaming(false);
+        return;
+      }
+
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/training-chat`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             messages: allMsgs.map((m) => ({ role: m.role, content: m.content })),
