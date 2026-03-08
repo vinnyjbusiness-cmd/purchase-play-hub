@@ -96,7 +96,6 @@ export default function AppSidebar() {
     { to: "/stock", icon: Boxes, label: "Stock" },
     { to: "/timeline", icon: CalendarClock, label: "Event Timeline" },
     { to: "/analytics", icon: BarChart3, label: "Analytics" },
-    { to: "/templates", icon: FileText, label: "Templates" },
   ];
 
   // Filter out removed pages and dropdown pages from secondary
