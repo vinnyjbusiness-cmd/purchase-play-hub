@@ -216,6 +216,8 @@ export default function Inventory() {
   }, [items]);
 
   const filtered = items.filter((i) => {
+    // Exclude World Cup items — they belong on the WC page
+    if (i.events?.competition === "World Cup 2026") return false;
     // Hide £0.00 entries
     if ((i.face_value === 0 || i.face_value === null) && !i.purchase_id) return false;
     if (filterEvent !== "all" && i.events?.match_code !== filterEvent) return false;
