@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   X, Clock, Ticket, CheckCircle2, AlertTriangle, Package,
-  Send, Phone, MapPin, CalendarClock, Eye,
+  Send, Phone, MapPin, CalendarClock, Eye, Plus, Boxes, Users, Inbox,
 } from "lucide-react";
 import { format, differenceInSeconds } from "date-fns";
 import { cn } from "@/lib/utils";
