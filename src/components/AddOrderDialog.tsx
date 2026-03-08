@@ -209,12 +209,16 @@ export default function AddOrderDialog({ onCreated, defaultClub }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Club *</Label>
-              <Select value={form.club} onValueChange={(v) => setForm({ ...form, club: v })}>
-                <SelectTrigger><SelectValue placeholder="Select club" /></SelectTrigger>
-                <SelectContent>
-                  {CLUBS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {defaultClub ? (
+                <Input value={CLUBS.find(c => c.value === defaultClub)?.label || defaultClub} disabled className="bg-muted" />
+              ) : (
+                <Select value={form.club} onValueChange={(v) => setForm({ ...form, club: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select club" /></SelectTrigger>
+                  <SelectContent>
+                    {CLUBS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Event *</Label>

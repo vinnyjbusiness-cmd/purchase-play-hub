@@ -47,7 +47,7 @@ export default function AddPurchaseDialog({ onCreated, defaultClub }: Props) {
   const [showAddContact, setShowAddContact] = useState(false);
 
   const [form, setForm] = useState({
-    club: "",
+    club: defaultClub || "",
     event_id: "",
     supplier_id: "",
     supplier_name: "",
