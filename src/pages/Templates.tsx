@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -16,7 +18,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Plus, Copy, Pencil, Trash2, FileText, Search, Check } from "lucide-react";
+import { Plus, Copy, Pencil, Trash2, FileText, Search, Check, Keyboard, Command, RotateCcw } from "lucide-react";
+import { getShortcuts, saveShortcuts, resetShortcuts, AVAILABLE_PAGES, type Shortcut } from "@/hooks/useKeyboardShortcuts";
 
 interface Template {
   id: string;
@@ -76,6 +79,81 @@ function HighlightedBody({ text, maxLines }: { text: string; maxLines?: number }
   );
 }
 
+function ShortcutsPanel() {
+  const [shortcuts, setShortcuts] = useState<Shortcut[]>(getShortcuts());
+  const isMac = navigator.platform?.toLowerCase().includes("mac");
+  const modKey = isMac ? "⌘" : "Ctrl";
+
+  const updateShortcut = (key: string, field: "label" | "target", value: string) => {
+    const updated = shortcuts.map(s => {
+      if (s.key !== key) return s;
+      if (field === "target") {
+        const page = AVAILABLE_PAGES.find(p => p.path === value);
+        return { ...s, target: value, label: page?.label || s.label };
+      }
+      return { ...s, [field]: value };
+    });
+    setShortcuts(updated);
+    saveShortcuts(updated);
+    toast({ title: "Shortcut updated" });
+  };
+
+  const handleReset = () => {
+    const defaults = resetShortcuts();
+    setShortcuts(defaults);
+    toast({ title: "Shortcuts reset to defaults" });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Press <kbd className="px-1.5 py-0.5 rounded bg-muted border text-xs font-mono">{modKey}</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-muted border text-xs font-mono">number</kbd> to quickly jump to a page.
+        </p>
+        <Button variant="ghost" size="sm" onClick={handleReset} className="text-xs">
+          <RotateCcw className="h-3 w-3 mr-1" /> Reset
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        {shortcuts.map(s => (
+          <div key={s.key} className="flex items-center gap-3 rounded-lg border bg-card p-3">
+            {/* Key badge */}
+            <div className="flex items-center gap-1 shrink-0">
+              <kbd className="inline-flex items-center justify-center h-8 w-8 rounded-md bg-muted border text-xs font-bold">
+                {modKey}
+              </kbd>
+              <span className="text-muted-foreground text-xs">+</span>
+              <kbd className="inline-flex items-center justify-center h-8 w-8 rounded-md bg-muted border text-sm font-bold">
+                {s.key}
+              </kbd>
+            </div>
+
+            {/* Arrow */}
+            <span className="text-muted-foreground text-xs">→</span>
+
+            {/* Page selector */}
+            <Select value={s.target} onValueChange={v => updateShortcut(s.key, "target", v)}>
+              <SelectTrigger className="flex-1 h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AVAILABLE_PAGES.map(p => (
+                  <SelectItem key={p.path} value={p.path}>{p.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Shortcuts work anywhere in the app. Change the page each key combo navigates to using the dropdowns above.
+      </p>
+    </div>
+  );
+}
+
 export default function TemplatesPage() {
   const { orgId } = useOrg();
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -100,7 +178,6 @@ export default function TemplatesPage() {
     if (error) {
       toast({ title: "Error loading templates", description: error.message, variant: "destructive" });
     } else if (data && data.length === 0) {
-      // Seed defaults on first load
       const inserts = DEFAULT_TEMPLATES.map(t => ({ ...t, org_id: orgId, is_default: true }));
       const { error: seedErr } = await supabase.from("message_templates").insert(inserts as any);
       if (!seedErr) {
@@ -165,87 +242,103 @@ export default function TemplatesPage() {
     }
   };
 
-
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <FileText className="h-6 w-6 text-primary" /> Templates
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Pre-written message templates for common scenarios. Use placeholders like <Badge variant="secondary" className="text-xs font-mono mx-1">[First Name]</Badge> for dynamic content.
-          </p>
-        </div>
-        <Button size="sm" onClick={openAdd}>
-          <Plus className="h-4 w-4 mr-1" /> New Template
-        </Button>
+    <div className="p-6 space-y-6 animate-fade-in">
+      <div>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <FileText className="h-6 w-6 text-primary" /> Templates & Shortcuts
+        </h1>
+        <p className="text-muted-foreground text-sm mt-1">
+          Message templates and keyboard shortcuts for quick access.
+        </p>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search templates..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-      </div>
+      <Tabs defaultValue="templates">
+        <TabsList>
+          <TabsTrigger value="templates" className="gap-1.5">
+            <FileText className="h-3.5 w-3.5" /> Templates
+          </TabsTrigger>
+          <TabsTrigger value="shortcuts" className="gap-1.5">
+            <Keyboard className="h-3.5 w-3.5" /> Shortcuts
+          </TabsTrigger>
+        </TabsList>
 
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">No templates found</div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map(t => (
-            <Card key={t.id} className="flex flex-col">
-              <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <CardTitle className="text-base truncate">{t.name}</CardTitle>
-                  {t.is_default && <Badge variant="outline" className="text-[10px] shrink-0">Default</Badge>}
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(t)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
+        <TabsContent value="templates" className="space-y-4 mt-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search templates..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            </div>
+            <Button size="sm" onClick={openAdd}>
+              <Plus className="h-4 w-4 mr-1" /> New Template
+            </Button>
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center py-16">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">No templates found</div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filtered.map(t => (
+                <Card key={t.id} className="flex flex-col">
+                  <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CardTitle className="text-base truncate">{t.name}</CardTitle>
+                      {t.is_default && <Badge variant="outline" className="text-[10px] shrink-0">Default</Badge>}
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(t)}>
+                        <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete template?</AlertDialogTitle>
-                        <AlertDialogDescription>This will permanently remove the "{t.name}" template.</AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDelete(t.id)}>Delete</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-between gap-3">
-                <div className="min-h-[80px]">
-                  <HighlightedBody text={t.body} maxLines={5} />
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => handleCopy(t)}
-                >
-                  {copiedId === t.id ? (
-                    <><Check className="h-4 w-4 mr-1 text-primary" /> Copied!</>
-                  ) : (
-                    <><Copy className="h-4 w-4 mr-1" /> Copy to Clipboard</>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete template?</AlertDialogTitle>
+                            <AlertDialogDescription>This will permanently remove the "{t.name}" template.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(t.id)}>Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex-1 flex flex-col justify-between gap-3">
+                    <div className="min-h-[80px]">
+                      <HighlightedBody text={t.body} maxLines={5} />
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => handleCopy(t)}
+                    >
+                      {copiedId === t.id ? (
+                        <><Check className="h-4 w-4 mr-1 text-primary" /> Copied!</>
+                      ) : (
+                        <><Copy className="h-4 w-4 mr-1" /> Copy to Clipboard</>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="shortcuts" className="mt-4">
+          <ShortcutsPanel />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-w-lg">
