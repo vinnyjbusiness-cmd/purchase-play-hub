@@ -384,6 +384,8 @@ export default function Orders() {
   }, [orders]);
 
   const filtered = orders.filter((o) => {
+    // Exclude World Cup orders — they belong on the WC page
+    if (o.events?.competition === "World Cup 2026") return false;
     const now = new Date();
     const eventDate = o.events?.event_date ? new Date(o.events.event_date) : null;
     
