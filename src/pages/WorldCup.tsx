@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   Search, Download, Zap, CheckCircle2, Trash2, Pencil, Smartphone, Copy, Check,
   Package, ShoppingCart, TrendingUp, Percent, Ticket, Plus, ChevronDown, ChevronRight,
-  Users, User, Apple, CheckSquare, Square,
+  Users, User, Apple, CheckSquare, Square, Filter, Link2,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, subHours } from "date-fns";
@@ -341,6 +344,12 @@ export default function WorldCup() {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [collapsedInvRounds, setCollapsedInvRounds] = useState<Set<string>>(new Set());
   const [manualAssigned, setManualAssigned] = useState<Set<string>>(new Set());
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [paidConfirm, setPaidConfirm] = useState<string | null>(null);
+  const [paidTimestamps, setPaidTimestamps] = useState<Record<string, string>>({});
+  const [financeRoundFilter, setFinanceRoundFilter] = useState("all");
+  const [quickAssignOrderId, setQuickAssignOrderId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data: evData } = await supabase
@@ -540,6 +549,49 @@ export default function WorldCup() {
 
   const isFullyAssigned = (order: Order) => { const info = assignments[order.id]; return info && info.linked_count >= order.quantity; };
 
+  const activeFilterCount = useMemo(() => {
+    let c = 0;
+    if (filterRound !== "all") c++;
+    if (filterCountry !== "all") c++;
+    if (filterVenue !== "all") c++;
+    if (filterEvent !== "all") c++;
+    if (filterPlatform !== "all") c++;
+    return c;
+  }, [filterRound, filterCountry, filterVenue, filterEvent, filterPlatform]);
+
+  const clearAllFilters = () => { setFilterRound("all"); setFilterCountry("all"); setFilterVenue("all"); setFilterEvent("all"); setFilterPlatform("all"); };
+
+  const toggleOrderSelect = (id: string) => setSelectedOrderIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const clearSelection = () => setSelectedOrderIds(new Set());
+
+  const handleBulkFulfill = async () => {
+    const ids = [...selectedOrderIds];
+    await supabase.from("orders").update({ status: "fulfilled" }).in("id", ids);
+    setOrders(prev => prev.map(o => ids.includes(o.id) ? { ...o, status: "fulfilled" } : o));
+    toast.success(`${ids.length} order${ids.length !== 1 ? "s" : ""} marked fulfilled`);
+    clearSelection();
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Delete ${selectedOrderIds.size} selected order(s)?`)) return;
+    const ids = [...selectedOrderIds];
+    await supabase.from("orders").delete().in("id", ids);
+    setOrders(prev => prev.filter(o => !ids.includes(o.id)));
+    toast.success(`${ids.length} order${ids.length !== 1 ? "s" : ""} deleted`);
+    clearSelection();
+  };
+
+  const handleBulkExport = () => {
+    const selected = orders.filter(o => selectedOrderIds.has(o.id));
+    const csv = ["Order Ref,Buyer,Qty,Sale Price,Status,Delivery", ...selected.map(o =>
+      `${o.order_ref || ""},${o.buyer_name || ""},${o.quantity},${o.sale_price},${o.status},${o.delivery_status || ""}`
+    )].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "wc-orders-export.csv"; a.click();
+    toast.success("Exported selected orders");
+  };
+
   const updateField = useCallback(async (orderId: string, field: string, value: any) => {
     await supabase.from("orders").update({ [field]: value }).eq("id", orderId);
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: value } : o));
@@ -561,6 +613,15 @@ export default function WorldCup() {
   const toggleRound = (round: string) => setCollapsedRounds(prev => { const n = new Set(prev); n.has(round) ? n.delete(round) : n.add(round); return n; });
   const toggleEvent = (key: string) => setCollapsedEvents(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const toggleCategory = (key: string) => setCollapsedCategories(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  const toggleSupplierPaid = async (id: string, val: boolean) => {
+    // Already handled via confirmation popover
+    await supabase.from("purchases").update({ supplier_paid: !val }).eq("id", id);
+    setPurchases(prev => prev.map(p => p.id === id ? { ...p, supplier_paid: !val } : p));
+    if (!val) setPaidTimestamps(prev => ({ ...prev, [id]: format(new Date(), "dd MMM HH:mm") }));
+    toast.success(!val ? "Marked as paid" : "Marked as unpaid");
+    setPaidConfirm(null);
+  };
 
   // ── FINANCE TAB ──
   const countryFilter = filterCountry;
@@ -593,11 +654,6 @@ export default function WorldCup() {
     }).filter(e => e.cost > 0 || e.revenue > 0).sort((a, b) => new Date(a.ev.event_date).getTime() - new Date(b.ev.event_date).getTime());
   }, [financeData, groupedIds]);
 
-  const toggleSupplierPaid = async (id: string, val: boolean) => {
-    await supabase.from("purchases").update({ supplier_paid: !val }).eq("id", id);
-    setPurchases(prev => prev.map(p => p.id === id ? { ...p, supplier_paid: !val } : p));
-    toast.success(!val ? "Marked as paid" : "Marked as unpaid");
-  };
   const togglePaymentReceived = async (id: string, val: boolean) => {
     await supabase.from("orders").update({ payment_received: !val }).eq("id", id);
     setOrders(prev => prev.map(o => o.id === id ? { ...o, payment_received: !val } : o));
@@ -678,8 +734,11 @@ export default function WorldCup() {
     const isDelivered = o.delivery_status === "delivered" || o.delivery_status === "completed";
     return (
       <TableRow key={o.id}
-        className={cn("cursor-pointer text-xs h-10 transition-colors", colorClass, isDelivered ? "bg-success/8 hover:bg-success/15" : "hover:bg-muted/40")}
+        className={cn("cursor-pointer text-xs h-10 transition-colors", colorClass, isDelivered ? "bg-success/8 hover:bg-success/15" : "hover:bg-muted/40", selectedOrderIds.has(o.id) && "bg-primary/10")}
         onClick={() => setSelectedOrderId(o.id)}>
+        <TableCell className="py-2 w-[30px]" onClick={e => e.stopPropagation()}>
+          <Checkbox checked={selectedOrderIds.has(o.id)} onCheckedChange={() => toggleOrderSelect(o.id)} className="h-4 w-4" />
+        </TableCell>
         <TableCell className="font-mono font-bold text-xs py-2">{o.order_ref ? <CopyText text={o.order_ref} className="font-mono font-bold text-foreground text-xs" /> : "—"}</TableCell>
         <TableCell className="py-2">
           {(() => {
@@ -912,7 +971,7 @@ export default function WorldCup() {
               <div className="text-center px-3 py-1 rounded-md bg-muted/60"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</p><p className="text-sm font-bold font-mono">{total}</p></div>
               {available > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-success/10 text-success border-success/20">{available} avail</Badge>}
               {sold > 0 && <Badge variant="outline" className="text-[10px] font-bold uppercase bg-primary/10 text-primary border-primary/20">{sold} sold</Badge>}
-              <div className="text-center px-3 py-1 rounded-md bg-muted/60"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Assigned</p><p className="text-sm font-bold font-mono">{assigned}/{total}</p></div>
+              <TooltipProvider><Tooltip><TooltipTrigger asChild><div className="text-center px-3 py-1 rounded-md bg-muted/60 cursor-help"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Assigned</p><p className="text-sm font-bold font-mono">{assigned}/{total}</p></div></TooltipTrigger><TooltipContent><p className="text-xs">{assigned} of {total} tickets assigned to orders</p></TooltipContent></Tooltip></TooltipProvider>
             </div>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               onClick={async e => {
@@ -996,20 +1055,51 @@ export default function WorldCup() {
         {/* ── ORDERS TAB ── */}
         {tab === "orders" && (
           <div className="p-6 space-y-5">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="relative flex-1 min-w-[180px] max-w-xs space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Search</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search orders..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 min-w-[180px] max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search orders..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+              </div>
+              <Sheet open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2">
+                    <Filter className="h-4 w-4" />
+                    Filters
+                    {activeFilterCount > 0 && <Badge className="h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-primary text-primary-foreground">{activeFilterCount}</Badge>}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[320px] sm:w-[360px]">
+                  <SheetHeader>
+                    <SheetTitle>Filters</SheetTitle>
+                  </SheetHeader>
+                  <div className="space-y-5 mt-6">
+                    <FilterSelect label="Round" value={filterRound} onValueChange={setFilterRound} options={roundOptions} />
+                    <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
+                    <FilterSelect label="Stadium" value={filterVenue} onValueChange={setFilterVenue} options={venueOptions} />
+                    <FilterSelect label="Event" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
+                    <FilterSelect label="Platform" value={filterPlatform} onValueChange={setFilterPlatform} options={platformOptions} />
+                    {activeFilterCount > 0 && (
+                      <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-xs text-muted-foreground">Clear all filters</Button>
+                    )}
+                  </div>
+                </SheetContent>
+              </Sheet>
+              {activeFilterCount > 0 && <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-xs text-muted-foreground h-9">Clear filters</Button>}
+            </div>
+
+            {/* Bulk Actions Toolbar */}
+            {selectedOrderIds.size > 0 && (
+              <div className="flex items-center gap-3 rounded-lg border bg-primary/5 border-primary/20 px-4 py-2.5 animate-fade-in">
+                <span className="text-sm font-medium">{selectedOrderIds.size} selected</span>
+                <div className="flex items-center gap-2 ml-auto">
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={handleBulkFulfill}><CheckCircle2 className="h-3.5 w-3.5" />Mark Fulfilled</Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={handleBulkExport}><Download className="h-3.5 w-3.5" />Export Selected</Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 text-destructive hover:text-destructive" onClick={handleBulkDelete}><Trash2 className="h-3.5 w-3.5" />Delete Selected</Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={clearSelection}>Cancel</Button>
                 </div>
               </div>
-              <FilterSelect label="Round" value={filterRound} onValueChange={setFilterRound} options={roundOptions} />
-              <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
-              <FilterSelect label="Stadium" value={filterVenue} onValueChange={setFilterVenue} options={venueOptions} />
-              <FilterSelect label="Event" value={filterEvent} onValueChange={setFilterEvent} options={eventOptions} />
-              <FilterSelect label="Platform" value={filterPlatform} onValueChange={setFilterPlatform} options={platformOptions} />
-            </div>
+            )}
+
             <div className="flex items-center justify-between">
               <p className="text-muted-foreground text-sm">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} across {groupedByRound.reduce((s, r) => s + r.events.length, 0)} game{groupedByRound.reduce((s, r) => s + r.events.length, 0) !== 1 ? "s" : ""}</p>
               <AddOrderDialog onCreated={load} defaultClub="world-cup" />
@@ -1122,6 +1212,7 @@ export default function WorldCup() {
                                             <Table>
                                               <TableHeader>
                                                 <TableRow>
+                                                  <TableHead className="w-[30px]"></TableHead>
                                                   <TableHead className="text-[10px] uppercase tracking-wider w-[90px]">Order #</TableHead>
                                                   <TableHead className="text-[10px] uppercase tracking-wider">Platform</TableHead>
                                                   <TableHead className="text-[10px] uppercase tracking-wider">Customer</TableHead>
@@ -1234,13 +1325,40 @@ export default function WorldCup() {
                               const sym = currSym(p.currency);
                               return (
                                 <TableRow key={p.id} className={cn("text-xs h-10", orderRowColors[idx % orderRowColors.length])}>
-                                  <TableCell className="py-2 font-medium">{supplierMap[p.supplier_id]?.name || "—"}</TableCell>
+                                  <TableCell className="py-2">
+                                    <Badge variant="outline" className="text-[10px] bg-muted font-medium">{supplierMap[p.supplier_id]?.name || "—"}</Badge>
+                                  </TableCell>
                                   <TableCell className="py-2">{p.category}</TableCell>
                                   <TableCell className="py-2 text-center font-mono font-bold">{p.quantity}</TableCell>
-                                  <TableCell className="py-2 text-right font-mono">{sym}{p.unit_cost.toFixed(2)}</TableCell>
-                                  <TableCell className="py-2 text-right font-mono font-bold">{sym}{(p.quantity * p.unit_cost).toFixed(2)}</TableCell>
+                                  <TableCell className="py-2 text-right font-mono">
+                                    {p.currency !== "GBP" && <Badge variant="outline" className="text-[9px] mr-1 px-1 py-0 font-mono">{p.currency}</Badge>}
+                                    {sym}{p.unit_cost.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="py-2 text-right font-mono font-bold">
+                                    {p.currency !== "GBP" && <Badge variant="outline" className="text-[9px] mr-1 px-1 py-0 font-mono">{p.currency}</Badge>}
+                                    {sym}{(p.quantity * p.unit_cost).toFixed(2)}
+                                  </TableCell>
                                   <TableCell className="py-2 text-center">
-                                    <Switch checked={p.supplier_paid} onCheckedChange={() => toggleSupplierPaid(p.id, p.supplier_paid)} className="scale-75" />
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      {p.supplier_paid ? (
+                                        <Switch checked={true} onCheckedChange={() => toggleSupplierPaid(p.id, true)} className="scale-75" />
+                                      ) : (
+                                        <Popover open={paidConfirm === p.id} onOpenChange={open => setPaidConfirm(open ? p.id : null)}>
+                                          <PopoverTrigger asChild>
+                                            <div><Switch checked={false} onCheckedChange={() => setPaidConfirm(p.id)} className="scale-75" /></div>
+                                          </PopoverTrigger>
+                                          <PopoverContent className="w-56 p-3" align="center">
+                                            <p className="text-sm font-medium mb-1">Mark as paid?</p>
+                                            <p className="text-xs text-muted-foreground mb-3">This cannot be undone.</p>
+                                            <div className="flex gap-2">
+                                              <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={() => setPaidConfirm(null)}>Cancel</Button>
+                                              <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => toggleSupplierPaid(p.id, false)}>Confirm</Button>
+                                            </div>
+                                          </PopoverContent>
+                                        </Popover>
+                                      )}
+                                      {paidTimestamps[p.id] && <span className="text-[9px] text-muted-foreground">Paid {paidTimestamps[p.id]}</span>}
+                                    </div>
                                   </TableCell>
                                   <TableCell className="py-2 text-muted-foreground truncate max-w-[150px]">{p.notes || "—"}</TableCell>
                                 </TableRow>
@@ -1261,6 +1379,14 @@ export default function WorldCup() {
         {tab === "finance" && (
           <div className="p-6 space-y-6">
             <div className="flex flex-wrap items-end gap-3 mb-2">
+              <FilterSelect label="Round" value={financeRoundFilter} onValueChange={setFinanceRoundFilter} options={[
+                { value: "Group Stage", label: "Group Stage" },
+                { value: "Round of 32", label: "Round of 32" },
+                { value: "Round of 16", label: "Round of 16" },
+                { value: "Quarter-Finals", label: "Quarter-Finals" },
+                { value: "Semi-Finals", label: "Semi-Finals" },
+                { value: "Final", label: "Final" },
+              ]} />
               <FilterSelect label="Country" value={filterCountry} onValueChange={setFilterCountry} options={countryOptions} />
             </div>
             <p className="text-muted-foreground text-sm">Financial overview{countryFilter !== "all" ? ` — ${countryFilter.replace(/\b\w/g, c => c.toUpperCase())}` : " across all World Cup fixtures"}</p>
@@ -1277,7 +1403,24 @@ export default function WorldCup() {
               ) : eventBreakdown.map(({ ev, evPurchases, evOrders, cost, revenue, profit, ticketsBought, ticketsSold }) => (
                 <div key={ev.id} className="rounded-xl border bg-card overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 bg-muted/40 border-b border-border">
-                    <div><p className="font-bold">{formatEventTitle(ev.home_team, ev.away_team, ev.match_code)}</p><p className="text-xs text-muted-foreground">{format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}{ev.venue && ` · ${ev.venue}`}</p></div>
+                    <div>
+                      <p className="font-bold">{formatEventTitle(ev.home_team, ev.away_team, ev.match_code)}</p>
+                      <p className="text-xs text-muted-foreground">{format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}{ev.venue && ` · ${ev.venue}`}</p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {(() => {
+                          const pendingCount = evOrders.filter(o => !(o as any).payment_received).length;
+                          const receivedCount = evOrders.filter(o => (o as any).payment_received).length;
+                          const paidCount = evPurchases.filter(p => p.supplier_paid).length;
+                          const unpaidCount = evPurchases.filter(p => !p.supplier_paid).length;
+                          return <>
+                            {pendingCount > 0 && <Badge variant="outline" className="text-[9px] bg-warning/10 text-warning border-warning/20">{pendingCount} Pending</Badge>}
+                            {receivedCount > 0 && <Badge variant="outline" className="text-[9px] bg-success/10 text-success border-success/20">{receivedCount} Received</Badge>}
+                            {unpaidCount > 0 && <Badge variant="outline" className="text-[9px] bg-destructive/10 text-destructive border-destructive/20">{unpaidCount} Unpaid</Badge>}
+                            {paidCount > 0 && <Badge variant="outline" className="text-[9px] bg-success/10 text-success border-success/20">{paidCount} Paid</Badge>}
+                          </>;
+                        })()}
+                      </div>
+                    </div>
                     <div className="flex items-center gap-4 text-right">
                       <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Revenue</p><p className="text-sm font-bold text-success">{fmt(revenue)}</p></div>
                       <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Costs</p><p className="text-sm font-bold text-destructive">{fmt(cost)}</p></div>
@@ -1302,16 +1445,15 @@ export default function WorldCup() {
                         </div>
                       )}
                     </div>
-                    <div className="p-4">
-                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><ShoppingCart className="h-3.5 w-3.5" /> Sales ({ticketsSold} tickets)</h4>
+                    <div className="p-4 border-l-2 border-l-success/20">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><ShoppingCart className="h-3.5 w-3.5 text-success" /> Sales ({ticketsSold} tickets)</h4>
                       {evOrders.length === 0 ? <p className="text-xs text-muted-foreground">None</p> : (
                         <div className="space-y-1.5">
                           {evOrders.map(o => (
-                            <div key={o.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-xs">
+                            <div key={o.id} className="flex items-center justify-between rounded-md bg-success/5 px-3 py-2 text-xs">
                               <div className="flex items-center gap-2"><span>{o.quantity}x {o.category}</span><span className="text-muted-foreground">({o.platform_id ? (platformMap[o.platform_id]?.name || "Unknown") : "Direct"})</span></div>
                               <div className="flex items-center gap-2">
-                                <span className="font-mono font-medium">{fmt(o.net_received || o.sale_price - o.fees)}</span>
-                                <span className={cn("text-[10px]", (o as any).payment_received ? "text-success" : "text-warning")}>{(o as any).payment_received ? "Received" : "Pending"}</span>
+                                <span className="font-mono font-semibold text-sm">{fmt(o.net_received || o.sale_price - o.fees)}</span>
                                 <Switch checked={(o as any).payment_received || false} onCheckedChange={() => togglePaymentReceived(o.id, (o as any).payment_received || false)} className="scale-75" />
                               </div>
                             </div>
