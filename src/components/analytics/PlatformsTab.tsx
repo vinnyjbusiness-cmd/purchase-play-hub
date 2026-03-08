@@ -39,10 +39,6 @@ export default function PlatformsTab({ platforms, orders, events, groupedIds }: 
     return m;
   }, [events, groupedIds]);
 
-  if (platforms.length === 0) {
-    return <div className="mt-4 text-muted-foreground text-center py-12">No platforms configured</div>;
-  }
-
   // Cross-platform summary for overview charts
   const platformSummary = useMemo(() => {
     return platforms.map((p, i) => {
@@ -54,6 +50,10 @@ export default function PlatformsTab({ platforms, orders, events, groupedIds }: 
       return { name: p.name, revenue, tickets, fees, net, color: PLATFORM_COLORS[i % PLATFORM_COLORS.length] };
     }).filter(p => p.revenue > 0 || p.tickets > 0);
   }, [platforms, orders]);
+
+  if (platforms.length === 0) {
+    return <div className="mt-4 text-muted-foreground text-center py-12">No platforms configured</div>;
+  }
 
   return (
     <div className="space-y-6 mt-4">
