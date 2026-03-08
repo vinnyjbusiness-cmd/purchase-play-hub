@@ -3,10 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { CalendarDays, TrendingUp, TrendingDown, X, BarChart3, Users } from "lucide-react";
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, subMonths, startOfQuarter, endOfQuarter, subYears } from "date-fns";
 import { CLUBS } from "@/lib/seatingSections";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell,
+} from "recharts";
 import type { AnalyticsOrder, AnalyticsPurchase, AnalyticsPlatform } from "@/pages/Analytics";
 import type { MinimalEvent } from "@/lib/eventDedup";
 
@@ -248,11 +251,11 @@ export default function OverviewTab({ events, orders, purchases, groupedIds, pla
         ))}
       </div>
 
-      {/* Platform Breakdown + Club Profit panels */}
+      {/* Platform Breakdown + Club Profit — Charts & Tables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Platform Breakdown */}
-        <div className="rounded-lg border bg-card p-4">
-          <div className="flex items-center gap-2 mb-4">
+        {/* Platform Breakdown — Pie Chart + Table */}
+        <div className="rounded-lg border bg-card p-4 space-y-4">
+          <div className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold">Platform Breakdown</h3>
           </div>
@@ -261,33 +264,73 @@ export default function OverviewTab({ events, orders, purchases, groupedIds, pla
               No platform data — assign platforms to orders to see breakdown
             </p>
           ) : (
-            <div className="space-y-3">
-              {platformBreakdown.map(p => {
-                const pct = totalPlatformRevenue > 0 ? (p.revenue / totalPlatformRevenue) * 100 : 0;
-                return (
-                  <div key={p.name} className="relative">
-                    <div className="absolute inset-0 rounded-md opacity-10" style={{ backgroundColor: p.color, width: `${(p.revenue / maxPlatformRevenue) * 100}%` }} />
-                    <div className="relative flex items-center justify-between px-3 py-2.5">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                        <span className="text-sm font-medium truncate">{p.name}</span>
-                        <span className="text-xs text-muted-foreground">{p.tickets} tickets</span>
-                      </div>
-                      <div className="flex items-center gap-4 shrink-0">
-                        <span className="text-sm font-semibold">{fmt(p.revenue)}</span>
-                        <span className="text-xs text-muted-foreground w-12 text-right">{pct.toFixed(1)}%</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <>
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie
+                    data={platformBreakdown}
+                    dataKey="revenue"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={90}
+                    innerRadius={50}
+                    paddingAngle={2}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    labelLine={{ stroke: "hsl(var(--muted-foreground))", strokeWidth: 1 }}
+                    fontSize={10}
+                  >
+                    {platformBreakdown.map((p, i) => (
+                      <Cell key={p.name} fill={p.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                    formatter={(value: number) => fmt(value)}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Platform</TableHead>
+                    <TableHead className="text-center">Tickets</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="text-right">Share</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {platformBreakdown.map(p => {
+                    const pct = totalPlatformRevenue > 0 ? (p.revenue / totalPlatformRevenue) * 100 : 0;
+                    return (
+                      <TableRow key={p.name}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                            <span className="text-sm font-medium">{p.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">{p.tickets}</TableCell>
+                        <TableCell className="text-right font-semibold">{fmt(p.revenue)}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">{pct.toFixed(1)}%</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  <TableRow className="bg-muted/30 font-semibold border-t-2">
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-center">{platformBreakdown.reduce((s, p) => s + p.tickets, 0)}</TableCell>
+                    <TableCell className="text-right">{fmt(totalPlatformRevenue)}</TableCell>
+                    <TableCell className="text-right">100%</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </>
           )}
         </div>
 
-        {/* Club Profit Comparison / Club Event Breakdown */}
-        <div className="rounded-lg border bg-card p-4">
-          <div className="flex items-center gap-2 mb-4">
+        {/* Club Profit — Bar Chart + Table */}
+        <div className="rounded-lg border bg-card p-4 space-y-4">
+          <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold">
               {showClubComparison ? "Profit by Club" : `${CLUBS.find(c => c.value === clubFilter)?.label || "Club"} — Event Breakdown`}
@@ -297,61 +340,104 @@ export default function OverviewTab({ events, orders, purchases, groupedIds, pla
             clubBreakdown.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">No club data available</p>
             ) : (
-              <div className="space-y-3">
-                {clubBreakdown.map(c => {
-                  const clubMargin = c.revenue > 0 ? ((c.profit / c.revenue) * 100).toFixed(1) : "0.0";
-                  return (
-                    <div key={c.value} className="relative">
-                      <div
-                        className="absolute inset-0 rounded-md opacity-10"
-                        style={{ backgroundColor: c.color, width: `${(Math.abs(c.profit) / maxClubProfit) * 100}%` }}
-                      />
-                      <div className="relative px-3 py-2.5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
-                            <span className="text-sm font-medium truncate">{c.label}</span>
-                            <span className="text-xs text-muted-foreground">{c.events} events · {c.tickets} sold</span>
-                          </div>
-                          <div className="flex items-center gap-3 shrink-0">
-                            <span className={`text-sm font-bold ${c.profit >= 0 ? "text-success" : "text-destructive"}`}>
-                              {fmt(c.profit)}
-                            </span>
-                            <span className={`text-xs w-12 text-right ${Number(clubMargin) >= 0 ? "text-success" : "text-destructive"}`}>
-                              {clubMargin}%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={clubBreakdown} margin={{ top: 5, right: 10, left: 0, bottom: 5 }} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `£${v}`} />
+                    <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" width={120} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                      formatter={(value: number) => fmt(value)}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="revenue" name="Revenue" fill="hsl(220, 70%, 55%)" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="costs" name="Costs" fill="hsl(0, 62%, 50%)" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="profit" name="Profit" radius={[0, 4, 4, 0]}>
+                      {clubBreakdown.map((c) => (
+                        <Cell key={c.value} fill={c.profit >= 0 ? "hsl(142, 60%, 40%)" : "hsl(0, 62%, 50%)"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Club</TableHead>
+                      <TableHead className="text-center">Events</TableHead>
+                      <TableHead className="text-center">Sold</TableHead>
+                      <TableHead className="text-right">Revenue</TableHead>
+                      <TableHead className="text-right">Costs</TableHead>
+                      <TableHead className="text-right">Profit</TableHead>
+                      <TableHead className="text-right">Margin</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {clubBreakdown.map(c => {
+                      const clubMargin = c.revenue > 0 ? ((c.profit / c.revenue) * 100).toFixed(1) : "0.0";
+                      return (
+                        <TableRow key={c.value}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
+                              <span className="text-sm font-medium">{c.label}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">{c.events}</TableCell>
+                          <TableCell className="text-center">{c.tickets}</TableCell>
+                          <TableCell className="text-right">{fmt(c.revenue)}</TableCell>
+                          <TableCell className="text-right">{fmt(c.costs)}</TableCell>
+                          <TableCell className={`text-right font-bold ${c.profit >= 0 ? "text-success" : "text-destructive"}`}>{fmt(c.profit)}</TableCell>
+                          <TableCell className={`text-right ${Number(clubMargin) >= 0 ? "text-success" : "text-destructive"}`}>{clubMargin}%</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </>
             )
           ) : (
             // Per-event breakdown for selected club
             periodGames.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">No events for this club</p>
             ) : (
-              <div className="space-y-2">
-                {periodGames.map(g => {
-                  const gMargin = g.revenue > 0 ? ((g.profit / g.revenue) * 100).toFixed(1) : "—";
-                  const clubVal = getClubForEvent(g);
-                  const color = clubVal ? CLUB_COLORS[clubVal] || "hsl(var(--primary))" : "hsl(var(--primary))";
-                  return (
-                    <div key={g.id} className="flex items-center justify-between px-3 py-2 rounded-md border border-border/50 bg-muted/20">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{g.home_team} vs {g.away_team}</p>
-                        <p className="text-xs text-muted-foreground">{format(new Date(g.event_date), "dd MMM")} · {g.soldQty} sold</p>
+              <>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={periodGames.map(g => ({
+                    name: `${g.home_team.split(" ").pop()} v ${g.away_team.split(" ").pop()}`,
+                    Revenue: g.revenue, Costs: g.costs + g.fees, Profit: g.profit,
+                  }))} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="name" tick={{ fontSize: 9 }} stroke="hsl(var(--muted-foreground))" />
+                    <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `£${v}`} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                      formatter={(value: number) => fmt(value)}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="Revenue" fill="hsl(220, 70%, 55%)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Costs" fill="hsl(0, 62%, 50%)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Profit" fill="hsl(142, 60%, 40%)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="space-y-2">
+                  {periodGames.map(g => {
+                    const gMargin = g.revenue > 0 ? ((g.profit / g.revenue) * 100).toFixed(1) : "—";
+                    return (
+                      <div key={g.id} className="flex items-center justify-between px-3 py-2 rounded-md border border-border/50 bg-muted/20">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{g.home_team} vs {g.away_team}</p>
+                          <p className="text-xs text-muted-foreground">{format(new Date(g.event_date), "dd MMM")} · {g.soldQty} sold</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`text-sm font-bold ${g.profit >= 0 ? "text-success" : "text-destructive"}`}>{fmt(g.profit)}</p>
+                          <p className="text-xs text-muted-foreground">{gMargin}%</p>
+                        </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className={`text-sm font-bold ${g.profit >= 0 ? "text-success" : "text-destructive"}`}>{fmt(g.profit)}</p>
-                        <p className="text-xs text-muted-foreground">{gMargin}%</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              </>
             )
           )}
         </div>
