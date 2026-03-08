@@ -1,0 +1,1 @@
+UPDATE public.members SET club = 'Liverpool' WHERE club IS NULL OR trim(club) = '';
