@@ -7,8 +7,7 @@ import { CalendarDays, TrendingUp, TrendingDown, X, BarChart3, Users } from "luc
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, subMonths, startOfQuarter, endOfQuarter, subYears } from "date-fns";
 import { CLUBS } from "@/lib/seatingSections";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-  PieChart, Pie, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell,
 } from "recharts";
 import type { AnalyticsOrder, AnalyticsPurchase, AnalyticsPlatform } from "@/pages/Analytics";
 import type { MinimalEvent } from "@/lib/eventDedup";
