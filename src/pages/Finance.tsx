@@ -275,108 +275,114 @@ export default function Finance() {
               </div>
             ) : (
               eventBreakdown.map(({ ev, evPurchases, evOrders, cost, revenue, profit, ticketsBought, ticketsSold }) => (
-                <div key={ev.id} className="rounded-xl border bg-card overflow-hidden">
-                  {/* Event header */}
-                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between px-4 md:px-5 py-3 bg-muted/40 border-b border-border gap-2">
-                    <div>
-                      <p className="font-bold">{ev.home_team} vs {ev.away_team}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}
-                        {ev.venue && ` · ${ev.venue}`}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 md:gap-4 text-right flex-wrap">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Revenue</p>
-                        <p className="text-sm font-bold text-success">{fmt(revenue)}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Costs</p>
-                        <p className="text-sm font-bold text-destructive">{fmt(cost)}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Profit</p>
-                        <p className={cn("text-sm font-bold", profit >= 0 ? "text-success" : "text-destructive")}>
-                          {profit >= 0 ? "" : "-"}{fmt(Math.abs(profit))}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
-                    {/* Purchases */}
-                    <div className="p-4">
-                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <Package className="h-3.5 w-3.5" /> Purchases ({ticketsBought} tickets)
-                      </h4>
-                      {evPurchases.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">None</p>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {evPurchases.map(p => {
-                            const supplierName = supplierMap[p.supplier_id]?.name || "Unknown";
-                            const pCost = p.total_cost_gbp || (p.quantity * p.unit_cost);
-                            return (
-                              <div key={p.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-xs">
-                                <div className="flex items-center gap-2">
-                                  <span>{p.quantity}x {p.category}</span>
-                                  <span className="text-muted-foreground">({supplierName})</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono font-medium">{fmt(pCost)}</span>
-                                  <span className={cn("text-[10px]", p.supplier_paid ? "text-success" : "text-destructive")}>
-                                    {p.supplier_paid ? "Paid" : "Unpaid"}
-                                  </span>
-                                  <Switch
-                                    checked={p.supplier_paid}
-                                    onCheckedChange={() => toggleSupplierPaid(p.id, p.supplier_paid)}
-                                    className="scale-75"
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
+                <Collapsible key={ev.id}>
+                  <div className="rounded-xl border bg-card overflow-hidden">
+                    <CollapsibleTrigger className="w-full text-left">
+                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between px-4 md:px-5 py-3 bg-muted/40 gap-2 group cursor-pointer hover:bg-muted/60 transition-colors">
+                        <div className="flex items-center gap-2">
+                          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+                          <div>
+                            <p className="font-bold">{ev.home_team} vs {ev.away_team}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {format(new Date(ev.event_date), "EEE dd MMM yyyy, HH:mm")}
+                              {ev.venue && ` · ${ev.venue}`}
+                            </p>
+                          </div>
                         </div>
-                      )}
-                    </div>
-
-                    {/* Sales */}
-                    <div className="p-4">
-                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <ShoppingCart className="h-3.5 w-3.5" /> Sales ({ticketsSold} tickets)
-                      </h4>
-                      {evOrders.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">None</p>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {evOrders.map(o => {
-                            const net = o.net_received || o.sale_price - o.fees;
-                            const platName = o.platform_id ? (platformMap[o.platform_id]?.name || "Unknown") : "Direct";
-                            return (
-                              <div key={o.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-xs">
-                                <div className="flex items-center gap-2">
-                                  <span>{o.quantity}x {o.category}</span>
-                                  <span className="text-muted-foreground">({platName})</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono font-medium">{fmt(net)}</span>
-                                  <span className={cn("text-[10px]", o.payment_received ? "text-success" : "text-warning")}>
-                                    {o.payment_received ? "Received" : "Pending"}
-                                  </span>
-                                  <Switch
-                                    checked={o.payment_received}
-                                    onCheckedChange={() => togglePaymentReceived(o.id, o.payment_received)}
-                                    className="scale-75"
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
+                        <div className="flex items-center gap-3 md:gap-4 text-right flex-wrap">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Revenue</p>
+                            <p className="text-sm font-bold text-success">{fmt(revenue)}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Costs</p>
+                            <p className="text-sm font-bold text-destructive">{fmt(cost)}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Profit</p>
+                            <p className={cn("text-sm font-bold", profit >= 0 ? "text-success" : "text-destructive")}>
+                              {profit >= 0 ? "" : "-"}{fmt(Math.abs(profit))}
+                            </p>
+                          </div>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    </CollapsibleTrigger>
+
+                    <CollapsibleContent>
+                      <div className="border-t border-border grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
+                        <div className="p-4">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <Package className="h-3.5 w-3.5" /> Purchases ({ticketsBought} tickets)
+                          </h4>
+                          {evPurchases.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">None</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {evPurchases.map(p => {
+                                const supplierName = supplierMap[p.supplier_id]?.name || "Unknown";
+                                const pCost = p.total_cost_gbp || (p.quantity * p.unit_cost);
+                                return (
+                                  <div key={p.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <span>{p.quantity}x {p.category}</span>
+                                      <span className="text-muted-foreground">({supplierName})</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono font-medium">{fmt(pCost)}</span>
+                                      <span className={cn("text-[10px]", p.supplier_paid ? "text-success" : "text-destructive")}>
+                                        {p.supplier_paid ? "Paid" : "Unpaid"}
+                                      </span>
+                                      <Switch
+                                        checked={p.supplier_paid}
+                                        onCheckedChange={() => toggleSupplierPaid(p.id, p.supplier_paid)}
+                                        className="scale-75"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="p-4">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <ShoppingCart className="h-3.5 w-3.5" /> Sales ({ticketsSold} tickets)
+                          </h4>
+                          {evOrders.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">None</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {evOrders.map(o => {
+                                const net = o.net_received || o.sale_price - o.fees;
+                                const platName = o.platform_id ? (platformMap[o.platform_id]?.name || "Unknown") : "Direct";
+                                return (
+                                  <div key={o.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <span>{o.quantity}x {o.category}</span>
+                                      <span className="text-muted-foreground">({platName})</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono font-medium">{fmt(net)}</span>
+                                      <span className={cn("text-[10px]", o.payment_received ? "text-success" : "text-warning")}>
+                                        {o.payment_received ? "Received" : "Pending"}
+                                      </span>
+                                      <Switch
+                                        checked={o.payment_received}
+                                        onCheckedChange={() => togglePaymentReceived(o.id, o.payment_received)}
+                                        className="scale-75"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </CollapsibleContent>
                   </div>
-                </div>
+                </Collapsible>
               ))
             )}
           </div>
