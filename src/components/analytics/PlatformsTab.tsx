@@ -5,6 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ShoppingCart, TrendingUp, CalendarDays, DollarSign, Package, Percent } from "lucide-react";
 import { format } from "date-fns";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell,
+} from "recharts";
 import type { AnalyticsOrder, AnalyticsPlatform } from "@/pages/Analytics";
 import type { MinimalEvent } from "@/lib/eventDedup";
 
@@ -16,6 +20,11 @@ interface Props {
 }
 
 const fmt = (n: number) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
+
+const PLATFORM_COLORS = [
+  "hsl(220, 70%, 55%)", "hsl(142, 60%, 40%)", "hsl(280, 60%, 55%)",
+  "hsl(35, 90%, 55%)", "hsl(160, 50%, 45%)", "hsl(0, 62%, 50%)",
+];
 
 export default function PlatformsTab({ platforms, orders, events, groupedIds }: Props) {
   const [activeTab, setActiveTab] = useState(platforms.length > 0 ? platforms[0].id : "");
@@ -30,6 +39,18 @@ export default function PlatformsTab({ platforms, orders, events, groupedIds }: 
     return m;
   }, [events, groupedIds]);
 
+  // Cross-platform summary for overview charts
+  const platformSummary = useMemo(() => {
+    return platforms.map((p, i) => {
+      const pOrders = orders.filter(o => o.platform_id === p.id && o.status !== "cancelled" && o.status !== "refunded");
+      const revenue = pOrders.reduce((s, o) => s + Number(o.sale_price || 0), 0);
+      const tickets = pOrders.reduce((s, o) => s + o.quantity, 0);
+      const fees = pOrders.reduce((s, o) => s + Number(o.fees || 0), 0);
+      const net = revenue - fees;
+      return { name: p.name, revenue, tickets, fees, net, color: PLATFORM_COLORS[i % PLATFORM_COLORS.length] };
+    }).filter(p => p.revenue > 0 || p.tickets > 0);
+  }, [platforms, orders]);
+
   if (platforms.length === 0) {
     return <div className="mt-4 text-muted-foreground text-center py-12">No platforms configured</div>;
   }
@@ -37,6 +58,58 @@ export default function PlatformsTab({ platforms, orders, events, groupedIds }: 
   return (
     <div className="space-y-6 mt-4">
       <p className="text-muted-foreground text-sm">{platforms.length} platform{platforms.length !== 1 ? "s" : ""} configured</p>
+
+      {/* Cross-platform comparison charts */}
+      {platformSummary.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold mb-3">Revenue by Platform</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <PieChart>
+                <Pie
+                  data={platformSummary}
+                  dataKey="revenue"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={95}
+                  innerRadius={55}
+                  paddingAngle={2}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  labelLine={{ stroke: "hsl(var(--muted-foreground))", strokeWidth: 1 }}
+                  fontSize={10}
+                >
+                  {platformSummary.map((p) => (
+                    <Cell key={p.name} fill={p.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                  formatter={(value: number) => fmt(value)}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold mb-3">Revenue vs Fees vs Net</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={platformSummary} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `£${v}`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                  formatter={(value: number) => fmt(value)}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="revenue" name="Revenue" fill="hsl(220, 70%, 55%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="fees" name="Fees" fill="hsl(0, 62%, 50%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="net" name="Net" fill="hsl(142, 60%, 40%)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex-wrap h-auto gap-1">
@@ -104,6 +177,28 @@ export default function PlatformsTab({ platforms, orders, events, groupedIds }: 
                   <Badge key={status} variant="secondary" className="text-xs">{status}: {count}</Badge>
                 ))}
               </div>
+
+              {/* Per-event bar chart */}
+              {eventBreakdown.length > 0 && (
+                <div className="rounded-lg border bg-card p-4">
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><CalendarDays className="h-4 w-4" /> Revenue by Event</h3>
+                  <ResponsiveContainer width="100%" height={Math.max(200, eventBreakdown.length * 36)}>
+                    <BarChart data={eventBreakdown} layout="vertical" margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                      <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `£${v}`} />
+                      <YAxis type="category" dataKey="teams" tick={{ fontSize: 9 }} stroke="hsl(var(--muted-foreground))" width={140} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                        formatter={(value: number) => fmt(value)}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="revenue" name="Revenue" fill="hsl(220, 70%, 55%)" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="fees" name="Fees" fill="hsl(0, 62%, 50%)" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="net" name="Net" fill="hsl(142, 60%, 40%)" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
 
               <div>
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><CalendarDays className="h-4 w-4" /> Performance by Event</h3>
