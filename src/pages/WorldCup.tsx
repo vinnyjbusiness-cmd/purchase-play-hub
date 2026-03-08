@@ -696,6 +696,27 @@ export default function WorldCup() {
     return [...map.values()].sort((a, b) => (a.event?.event_date || "").localeCompare(b.event?.event_date || ""));
   }, [filteredPurchases, wcEvents]);
 
+  // Group purchases by Round → Event → Supplier
+  const purchasesByRound = useMemo(() => {
+    const roundMap = new Map<string, { event: EventInfo; purchases: Purchase[] }[]>();
+    purchasesByEvent.forEach(({ event, purchases: evP }) => {
+      if (!event) return;
+      const parsed = getParsedEvent(event);
+      const round = getWCRound(event.match_code) !== "Other" ? getWCRound(event.match_code) : (parsed.round || "Group Stage");
+      if (!roundMap.has(round)) roundMap.set(round, []);
+      roundMap.get(round)!.push({ event, purchases: evP });
+    });
+    return [...roundMap.entries()]
+      .sort(([a], [b]) => (WC_ROUND_ORDER.indexOf(a) === -1 ? 99 : WC_ROUND_ORDER.indexOf(a)) - (WC_ROUND_ORDER.indexOf(b) === -1 ? 99 : WC_ROUND_ORDER.indexOf(b)))
+      .map(([round, events]) => ({
+        round,
+        events: events.sort((a, b) => a.event.event_date.localeCompare(b.event.event_date)),
+        totalPurchases: events.reduce((s, e) => s + e.purchases.length, 0),
+        totalTickets: events.reduce((s, e) => s + e.purchases.reduce((t, p) => t + p.quantity, 0), 0),
+        totalCost: events.reduce((s, e) => s + e.purchases.reduce((t, p) => t + (p.total_cost_gbp || p.quantity * p.unit_cost), 0), 0),
+      }));
+  }, [purchasesByEvent]);
+
   // ── INVENTORY TAB ──
   const filteredInv = useMemo(() => inventory.filter(i => {
     if (!filteredEventIds.has(i.event_id)) return false;
