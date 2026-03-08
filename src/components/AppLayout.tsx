@@ -3,9 +3,11 @@ import AppSidebar from "./AppSidebar";
 import MobileBottomNav from "./MobileBottomNav";
 import GlobalSearch from "./GlobalSearch";
 import { useAuditTracker } from "@/hooks/useAuditTracker";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 export default function AppLayout() {
   useAuditTracker();
+  useKeyboardShortcuts();
   
   return (
     <div className="flex h-screen overflow-hidden">

@@ -34,6 +34,7 @@ const ADMIN_ITEMS = [
   { to: "/todos", icon: ListTodo, label: "To-Do List" },
   { to: "/activity", icon: ClipboardList, label: "Activity Log" },
   { to: "/vault-passwords", icon: KeyRound, label: "Password Vault" },
+  { to: "/templates", icon: FileText, label: "Templates" },
 ];
 
 // All paths that are inside dropdowns (for hiding from main list)
@@ -95,7 +96,6 @@ export default function AppSidebar() {
     { to: "/stock", icon: Boxes, label: "Stock" },
     { to: "/timeline", icon: CalendarClock, label: "Event Timeline" },
     { to: "/analytics", icon: BarChart3, label: "Analytics" },
-    { to: "/templates", icon: FileText, label: "Templates" },
   ];
 
   // Filter out removed pages and dropdown pages from secondary
