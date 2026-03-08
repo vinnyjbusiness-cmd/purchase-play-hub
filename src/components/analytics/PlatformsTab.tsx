@@ -178,6 +178,28 @@ export default function PlatformsTab({ platforms, orders, events, groupedIds }: 
                 ))}
               </div>
 
+              {/* Per-event bar chart */}
+              {eventBreakdown.length > 0 && (
+                <div className="rounded-lg border bg-card p-4">
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><CalendarDays className="h-4 w-4" /> Revenue by Event</h3>
+                  <ResponsiveContainer width="100%" height={Math.max(200, eventBreakdown.length * 36)}>
+                    <BarChart data={eventBreakdown} layout="vertical" margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                      <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `£${v}`} />
+                      <YAxis type="category" dataKey="teams" tick={{ fontSize: 9 }} stroke="hsl(var(--muted-foreground))" width={140} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                        formatter={(value: number) => fmt(value)}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="revenue" name="Revenue" fill="hsl(220, 70%, 55%)" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="fees" name="Fees" fill="hsl(0, 62%, 50%)" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="net" name="Net" fill="hsl(142, 60%, 40%)" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
               <div>
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><CalendarDays className="h-4 w-4" /> Performance by Event</h3>
                 <div className="rounded-lg border">
