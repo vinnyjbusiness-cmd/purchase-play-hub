@@ -5,6 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ShoppingCart, TrendingUp, CalendarDays, DollarSign, Package, Percent } from "lucide-react";
 import { format } from "date-fns";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell,
+} from "recharts";
 import type { AnalyticsOrder, AnalyticsPlatform } from "@/pages/Analytics";
 import type { MinimalEvent } from "@/lib/eventDedup";
 
