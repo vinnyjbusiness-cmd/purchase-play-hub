@@ -351,6 +351,7 @@ export default function WorldCup() {
   const [paidTimestamps, setPaidTimestamps] = useState<Record<string, string>>({});
   const [financeRoundFilter, setFinanceRoundFilter] = useState("all");
   const [quickAssignOrderId, setQuickAssignOrderId] = useState<string | null>(null);
+  const [invViewMode, setInvViewMode] = useState<"all" | "needs">("all");
 
   const load = useCallback(async () => {
     const { data: evData } = await supabase
