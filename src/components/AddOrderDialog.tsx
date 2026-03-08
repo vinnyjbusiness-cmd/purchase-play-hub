@@ -159,7 +159,21 @@ export default function AddOrderDialog({ onCreated }: Props) {
     }
   };
 
-  const selectedContact = contacts.find((c) => c.id === form.contact_id);
+  // Helper to clean WC event names for display
+  const cleanEventLabel = (e: EventRow) => {
+    const matchNum = getMatchNumber(e.match_code);
+    if (matchNum && e.home_team.startsWith("#M")) {
+      // Parse clean names from messy import format
+      const homeMatch = e.home_team.match(/^#M\d+\s*-\s*\((?:Group\s+\w+\s*-\s*)?(.+)$/);
+      const awayMatch = e.away_team.match(/^(.+?)\)\s*Football World Cup/);
+      const cleanHome = homeMatch ? homeMatch[1].trim() : e.home_team;
+      const cleanAway = awayMatch ? awayMatch[1].trim() : e.away_team;
+      const d = new Date(e.event_date);
+      const dateStr = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
+      return `M${matchNum} — ${cleanHome} vs ${cleanAway} — ${dateStr}`;
+    }
+    return formatEventLabel(e.home_team, e.away_team, e.event_date, e.match_code);
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
